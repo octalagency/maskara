@@ -17,13 +17,10 @@ if [ -z "$MIGRATED" ]; then
 fi
 
 echo "Ensuring admin account..."
-if [ -n "${ADMIN_EMAIL:-}" ] && [ -n "${ADMIN_INITIAL_PASSWORD:-}" ]; then
-  npx prisma db seed || true
-elif [ "$RUN_SEED" = "true" ]; then
+node scripts/ensure-admin.js || true
+if [ "$RUN_SEED" = "true" ]; then
   echo "  RUN_SEED=true — running prisma db seed"
   npx prisma db seed || true
-else
-  echo "  Set ADMIN_EMAIL + ADMIN_INITIAL_PASSWORD for auto admin"
 fi
 
 echo "Starting application..."

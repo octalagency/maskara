@@ -11,7 +11,17 @@ import {
 } from './demo-data';
 import { enableOfflineMode, getDemoMerchants, isOfflineMode, saveDemoMerchants } from './offline';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+function resolveApiUrl(): string {
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (host === 'app.maskara.bd' || host === 'maskara.bd' || host === 'www.maskara.bd') {
+      return 'https://api.maskara.bd';
+    }
+  }
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+}
+
+const API_URL = resolveApiUrl();
 
 class ApiClient {
   private token: string | null = null;

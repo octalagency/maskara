@@ -1,0 +1,40 @@
+#!/usr/bin/expect -f
+# Mac Terminal থেকে চালান: expect scripts/deploy-expect.exp
+set timeout 7200
+set host "148.135.137.47"
+set user "root"
+set pass $env(MASKARA_SSH_PASSWORD)
+set local "/Users/tudo/maskara"
+
+if {$pass eq ""} {
+  stty -echo
+  send -nonewline "VPS password: "
+  expect_user -re "(.*)\n"
+  set pass $expect_out(1,string)
+  stty echo
+  puts ""
+}
+
+puts "=== Maskara deploy ==="
+spawn rsync -avz -e ssh --exclude node_modules --exclude .git --exclude .next --exclude dist --exclude .env --exclude .tools $local/ $user@$host:/opt/maskara/
+expect {
+  "yes/no" { send "yes\r"; exp_continue }
+  "password:" { send "$pass\r" }
+}
+expect eof
+
+spawn ssh -o StrictHostKeyChecking=no $user@$host
+expect {
+  "yes/no" { send "yes\r"; exp_continue }
+  "password:" { send "$pass\r" }
+}
+expect "# "
+send "cd /opt/maskara && bash scripts/hostinger-fix-all.sh 2>/dev/null || bash scripts/vps-redeploy.sh\r"
+expect -timeout 3600 "# "
+send "docker exec -e RUN_SEED=true -e ADMIN_EMAIL=admin@maskara.bd -e ADMIN_INITIAL_PASSWORD=Admin@123 maskara-backend npx prisma db seed\r"
+expect "# "
+send "docker compose -f docker-compose.hostinger.yml ps\r"
+expect "# "
+send "exit\r"
+expect eof
+puts "\nDONE → https://app.maskara.bd/admin"

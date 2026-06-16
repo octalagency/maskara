@@ -23,6 +23,7 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY prisma ./prisma/
+COPY scripts ./scripts/
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
 
