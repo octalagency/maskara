@@ -12,4 +12,3 @@ google-credentials.json
 .tools/
 docker/nginx/ssl/*.pem
 standalone-api/data/local-settings.json
-.github/workflows/
