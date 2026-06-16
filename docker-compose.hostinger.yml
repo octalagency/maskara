@@ -61,6 +61,8 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-https://app.maskara.bd}
       VOICE_WEBHOOK_SECRET: ${VOICE_WEBHOOK_SECRET}
       WOOCOMMERCE_WEBHOOK_SECRET: ${WOOCOMMERCE_WEBHOOK_SECRET}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@maskara.bd}
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-Admin@123}
     healthcheck:
       test: ['CMD-SHELL', 'node -e "require(\"http\").get(\"http://127.0.0.1:4000/health\",r=>process.exit(r.statusCode===200?0:1)).on(\"error\",()=>process.exit(1))"']
       interval: 15s

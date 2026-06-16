@@ -16,12 +16,14 @@ if [ -z "$MIGRATED" ]; then
   exit 1
 fi
 
-echo "Seeding database (if needed)..."
-if [ "$RUN_SEED" = "true" ]; then
+echo "Ensuring admin account..."
+if [ -n "${ADMIN_EMAIL:-}" ] && [ -n "${ADMIN_INITIAL_PASSWORD:-}" ]; then
+  npx prisma db seed || true
+elif [ "$RUN_SEED" = "true" ]; then
   echo "  RUN_SEED=true — running prisma db seed"
   npx prisma db seed || true
 else
-  echo "  RUN_SEED not set — skipping seed (production safe)"
+  echo "  Set ADMIN_EMAIL + ADMIN_INITIAL_PASSWORD for auto admin"
 fi
 
 echo "Starting application..."

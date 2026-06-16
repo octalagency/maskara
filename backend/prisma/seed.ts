@@ -3,33 +3,41 @@ import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
-async function main() {
-  if (process.env.RUN_SEED !== 'true') {
-    console.log('RUN_SEED not set — skipping database seed (production safe)');
-    return;
-  }
-
+async function ensureAdmin() {
   const adminEmail = process.env.ADMIN_EMAIL?.trim();
   const adminPassword = process.env.ADMIN_INITIAL_PASSWORD?.trim();
+  if (!adminEmail || !adminPassword) {
+    console.log('ADMIN_EMAIL / ADMIN_INITIAL_PASSWORD not set — admin skipped');
+    return;
+  }
+  const adminPasswordHash = await bcrypt.hash(adminPassword, 12);
+  const admin = await prisma.user.upsert({
+    where: { email: adminEmail },
+    update: {
+      passwordHash: adminPasswordHash,
+      role: 'SUPER_ADMIN',
+      isActive: true,
+      emailVerified: true,
+    },
+    create: {
+      email: adminEmail,
+      passwordHash: adminPasswordHash,
+      firstName: 'System',
+      lastName: 'Admin',
+      role: 'SUPER_ADMIN',
+      isActive: true,
+      emailVerified: true,
+    },
+  });
+  console.log('Admin user ready:', admin.email);
+}
 
-  if (adminEmail && adminPassword) {
-    const adminPasswordHash = await bcrypt.hash(adminPassword, 12);
-    const admin = await prisma.user.upsert({
-      where: { email: adminEmail },
-      update: { passwordHash: adminPasswordHash },
-      create: {
-        email: adminEmail,
-        passwordHash: adminPasswordHash,
-        firstName: 'System',
-        lastName: 'Admin',
-        role: 'SUPER_ADMIN',
-        isActive: true,
-        emailVerified: true,
-      },
-    });
-    console.log('Admin user seeded:', admin.email);
-  } else {
-    console.log('ADMIN_EMAIL / ADMIN_INITIAL_PASSWORD not set — admin user skipped');
+async function main() {
+  await ensureAdmin();
+
+  if (process.env.RUN_SEED !== 'true') {
+    console.log('RUN_SEED not set — demo seed skipped');
+    return;
   }
 
   if (process.env.SEED_DEMO === 'true') {
