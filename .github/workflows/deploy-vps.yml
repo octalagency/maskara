@@ -32,6 +32,16 @@ jobs:
             git fetch origin main
             git checkout main
             git pull origin main
-            chmod +x scripts/vps-redeploy.sh scripts/vps-git-deploy.sh 2>/dev/null || true
+            chmod +x scripts/vps-redeploy.sh scripts/hostinger-fix-all.sh 2>/dev/null || true
             bash scripts/vps-redeploy.sh
+            docker exec -e ADMIN_EMAIL=admin@maskara.bd \
+              -e ADMIN_INITIAL_PASSWORD=Admin@123 \
+              maskara-backend node scripts/ensure-admin.js 2>/dev/null || \
+            docker exec -e RUN_SEED=true -e ADMIN_EMAIL=admin@maskara.bd \
+              -e ADMIN_INITIAL_PASSWORD=Admin@123 \
+              maskara-backend npx prisma db seed || true
+            curl -sf -X POST http://127.0.0.1:4000/auth/login \
+              -H "Content-Type: application/json" \
+              -d '{"email":"admin@maskara.bd","password":"Admin@123"}' | head -c 80 || true
+            echo ""
             echo "Deploy finished: https://app.maskara.bd/admin"
