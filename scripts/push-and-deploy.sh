@@ -16,9 +16,23 @@ if [ -z "$TOKEN" ]; then
 fi
 
 MSG="${1:-Deploy update}"
+FORCE="${2:-}"
+
 git add -A
-git diff --cached --quiet && { echo "Nothing to commit"; exit 0; }
-git commit -m "$MSG"
+if git diff --cached --quiet; then
+  if [ "$FORCE" = "--deploy" ]; then
+    git commit --allow-empty -m "$MSG"
+  else
+    echo "No file changes. Pushing main and checking remote..."
+    git push "https://octalagency:${TOKEN}@github.com/octalagency/maskara.git" main
+    echo ""
+    echo "To redeploy without code changes: bash scripts/push-and-deploy.sh \"$MSG\" --deploy"
+    exit 0
+  fi
+else
+  git commit -m "$MSG"
+fi
+
 git push "https://octalagency:${TOKEN}@github.com/octalagency/maskara.git" main
 
 echo ""
