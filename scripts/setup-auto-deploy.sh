@@ -8,9 +8,11 @@ echo "║  Maskara Auto-Deploy Setup (GitHub Actions)      ║"
 echo "╚══════════════════════════════════════════════════╝"
 echo ""
 
-echo "Step 1: GitHub Secrets (আপনি already set করেছেন কিনা check করুন)"
+echo "Step 1: GitHub Secrets (exact names + values)"
 echo "  https://github.com/octalagency/maskara/settings/secrets/actions"
-echo "  Required: VPS_HOST, VPS_USER, VPS_SSH_PASSWORD"
+echo "  VPS_HOST        = 148.135.137.47"
+echo "  VPS_USER        = root"
+echo "  VPS_SSH_PASSWORD = (your Hostinger root password, no extra spaces)"
 echo ""
 read -r -p "Secrets set আছে? (y/n): " ok
 [ "$ok" != "y" ] && [ "$ok" != "Y" ] && { echo "Secrets set করে আবার চালান"; exit 1; }

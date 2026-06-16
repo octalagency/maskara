@@ -20,9 +20,13 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           password: ${{ secrets.VPS_SSH_PASSWORD }}
+          port: 22
+          timeout: 60s
           command_timeout: 50m
+          debug: true
           script: |
             set -e
+            echo "Connected as $(whoami) on $(hostname)"
             REPO="https://github.com/octalagency/maskara.git"
             DIR="/opt/maskara"
             if [ ! -d "$DIR/.git" ]; then
