@@ -64,10 +64,13 @@ mkdir -p docker/nginx/ssl
 [ -f docker/nginx/ssl/fullchain.pem ] || openssl req -x509 -nodes -days 825 -newkey rsa:2048 \
   -keyout docker/nginx/ssl/privkey.pem -out docker/nginx/ssl/fullchain.pem -subj "/CN=maskara.bd"
 
-# Build config fix
+# Build config fix (Nest must emit dist/main.js, not dist/src/main.js)
 cat > backend/tsconfig.build.json <<'EOF'
 {"extends":"./tsconfig.json","compilerOptions":{"rootDir":"src","outDir":"./dist"},"include":["src/**/*"],"exclude":["node_modules","dist","test","**/*.spec.ts","**/*.test.ts"]}
 EOF
+if ! grep -q 'tsconfig.build.json' backend/nest-cli.json 2>/dev/null; then
+  sed -i 's/"deleteOutDir": true/"deleteOutDir": true,\n    "tsConfigPath": "tsconfig.build.json"/' backend/nest-cli.json
+fi
 
 echo "=== Building (15-25 min) ==="
 docker pull redis:7-alpine postgres:16-alpine nginx:alpine 2>/dev/null || true
