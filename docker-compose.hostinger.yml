@@ -8,7 +8,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-maskara}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-maskara_local_postgres_password}
       POSTGRES_DB: ${POSTGRES_DB:-maskara}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -48,19 +48,19 @@ services:
       RUN_SEED: ${RUN_SEED:-false}
       DATABASE_URL: postgresql://${POSTGRES_USER:-maskara}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-maskara}
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: ${JWT_SECRET}
+      JWT_SECRET: ${JWT_SECRET:-maskara_local_jwt_secret_minimum_32_characters_long}
       JWT_EXPIRES_IN: 7d
       VOICE_PROVIDER: ${VOICE_PROVIDER:-epbx}
       EPBX_API_URL: ${EPBX_API_URL:-https://maskara.epbx.bd/api/v1}
-      EPBX_API_KEY: ${EPBX_API_KEY}
+      EPBX_API_KEY: ${EPBX_API_KEY:-}
       EPBX_CUSTOMER_ID: ${EPBX_CUSTOMER_ID:-}
       EPBX_IVR_ID: ${EPBX_IVR_ID:-}
       APP_URL: ${APP_URL:-https://app.maskara.bd}
       API_URL: ${API_URL:-https://api.maskara.bd}
       PUBLIC_API_URL: ${PUBLIC_API_URL:-https://api.maskara.bd}
       FRONTEND_URL: ${FRONTEND_URL:-https://app.maskara.bd}
-      VOICE_WEBHOOK_SECRET: ${VOICE_WEBHOOK_SECRET}
-      WOOCOMMERCE_WEBHOOK_SECRET: ${WOOCOMMERCE_WEBHOOK_SECRET}
+      VOICE_WEBHOOK_SECRET: ${VOICE_WEBHOOK_SECRET:-maskara_local_voice_webhook_secret_32chars}
+      WOOCOMMERCE_WEBHOOK_SECRET: ${WOOCOMMERCE_WEBHOOK_SECRET:-maskara_local_woocommerce_webhook_secret_ok}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@maskara.bd}
       ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-Admin@123}
     healthcheck:
@@ -107,14 +107,14 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-maskara}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-maskara}
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: ${JWT_SECRET}
+      JWT_SECRET: ${JWT_SECRET:-maskara_local_jwt_secret_minimum_32_characters_long}
       VOICE_PROVIDER: ${VOICE_PROVIDER:-epbx}
       EPBX_API_URL: ${EPBX_API_URL:-https://maskara.epbx.bd/api/v1}
-      EPBX_API_KEY: ${EPBX_API_KEY}
+      EPBX_API_KEY: ${EPBX_API_KEY:-}
       PUBLIC_API_URL: ${PUBLIC_API_URL:-https://api.maskara.bd}
       FRONTEND_URL: ${FRONTEND_URL:-https://app.maskara.bd}
-      VOICE_WEBHOOK_SECRET: ${VOICE_WEBHOOK_SECRET}
-      WOOCOMMERCE_WEBHOOK_SECRET: ${WOOCOMMERCE_WEBHOOK_SECRET}
+      VOICE_WEBHOOK_SECRET: ${VOICE_WEBHOOK_SECRET:-maskara_local_voice_webhook_secret_32chars}
+      WOOCOMMERCE_WEBHOOK_SECRET: ${WOOCOMMERCE_WEBHOOK_SECRET:-maskara_local_woocommerce_webhook_secret_ok}
 
   nginx:
     image: nginx:alpine

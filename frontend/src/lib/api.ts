@@ -50,7 +50,7 @@ class ApiClient {
   async checkBackend(): Promise<boolean> {
     if (isOfflineMode()) return false;
     try {
-      const res = await fetch(`${API_URL}/health`, { signal: AbortSignal.timeout(3000) });
+      const res = await fetch(`${API_URL}/health/live`, { signal: AbortSignal.timeout(5000) });
       this.backendAvailable = res.ok;
     } catch {
       this.backendAvailable = false;
