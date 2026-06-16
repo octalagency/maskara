@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Call" ADD COLUMN IF NOT EXISTS "provider" TEXT;
+ALTER TABLE "Call" ADD COLUMN IF NOT EXISTS "providerCallId" TEXT;

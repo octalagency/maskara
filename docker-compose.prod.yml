@@ -1,0 +1,168 @@
+# Production compose using pre-built images from Docker Hub
+# Usage:
+#   DOCKER_USERNAME=yourhubuser docker compose -f docker-compose.prod.yml up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: maskara-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-maskara}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-maskara}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U maskara']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: maskara-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: ${DOCKER_USERNAME}/maskara-backend:${IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: maskara-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      RUN_SEED: ${RUN_SEED:-false}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-maskara}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-maskara}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: 7d
+      VOICE_PROVIDER: ${VOICE_PROVIDER:-epbx}
+      EPBX_API_URL: ${EPBX_API_URL}
+      EPBX_API_KEY: ${EPBX_API_KEY}
+      EPBX_CUSTOMER_ID: ${EPBX_CUSTOMER_ID:-}
+      EPBX_IVR_ID: ${EPBX_IVR_ID:-}
+      IPPBX_API_URL: ${IPPBX_API_URL:-}
+      IPPBX_API_KEY: ${IPPBX_API_KEY:-}
+      IPPBX_API_SECRET: ${IPPBX_API_SECRET:-}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER:-}
+      APP_URL: ${APP_URL}
+      API_URL: ${API_URL}
+      PUBLIC_API_URL: ${PUBLIC_API_URL}
+      FRONTEND_URL: ${FRONTEND_URL}
+      VOICE_WEBHOOK_SECRET: ${VOICE_WEBHOOK_SECRET}
+      WOOCOMMERCE_WEBHOOK_SECRET: ${WOOCOMMERCE_WEBHOOK_SECRET}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-Maskara <noreply@maskara.bd>}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      BKASH_APP_KEY: ${BKASH_APP_KEY:-}
+      BKASH_APP_SECRET: ${BKASH_APP_SECRET:-}
+      BKASH_USERNAME: ${BKASH_USERNAME:-}
+      BKASH_PASSWORD: ${BKASH_PASSWORD:-}
+      BKASH_BASE_URL: ${BKASH_BASE_URL:-}
+      NAGAD_MERCHANT_ID: ${NAGAD_MERCHANT_ID:-}
+      NAGAD_MERCHANT_NUMBER: ${NAGAD_MERCHANT_NUMBER:-}
+      NAGAD_PUBLIC_KEY: ${NAGAD_PUBLIC_KEY:-}
+      NAGAD_PRIVATE_KEY: ${NAGAD_PRIVATE_KEY:-}
+      NAGAD_BASE_URL: ${NAGAD_BASE_URL:-}
+    healthcheck:
+      test: ['CMD-SHELL', 'node -e "require(\"http\").get(\"http://127.0.0.1:4000/health\",r=>process.exit(r.statusCode===200?0:1)).on(\"error\",()=>process.exit(1))"']
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 90s
+
+  frontend:
+    image: ${DOCKER_USERNAME}/maskara-frontend:${IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: maskara-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      NEXT_PUBLIC_API_URL: ${API_URL}
+      NEXT_PUBLIC_APP_URL: ${APP_URL}
+      NEXT_PUBLIC_PRODUCTION: 'true'
+    # Access via nginx only — do not expose 3000 publicly
+    expose:
+      - '3000'
+
+  worker:
+    image: ${DOCKER_USERNAME}/maskara-backend:${IMAGE_TAG:-latest}
+    pull_policy: never
+    container_name: maskara-worker
+    restart: unless-stopped
+    command: npm run worker:prod
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-maskara}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-maskara}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      VOICE_PROVIDER: ${VOICE_PROVIDER:-epbx}
+      EPBX_API_URL: ${EPBX_API_URL}
+      EPBX_API_KEY: ${EPBX_API_KEY}
+      EPBX_CUSTOMER_ID: ${EPBX_CUSTOMER_ID:-}
+      EPBX_IVR_ID: ${EPBX_IVR_ID:-}
+      IPPBX_API_URL: ${IPPBX_API_URL:-}
+      IPPBX_API_KEY: ${IPPBX_API_KEY:-}
+      IPPBX_API_SECRET: ${IPPBX_API_SECRET:-}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER:-}
+      API_URL: ${API_URL}
+      PUBLIC_API_URL: ${PUBLIC_API_URL}
+      FRONTEND_URL: ${FRONTEND_URL}
+      VOICE_WEBHOOK_SECRET: ${VOICE_WEBHOOK_SECRET}
+      WOOCOMMERCE_WEBHOOK_SECRET: ${WOOCOMMERCE_WEBHOOK_SECRET}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+
+  nginx:
+    image: nginx:alpine
+    container_name: maskara-nginx
+    restart: unless-stopped
+    depends_on:
+      - frontend
+      - backend
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./docker/nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+
+volumes:
+  postgres_data:
+  redis_data:

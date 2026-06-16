@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Maskara Super Admin</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+    .login-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+    .login-box { background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 32px; width: 100%; max-width: 420px; }
+    .logo { width: 56px; height: 56px; background: #2563eb; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; font-size: 28px; }
+    h1 { text-align: center; font-size: 22px; margin-bottom: 4px; }
+    .sub { text-align: center; color: #94a3b8; font-size: 13px; margin-bottom: 24px; }
+    label { display: block; font-size: 13px; color: #cbd5e1; margin-bottom: 4px; }
+    input { width: 100%; padding: 10px 14px; background: #334155; border: 1px solid #475569; border-radius: 8px; color: white; font-size: 14px; margin-bottom: 16px; }
+    button { width: 100%; padding: 12px; background: #2563eb; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; }
+    button:hover { background: #1d4ed8; }
+    .err { background: #7f1d1d80; color: #fca5a5; padding: 10px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; display: none; }
+    .hint { text-align: center; font-size: 11px; color: #64748b; margin-top: 16px; }
+
+    .app { display: none; }
+    .sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: 240px; background: white; color: #1e293b; border-right: 1px solid #e2e8f0; padding: 20px 0; }
+    .sidebar .brand { padding: 0 20px 20px; border-bottom: 1px solid #e2e8f0; font-weight: 700; font-size: 18px; }
+    .sidebar .brand small { display: block; font-size: 11px; color: #64748b; font-weight: 400; }
+    .nav-item { display: block; padding: 10px 20px; color: #475569; text-decoration: none; font-size: 14px; cursor: pointer; border: none; background: none; width: 100%; text-align: left; }
+    .nav-item:hover, .nav-item.active { background: #eff6ff; color: #2563eb; }
+    .main { margin-left: 240px; padding: 24px 32px; background: #f8fafc; min-height: 100vh; color: #1e293b; }
+    .main h2 { font-size: 22px; margin-bottom: 4px; }
+    .main .desc { color: #64748b; font-size: 13px; margin-bottom: 24px; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .stat { background: white; border-radius: 12px; padding: 20px; border: 1px solid #e2e8f0; }
+    .stat .val { font-size: 28px; font-weight: 700; }
+    .stat .lbl { font-size: 12px; color: #64748b; margin-top: 4px; }
+    table { width: 100%; background: white; border-radius: 12px; border: 1px solid #e2e8f0; border-collapse: collapse; overflow: hidden; }
+    th { background: #f1f5f9; text-align: left; padding: 12px 16px; font-size: 12px; color: #64748b; font-weight: 600; }
+    td { padding: 14px 16px; font-size: 13px; border-top: 1px solid #f1f5f9; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; }
+    .badge-green { background: #dcfce7; color: #166534; }
+    .badge-red { background: #fee2e2; color: #991b1b; }
+    .badge-blue { background: #dbeafe; color: #1e40af; }
+    .badge-amber { background: #fef3c7; color: #92400e; }
+    .btn-sm { padding: 4px 10px; border-radius: 6px; border: none; font-size: 12px; cursor: pointer; font-weight: 600; }
+    .btn-red { background: #fee2e2; color: #dc2626; }
+    .btn-green { background: #dcfce7; color: #16a34a; }
+    .offline-tag { position: fixed; top: 12px; right: 12px; background: #fef3c7; color: #92400e; padding: 6px 14px; border-radius: 99px; font-size: 12px; font-weight: 600; z-index: 100; }
+    .logout { position: absolute; bottom: 20px; left: 0; right: 0; padding: 0 20px; }
+    .logout button { background: #fee2e2; color: #dc2626; }
+    .page { display: none; }
+    .page.active { display: block; }
+  </style>
+</head>
+<body>
+
+<div id="login" class="login-wrap">
+  <div class="login-box">
+    <div class="logo">🛡️</div>
+    <h1>Maskara Super Admin</h1>
+    <p class="sub">সকল merchant control করার জন্য login করুন</p>
+    <div id="err" class="err"></div>
+    <label>Admin Email</label>
+    <input id="email" type="email" value="admin@maskara.bd" />
+    <label>Password</label>
+    <input id="password" type="password" value="Admin@123" placeholder="Admin@123" />
+    <button onclick="doLogin()">Super Admin Login</button>
+    <p class="hint">Terminal লাগবে না • Offline Mode</p>
+  </div>
+</div>
+
+<div id="app" class="app">
+  <div class="offline-tag">Offline Demo Mode</div>
+  <aside class="sidebar">
+    <div class="brand">Maskara <small>Super Admin</small></div>
+    <nav style="margin-top:12px">
+      <button class="nav-item active" onclick="showPage('dashboard')">📊 ড্যাশবোর্ড</button>
+      <button class="nav-item" onclick="showPage('merchants')">👥 Merchants</button>
+      <button class="nav-item" onclick="showPage('analytics')">📈 Analytics</button>
+      <button class="nav-item" onclick="showPage('subscriptions')">💳 Subscriptions</button>
+      <button class="nav-item" onclick="showPage('settings')">⚙️ সেটিংস</button>
+    </nav>
+    <div class="logout"><button onclick="doLogout()">Logout</button></div>
+  </aside>
+
+  <main class="main">
+    <div id="page-dashboard" class="page active">
+      <h2>Dashboard Overview</h2>
+      <p class="desc">সম্পূর্ণ প্ল্যাটফর্ম এক নজরে</p>
+      <div class="stats" id="dash-stats"></div>
+      <h3 style="margin-bottom:12px;font-size:16px">Recent Merchants</h3>
+      <table><thead><tr><th>Store</th><th>Email</th><th>Plan</th><th>Status</th><th>Orders</th><th>Calls</th></tr></thead>
+      <tbody id="dash-table"></tbody></table>
+    </div>
+
+    <div id="page-merchants" class="page">
+      <h2>Merchant Management</h2>
+      <p class="desc">সব merchant দেখুন, suspend/activate করুন</p>
+      <div class="stats" id="merchant-stats"></div>
+      <table><thead><tr><th>Store</th><th>Email</th><th>Phone</th><th>Plan</th><th>Status</th><th>Orders</th><th>Calls</th><th>Action</th></tr></thead>
+      <tbody id="merchant-table"></tbody></table>
+    </div>
+
+    <div id="page-analytics" class="page">
+      <h2>Call Analytics</h2>
+      <p class="desc">প্ল্যাটফর্ম call performance</p>
+      <div class="stats" id="analytics-stats"></div>
+    </div>
+
+    <div id="page-subscriptions" class="page">
+      <h2>Subscriptions</h2>
+      <p class="desc">Plan distribution ও revenue</p>
+      <table><thead><tr><th>Plan</th><th>Merchants</th><th>Revenue</th><th>Call Limit</th></tr></thead>
+      <tbody id="sub-table"></tbody></table>
+    </div>
+
+    <div id="page-settings" class="page">
+      <h2>System Settings</h2>
+      <p class="desc">প্ল্যাটফর্ম কন্ট্রোল</p>
+      <div style="background:white;border-radius:12px;padding:24px;border:1px solid #e2e8f0;max-width:500px">
+        <label style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #f1f5f9">
+          <span>Maintenance Mode</span>
+          <input type="checkbox" id="maint" />
+        </label>
+        <label style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #f1f5f9">
+          <span>Twilio Voice</span>
+          <input type="checkbox" id="twilio" checked />
+        </label>
+        <label style="display:flex;justify-content:space-between;align-items:center;padding:12px 0">
+          <span>SMS Notifications</span>
+          <input type="checkbox" id="sms" checked />
+        </label>
+        <button onclick="saveSettings()" style="margin-top:16px;width:auto;padding:10px 24px">Save Settings</button>
+        <p id="saved" style="color:#16a34a;font-size:13px;margin-top:8px;display:none">✓ Saved!</p>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+const ADMIN = { email: 'admin@maskara.bd', password: 'Admin@123' };
+const PLANS = { FREE: '50', STARTER: '300', GROWTH: '1,000', ENTERPRISE: 'Unlimited' };
+
+let merchants = JSON.parse(localStorage.getItem('maskara_merchants') || 'null') || [
+  { id:'1', name:'Fashion Hub BD', email:'info@fashionhub.bd', phone:'+8801711111111', plan:'GROWTH', status:'ACTIVE', orders:1234, calls:1100 },
+  { id:'2', name:'Gadget Zone', email:'sales@gadgetzone.bd', phone:'+8801722222222', plan:'STARTER', status:'ACTIVE', orders:567, calls:490 },
+  { id:'3', name:'Demo Store', email:'demo@store.com', phone:'+8801712345678', plan:'GROWTH', status:'ACTIVE', orders:890, calls:780 },
+  { id:'4', name:'Organic Foods', email:'hello@organic.bd', phone:'+8801733333333', plan:'FREE', status:'TRIAL', orders:45, calls:38 },
+  { id:'5', name:'COD Express', email:'admin@codexpress.bd', phone:'+8801744444444', plan:'STARTER', status:'SUSPENDED', orders:120, calls:95 },
+];
+
+function saveMerchants() { localStorage.setItem('maskara_merchants', JSON.stringify(merchants)); }
+
+function badge(s) {
+  const c = s==='ACTIVE'?'green':s==='SUSPENDED'?'red':s==='TRIAL'?'amber':'blue';
+  return `<span class="badge badge-${c}">${s}</span>`;
+}
+
+function doLogin() {
+  const e = document.getElementById('email').value;
+  const p = document.getElementById('password').value;
+  const err = document.getElementById('err');
+  if (e === ADMIN.email && p === ADMIN.password) {
+    localStorage.setItem('maskara_logged_in', '1');
+    showApp();
+  } else {
+    err.style.display = 'block';
+    err.textContent = 'ভুল email বা password';
+  }
+}
+
+function doLogout() {
+  localStorage.removeItem('maskara_logged_in');
+  document.getElementById('login').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+}
+
+function showApp() {
+  document.getElementById('login').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  renderAll();
+}
+
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  event.target.classList.add('active');
+}
+
+function toggleStatus(id) {
+  const m = merchants.find(x => x.id === id);
+  m.status = m.status === 'SUSPENDED' ? 'ACTIVE' : 'SUSPENDED';
+  saveMerchants();
+  renderAll();
+}
+
+function renderAll() {
+  const active = merchants.filter(m => m.status === 'ACTIVE').length;
+  const suspended = merchants.filter(m => m.status === 'SUSPENDED').length;
+  const totalOrders = merchants.reduce((s,m) => s + m.orders, 0);
+  const totalCalls = merchants.reduce((s,m) => s + m.calls, 0);
+
+  document.getElementById('dash-stats').innerHTML = `
+    <div class="stat"><div class="val">${merchants.length}</div><div class="lbl">Total Merchants</div></div>
+    <div class="stat"><div class="val">${active}</div><div class="lbl">Active</div></div>
+    <div class="stat"><div class="val">${totalOrders.toLocaleString()}</div><div class="lbl">Total Orders</div></div>
+    <div class="stat"><div class="val">${totalCalls.toLocaleString()}</div><div class="lbl">Total Calls</div></div>
+    <div class="stat"><div class="val">৳485K</div><div class="lbl">Monthly Revenue</div></div>
+    <div class="stat"><div class="val">86%</div><div class="lbl">Success Rate</div></div>`;
+
+  document.getElementById('dash-table').innerHTML = merchants.slice(0,5).map(m =>
+    `<tr><td><b>${m.name}</b></td><td>${m.email}</td><td>${badge(m.plan)}</td><td>${badge(m.status)}</td><td>${m.orders}</td><td>${m.calls}</td></tr>`
+  ).join('');
+
+  document.getElementById('merchant-stats').innerHTML = `
+    <div class="stat"><div class="val">${merchants.length}</div><div class="lbl">Total</div></div>
+    <div class="stat"><div class="val" style="color:#16a34a">${active}</div><div class="lbl">Active</div></div>
+    <div class="stat"><div class="val" style="color:#dc2626">${suspended}</div><div class="lbl">Suspended</div></div>`;
+
+  document.getElementById('merchant-table').innerHTML = merchants.map(m =>
+    `<tr><td><b>${m.name}</b></td><td>${m.email}</td><td>${m.phone}</td><td>${badge(m.plan)}</td><td>${badge(m.status)}</td><td>${m.orders}</td><td>${m.calls}</td>
+    <td><button class="btn-sm ${m.status==='SUSPENDED'?'btn-green':'btn-red'}" onclick="toggleStatus('${m.id}')">${m.status==='SUSPENDED'?'Activate':'Suspend'}</button></td></tr>`
+  ).join('');
+
+  document.getElementById('analytics-stats').innerHTML = `
+    <div class="stat"><div class="val">${totalCalls.toLocaleString()}</div><div class="lbl">Total Calls</div></div>
+    <div class="stat"><div class="val">86%</div><div class="lbl">Success Rate</div></div>
+    <div class="stat"><div class="val">62%</div><div class="lbl">Confirmed</div></div>
+    <div class="stat"><div class="val">${Math.round(totalCalls*0.86).toLocaleString()}</div><div class="lbl">Completed</div></div>`;
+
+  const planData = {};
+  merchants.forEach(m => { if(!planData[m.plan]) planData[m.plan]={count:0,revenue:0}; planData[m.plan].count++; });
+  planData.STARTER.revenue = 123938; planData.GROWTH.revenue = 189962; planData.ENTERPRISE = {count:11,revenue:550000};
+  document.getElementById('sub-table').innerHTML = Object.entries(planData).map(([p,d]) =>
+    `<tr><td>${badge(p)}</td><td><b>${d.count}</b></td><td>৳${(d.revenue||0).toLocaleString()}</td><td>${PLANS[p]||'—'}</td></tr>`
+  ).join('');
+}
+
+function saveSettings() {
+  document.getElementById('saved').style.display = 'block';
+  setTimeout(() => document.getElementById('saved').style.display = 'none', 2000);
+}
+
+if (localStorage.getItem('maskara_logged_in')) showApp();
+</script>
+</body>
+</html>
