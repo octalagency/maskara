@@ -10,6 +10,11 @@ export class HealthController {
     private config: ConfigService,
   ) {}
 
+  @Get('health/live')
+  live() {
+    return { status: 'ok', service: 'maskara-api' };
+  }
+
   @Get('health')
   async health() {
     const checks: Record<string, string> = { api: 'ok' };

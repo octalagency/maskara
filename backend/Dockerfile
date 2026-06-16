@@ -27,8 +27,8 @@ COPY scripts ./scripts/
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
 
-# Seed script needs ts-node at runtime for first deploy
-RUN npm install ts-node --save-dev
+# Migrations + seed need prisma CLI and ts-node at runtime
+RUN npm install prisma@6.1.0 ts-node --save-dev
 
 EXPOSE 4000
 

@@ -2,17 +2,24 @@
 set -e
 
 echo "Running database migrations..."
+if ! npx prisma --version >/dev/null 2>&1; then
+  echo "ERROR: prisma CLI missing in container image"
+  exit 1
+fi
+
 MIGRATED=
-for i in 1 2 3 4 5 6 7 8 9 10; do
-  if npx prisma migrate deploy; then
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+  if npx prisma migrate deploy 2>&1; then
     MIGRATED=1
     break
   fi
-  echo "  migrate attempt $i failed, retrying in 3s..."
-  sleep 3
+  echo "  migrate attempt $i failed, retrying in 5s..."
+  sleep 5
 done
 if [ -z "$MIGRATED" ]; then
-  echo "ERROR: database migration failed"
+  echo "ERROR: database migration failed after 15 attempts"
+  echo "  Check DATABASE_URL / POSTGRES_PASSWORD match the postgres volume"
+  npx prisma migrate status 2>&1 || true
   exit 1
 fi
 

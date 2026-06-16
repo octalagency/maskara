@@ -16,6 +16,14 @@ cd /opt/maskara
 git pull origin main || true
 
 # .env
+ensure_env_key() {
+  local key="$1"
+  local val="$2"
+  if [ ! -f .env ] || ! grep -q "^${key}=" .env; then
+    echo "${key}=${val}" >> .env
+  fi
+}
+
 if [ ! -f .env ]; then
   JWT=$(openssl rand -hex 32)
   PG=$(openssl rand -base64 18 | tr -d '/+=' | head -c 20)
@@ -31,7 +39,24 @@ FRONTEND_URL=https://app.maskara.bd
 EPBX_API_KEY=znoOkJcxs6TdrKGreQ7Iobx5uTmvwMFwOHGcCQPR
 VOICE_PROVIDER=epbx
 EPBX_API_URL=https://maskara.epbx.bd/api/v1
+ADMIN_EMAIL=admin@maskara.bd
+ADMIN_INITIAL_PASSWORD=Admin@123
 EOF
+else
+  ensure_env_key PUBLIC_API_URL "https://api.maskara.bd"
+  ensure_env_key FRONTEND_URL "https://app.maskara.bd"
+  ensure_env_key VOICE_WEBHOOK_SECRET "$(openssl rand -hex 24)"
+  ensure_env_key WOOCOMMERCE_WEBHOOK_SECRET "$(openssl rand -hex 24)"
+fi
+
+# Postgres password must match existing volume (common cause of unhealthy backend)
+if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^maskara-postgres$'; then
+  PG_PASS=$(grep '^POSTGRES_PASSWORD=' .env | cut -d= -f2- | tr -d '"')
+  if ! docker exec -e PGPASSWORD="$PG_PASS" maskara-postgres psql -U maskara -d maskara -c 'SELECT 1' >/dev/null 2>&1; then
+    echo "WARNING: POSTGRES_PASSWORD in .env does not match database volume — resetting postgres data"
+    docker compose -f docker-compose.hostinger.yml down || true
+    docker volume rm -f maskara_postgres_data 2>/dev/null || true
+  fi
 fi
 
 # SSL (self-signed — Cloudflare SSL mode: Full)
@@ -49,15 +74,28 @@ docker pull redis:7-alpine postgres:16-alpine nginx:alpine 2>/dev/null || true
 docker compose -f docker-compose.hostinger.yml build --no-cache backend frontend
 docker compose -f docker-compose.hostinger.yml up -d --remove-orphans
 
-echo "Waiting 90s..."
-sleep 90
+echo "Waiting 120s for backend health..."
+sleep 120
 
 echo "=== Status ==="
 docker compose -f docker-compose.hostinger.yml ps
 
-echo "=== Seed admin ==="
+if ! docker inspect maskara-backend --format '{{.State.Health.Status}}' 2>/dev/null | grep -q healthy; then
+  echo "=== Backend logs (unhealthy) ==="
+  docker logs maskara-backend --tail 80 2>&1 || true
+  echo ""
+  echo "Retrying backend only..."
+  docker compose -f docker-compose.hostinger.yml up -d --build backend worker
+  sleep 90
+  docker compose -f docker-compose.hostinger.yml ps
+fi
+
+echo "=== Ensure admin ==="
+docker exec -e ADMIN_EMAIL=admin@maskara.bd \
+  -e ADMIN_INITIAL_PASSWORD=Admin@123 \
+  maskara-backend node scripts/ensure-admin.js 2>/dev/null || \
 docker exec -e RUN_SEED=true -e ADMIN_EMAIL=admin@maskara.bd \
-  -e ADMIN_INITIAL_PASSWORD=Admin@123 maskara-backend npx prisma db seed
+  -e ADMIN_INITIAL_PASSWORD=Admin@123 maskara-backend npx prisma db seed 2>/dev/null || true
 
 echo "=== Test ==="
 docker exec maskara-nginx wget -qO- http://frontend:3000/ >/dev/null && echo "frontend OK" || docker logs maskara-frontend --tail 10
