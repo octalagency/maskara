@@ -1,6 +1,8 @@
 #!/bin/sh
 set -e
 
+PRISMA="./node_modules/.bin/prisma"
+
 echo "=== Maskara backend startup ==="
 node -e "
 const required = ['JWT_SECRET','DATABASE_URL','REDIS_URL','API_URL','PUBLIC_API_URL','FRONTEND_URL','VOICE_WEBHOOK_SECRET','WOOCOMMERCE_WEBHOOK_SECRET'];
@@ -16,15 +18,16 @@ if ((process.env.JWT_SECRET || '').length < 32) {
 console.log('✓ env preflight ok');
 "
 
-echo "Running database migrations..."
-if ! npx prisma --version >/dev/null 2>&1; then
-  echo "ERROR: prisma CLI missing in container image"
-  exit 1
+if [ ! -x "$PRISMA" ]; then
+  echo "Installing prisma CLI..."
+  npm install prisma@6.1.0 --no-audit --no-fund
 fi
+echo "Prisma: $($PRISMA --version)"
 
+echo "Running database migrations..."
 MIGRATED=
 for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-  if npx prisma migrate deploy 2>&1; then
+  if "$PRISMA" migrate deploy 2>&1; then
     MIGRATED=1
     break
   fi
@@ -34,7 +37,7 @@ done
 if [ -z "$MIGRATED" ]; then
   echo "ERROR: database migration failed after 15 attempts"
   echo "  Check DATABASE_URL / POSTGRES_PASSWORD match the postgres volume"
-  npx prisma migrate status 2>&1 || true
+  "$PRISMA" migrate status 2>&1 || true
   exit 1
 fi
 
@@ -53,7 +56,7 @@ echo "Ensuring admin account..."
 node scripts/ensure-admin.js || true
 if [ "$RUN_SEED" = "true" ]; then
   echo "  RUN_SEED=true — running prisma db seed"
-  npx prisma db seed || true
+  "$PRISMA" db seed || true
 fi
 
 echo "Starting application..."

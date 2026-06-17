@@ -56,8 +56,9 @@ if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^maskara-postgres$'; t
   fi
 fi
 
-echo "=== Restart backend stack ==="
-docker compose -f docker-compose.hostinger.yml up -d --build backend worker
+echo "=== Rebuild backend (--no-cache required for prisma fix) ==="
+docker compose -f docker-compose.hostinger.yml build --no-cache backend
+docker compose -f docker-compose.hostinger.yml up -d backend worker
 
 echo "Waiting 90s..."
 sleep 90
