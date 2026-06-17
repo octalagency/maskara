@@ -1,6 +1,21 @@
 #!/bin/sh
 set -e
 
+echo "=== Maskara backend startup ==="
+node -e "
+const required = ['JWT_SECRET','DATABASE_URL','REDIS_URL','API_URL','PUBLIC_API_URL','FRONTEND_URL','VOICE_WEBHOOK_SECRET','WOOCOMMERCE_WEBHOOK_SECRET'];
+const missing = required.filter((k) => !process.env[k]?.trim());
+if (missing.length) {
+  console.error('ERROR: missing env:', missing.join(', '));
+  process.exit(1);
+}
+if ((process.env.JWT_SECRET || '').length < 32) {
+  console.error('ERROR: JWT_SECRET must be at least 32 characters');
+  process.exit(1);
+}
+console.log('✓ env preflight ok');
+"
+
 echo "Running database migrations..."
 if ! npx prisma --version >/dev/null 2>&1; then
   echo "ERROR: prisma CLI missing in container image"

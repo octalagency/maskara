@@ -15,8 +15,20 @@ fi
 cd /opt/maskara
 git pull origin main
 
-# .env
-if [ ! -f .env ]; then
+# .env — empty values break production startup (compose ignores defaults)
+touch .env
+fix_empty() {
+  local key="$1" gen="$2"
+  local val=""
+  val=$(grep "^${key}=" .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'") || true
+  if [ -z "$val" ]; then
+    sed -i "/^${key}=/d" .env
+    echo "${key}=${gen}" >> .env
+    echo "  fixed empty ${key}"
+  fi
+}
+
+if [ ! -s .env ] || ! grep -q '^POSTGRES_PASSWORD=.' .env; then
   JWT=$(openssl rand -hex 32)
   PG=$(openssl rand -base64 18 | tr -d '/+=' | head -c 20)
   cat > .env <<EOF
@@ -37,9 +49,14 @@ ADMIN_EMAIL=admin@maskara.bd
 ADMIN_INITIAL_PASSWORD=Admin@123
 EOF
 else
-  grep -q '^PUBLIC_API_URL=' .env || echo 'PUBLIC_API_URL=https://api.maskara.bd' >> .env
-  grep -q '^VOICE_WEBHOOK_SECRET=' .env || echo "VOICE_WEBHOOK_SECRET=$(openssl rand -hex 24)" >> .env
-  grep -q '^WOOCOMMERCE_WEBHOOK_SECRET=' .env || echo "WOOCOMMERCE_WEBHOOK_SECRET=$(openssl rand -hex 24)" >> .env
+  fix_empty JWT_SECRET "$(openssl rand -hex 32)"
+  fix_empty POSTGRES_PASSWORD "$(openssl rand -base64 18 | tr -d '/+=' | head -c 20)"
+  fix_empty VOICE_WEBHOOK_SECRET "$(openssl rand -hex 24)"
+  fix_empty WOOCOMMERCE_WEBHOOK_SECRET "$(openssl rand -hex 24)"
+  fix_empty PUBLIC_API_URL "https://api.maskara.bd"
+  fix_empty API_URL "https://api.maskara.bd"
+  fix_empty FRONTEND_URL "https://app.maskara.bd"
+  fix_empty APP_URL "https://app.maskara.bd"
 fi
 
 # Postgres password must match volume
