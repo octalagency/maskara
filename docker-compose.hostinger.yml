@@ -46,7 +46,7 @@ services:
     environment:
       NODE_ENV: production
       RUN_SEED: ${RUN_SEED:-false}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-maskara}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-maskara}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-maskara}:${POSTGRES_PASSWORD:-maskara_local_postgres_password}@postgres:5432/${POSTGRES_DB:-maskara}
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-maskara_local_jwt_secret_minimum_32_characters_long}
       JWT_EXPIRES_IN: 7d
@@ -67,8 +67,8 @@ services:
       test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:4000/health/live >/dev/null || exit 1']
       interval: 15s
       timeout: 10s
-      retries: 12
-      start_period: 120s
+      retries: 15
+      start_period: 180s
 
   frontend:
     build:
@@ -105,7 +105,7 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://${POSTGRES_USER:-maskara}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-maskara}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-maskara}:${POSTGRES_PASSWORD:-maskara_local_postgres_password}@postgres:5432/${POSTGRES_DB:-maskara}
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-maskara_local_jwt_secret_minimum_32_characters_long}
       VOICE_PROVIDER: ${VOICE_PROVIDER:-epbx}

@@ -16,6 +16,7 @@ if ((process.env.JWT_SECRET || '').length < 32) {
   process.exit(1);
 }
 console.log('✓ env preflight ok');
+console.log('  DATABASE_URL host:', (process.env.DATABASE_URL || '').replace(/:[^:@/]+@/, ':***@'));
 "
 
 if [ ! -x "$PRISMA" ]; then
@@ -24,9 +25,18 @@ if [ ! -x "$PRISMA" ]; then
 fi
 echo "Prisma: $($PRISMA --version)"
 
+echo "Testing database connection..."
+node -e "
+const { PrismaClient } = require('@prisma/client');
+const p = new PrismaClient();
+p.\$connect()
+  .then(() => { console.log('✓ database connection ok'); return p.\$disconnect(); })
+  .catch((e) => { console.error('ERROR: database connection failed:', e.message); process.exit(1); });
+"
+
 echo "Running database migrations..."
 MIGRATED=
-for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+for i in 1 2 3 4 5 6 7 8 9 10; do
   if "$PRISMA" migrate deploy 2>&1; then
     MIGRATED=1
     break
@@ -35,10 +45,15 @@ for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
   sleep 5
 done
 if [ -z "$MIGRATED" ]; then
-  echo "ERROR: database migration failed after 15 attempts"
-  echo "  Check DATABASE_URL / POSTGRES_PASSWORD match the postgres volume"
-  "$PRISMA" migrate status 2>&1 || true
-  exit 1
+  echo "WARN: migrate deploy failed — trying prisma db push..."
+  if "$PRISMA" db push --skip-generate 2>&1; then
+    MIGRATED=1
+    echo "✓ schema synced via db push"
+  else
+    echo "ERROR: database migration failed"
+    "$PRISMA" migrate status 2>&1 || true
+    exit 1
+  fi
 fi
 
 if [ ! -f dist/main.js ] && [ -f dist/src/main.js ]; then

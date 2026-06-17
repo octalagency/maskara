@@ -1,7 +1,8 @@
 #!/bin/bash
-# Fix empty/invalid .env keys (common cause of unhealthy backend)
+# Fix empty/invalid .env keys + rebuild backend
 set -euo pipefail
 cd /opt/maskara
+git pull origin main 2>/dev/null || true
 
 env_set() {
   local key="$1"
@@ -19,6 +20,8 @@ env_ensure_secret() {
   if [ -z "$current" ]; then
     if [ "$key" = "JWT_SECRET" ]; then
       env_set "$key" "$(openssl rand -hex 32)"
+    elif [ "$key" = "POSTGRES_PASSWORD" ]; then
+      env_set "$key" "$(openssl rand -base64 18 | tr -d '/+=' | head -c 20)"
     else
       env_set "$key" "$(openssl rand -hex 24)"
     fi
@@ -27,24 +30,14 @@ env_ensure_secret() {
 }
 
 touch .env
-
 echo "=== Fix .env ==="
 env_ensure_secret JWT_SECRET
-if ! grep '^JWT_SECRET=' .env | cut -d= -f2- | awk '{ exit(length($0) < 32) }'; then
-  env_set JWT_SECRET "$(openssl rand -hex 32)"
-  echo "  fixed short JWT_SECRET"
-fi
 env_ensure_secret POSTGRES_PASSWORD
 env_ensure_secret VOICE_WEBHOOK_SECRET
 env_ensure_secret WOOCOMMERCE_WEBHOOK_SECRET
 grep -q '^PUBLIC_API_URL=.' .env || env_set PUBLIC_API_URL "https://api.maskara.bd"
-grep -q '^API_URL=.' .env || env_set API_URL "https://api.maskara.bd"
-grep -q '^FRONTEND_URL=.' .env || env_set FRONTEND_URL "https://app.maskara.bd"
-grep -q '^APP_URL=.' .env || env_set APP_URL "https://app.maskara.bd"
 grep -q '^POSTGRES_USER=.' .env || env_set POSTGRES_USER "maskara"
 grep -q '^POSTGRES_DB=.' .env || env_set POSTGRES_DB "maskara"
-grep -q '^ADMIN_EMAIL=.' .env || env_set ADMIN_EMAIL "admin@maskara.bd"
-grep -q '^ADMIN_INITIAL_PASSWORD=.' .env || env_set ADMIN_INITIAL_PASSWORD "Admin@123"
 
 # Postgres password must match volume
 if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^maskara-postgres$'; then
@@ -53,27 +46,33 @@ if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^maskara-postgres$'; t
     echo "Postgres password mismatch — resetting DB volume..."
     docker compose -f docker-compose.hostinger.yml down || true
     docker volume rm -f maskara_postgres_data 2>/dev/null || true
+    docker compose -f docker-compose.hostinger.yml up -d postgres redis
+    sleep 10
   fi
 fi
 
-echo "=== Rebuild backend (--no-cache required for prisma fix) ==="
+echo "=== Rebuild backend (--no-cache) ==="
 docker compose -f docker-compose.hostinger.yml build --no-cache backend
-docker compose -f docker-compose.hostinger.yml up -d backend worker
+docker compose -f docker-compose.hostinger.yml up -d --force-recreate backend worker nginx
 
-echo "Waiting 90s..."
-sleep 90
+echo "Waiting 150s for migrations + health..."
+sleep 150
 docker compose -f docker-compose.hostinger.yml ps
+
 echo "=== Backend logs ==="
-docker logs maskara-backend --tail 40
+docker logs maskara-backend --tail 50
+
+echo "=== Health check log ==="
+docker inspect maskara-backend --format '{{range .State.Health.Log}}{{.Output}}{{end}}' 2>/dev/null | tail -c 500 || true
+echo ""
 
 if docker inspect maskara-backend --format '{{.State.Health.Status}}' 2>/dev/null | grep -q healthy; then
   docker exec -e ADMIN_EMAIL=admin@maskara.bd -e ADMIN_INITIAL_PASSWORD=Admin@123 \
     maskara-backend node scripts/ensure-admin.js 2>/dev/null || true
   docker exec maskara-backend wget -qO- http://127.0.0.1:4000/health/live
   echo ""
-  echo "✓ Backend healthy"
+  echo "✓ Backend healthy — https://app.maskara.bd/login"
 else
-  echo "✗ Still unhealthy — run full rebuild:"
-  echo "  bash scripts/vps-start-all.sh"
+  echo "✗ Still unhealthy. Send this output to support."
   exit 1
 fi
