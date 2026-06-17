@@ -216,10 +216,7 @@ openssl req -x509 -nodes -days 825 -newkey rsa:2048 \\
     for _ in range(60):
         code, out, _ = ssh_run(
             client,
-            "docker exec maskara-backend node -e "
-            "\"require('http').get('http://127.0.0.1:4000/health',r=>{let d='';"
-            "r.on('data',c=>d+=c);r.on('end',()=>process.exit(r.statusCode===200?0:1))})"
-            ".on('error',()=>process.exit(1))\" 2>/dev/null || true",
+            "docker exec maskara-backend wget -qO- http://127.0.0.1:4000/health/live >/dev/null 2>&1",
         )
         if code == 0:
             healthy = True
@@ -252,12 +249,12 @@ openssl req -x509 -nodes -days 825 -newkey rsa:2048 \\
 
     ssh_run(
         client,
-        f"docker exec -e RUN_SEED=true -e ADMIN_EMAIL=admin@maskara.bd "
-        f"-e ADMIN_INITIAL_PASSWORD={admin_pass} maskara-backend npx prisma db seed",
-        timeout=600,
+        f"docker exec -e ADMIN_EMAIL=admin@maskara.bd "
+        f"-e ADMIN_INITIAL_PASSWORD={admin_pass} maskara-backend node scripts/ensure-admin.js",
+        timeout=120,
     )
 
-    for url in ["https://api.maskara.bd/health", "https://app.maskara.bd"]:
+    for url in ["https://api.maskara.bd/health/live", "https://app.maskara.bd"]:
         _, out, _ = ssh_run(client, f"curl -sk -o /dev/null -w '%{{http_code}}' {url}")
         print(f"Verify {url}: HTTP {out.strip()}")
 
