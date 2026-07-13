@@ -107,14 +107,14 @@ export default function SettingsPage() {
         storeNameBangla: merchant.storeNameBangla,
         phone: merchant.phone,
         customGreeting: merchant.customGreeting?.trim() || DEFAULT_SCRIPT,
-        voiceId: merchant.voiceId || 'azure:bn-BD-NabanitaNeural',
+        voiceId: merchant.voiceId || 'elevenlabs:Algieba',
         maxCallRetries: merchant.maxCallRetries ?? 9,
         retryIntervalMin: merchant.retryIntervalMin ?? 90,
       });
       setMerchant({
         ...updated,
         customGreeting: updated.customGreeting || DEFAULT_SCRIPT,
-        voiceId: updated.voiceId || 'azure:bn-BD-NabanitaNeural',
+        voiceId: updated.voiceId || 'elevenlabs:Algieba',
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
