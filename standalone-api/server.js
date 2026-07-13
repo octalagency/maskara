@@ -924,7 +924,7 @@ code{background:#f1f5f9;padding:2px 6px;border-radius:4px}</style></head>
     if (epbx.ivrId) payload.ivr_id = epbx.ivrId;
     const apiPath = epbx.customerId
       ? `/customers/${epbx.customerId}/calls/originate`
-      : '/calls/initiate';
+      : '/calls/verify';
     try {
       const epbxRes = await fetch(`${epbx.apiUrl}${apiPath}`, {
         method: 'POST',

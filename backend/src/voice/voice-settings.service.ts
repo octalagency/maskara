@@ -54,9 +54,7 @@ export class VoiceSettingsService implements OnModuleInit {
   }
 
   get(key: string): string | undefined {
-    const env = this.config.get<string>(key);
-    if (env) return env;
-
+    // Admin-saved DB config wins over stale container env for voice credentials.
     const map: Record<string, string | undefined> = {
       VOICE_PROVIDER: this.dbConfig.provider,
       PUBLIC_API_URL: this.dbConfig.publicApiUrl,
@@ -64,6 +62,8 @@ export class VoiceSettingsService implements OnModuleInit {
       EPBX_API_KEY: this.dbConfig.epbx?.apiKey,
       EPBX_CUSTOMER_ID: this.dbConfig.epbx?.customerId,
       EPBX_IVR_ID: this.dbConfig.epbx?.ivrId,
+      EPBX_CALLER_ID: (this.dbConfig.epbx as { callerId?: string } | undefined)?.callerId,
+      EPBX_DID: (this.dbConfig.epbx as { did?: string } | undefined)?.did,
       IPPBX_API_URL: this.dbConfig.ippbx?.apiUrl,
       IPPBX_API_KEY: this.dbConfig.ippbx?.apiKey,
       IPPBX_API_SECRET: this.dbConfig.ippbx?.apiSecret,
@@ -71,7 +71,9 @@ export class VoiceSettingsService implements OnModuleInit {
       TWILIO_AUTH_TOKEN: this.dbConfig.twilio?.authToken,
       TWILIO_PHONE_NUMBER: this.dbConfig.twilio?.phoneNumber,
     };
-    return map[key];
+    const fromDb = map[key];
+    if (fromDb) return fromDb;
+    return this.config.get<string>(key);
   }
 
   isEpbxConfigured(): boolean {

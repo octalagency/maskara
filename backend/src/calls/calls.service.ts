@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, CallStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  buildOrderVerificationPrompt,
+  MERCHANT_VOICE_OPTIONS,
+} from '../voice/providers/bangla-prompt';
 
 @Injectable()
 export class CallsService {
@@ -25,7 +29,16 @@ export class CallsService {
       ...(params.orderId && { orderId: params.orderId }),
     };
 
-    const [calls, total] = await Promise.all([
+    const [merchant, calls, total] = await Promise.all([
+      this.prisma.merchant.findUnique({
+        where: { id: merchantId },
+        select: {
+          name: true,
+          storeNameBangla: true,
+          customGreeting: true,
+          voiceId: true,
+        },
+      }),
       this.prisma.call.findMany({
         where,
         include: {
@@ -45,7 +58,42 @@ export class CallsService {
       this.prisma.call.count({ where }),
     ]);
 
-    return { calls, total, page, limit, totalPages: Math.ceil(total / limit) };
+    const voiceId = merchant?.voiceId || MERCHANT_VOICE_OPTIONS[0].id;
+    const voiceMeta =
+      MERCHANT_VOICE_OPTIONS.find((v) => v.id === voiceId) || MERCHANT_VOICE_OPTIONS[0];
+    const storeName = merchant?.storeNameBangla || merchant?.name || 'স্টোর';
+
+    const enriched = calls.map((call) => {
+      const spokenScript = buildOrderVerificationPrompt({
+        storeName,
+        customerName: call.order?.customerName,
+        orderNumber: call.order?.orderNumber,
+        totalAmount: call.order?.totalAmount
+          ? Number(call.order.totalAmount)
+          : undefined,
+        customGreeting: merchant?.customGreeting,
+      });
+      return {
+        ...call,
+        voiceId,
+        voiceLabel: voiceMeta.label,
+        voiceProvider: voiceMeta.provider,
+        spokenScript,
+      };
+    });
+
+    return {
+      calls: enriched,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      merchantVoice: {
+        voiceId,
+        voiceLabel: voiceMeta.label,
+        voiceProvider: voiceMeta.provider,
+      },
+    };
   }
 
   async findOne(merchantId: string, callId: string) {

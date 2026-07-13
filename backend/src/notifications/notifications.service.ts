@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as crypto from 'crypto';
 import * as twilio from 'twilio';
 import { PrismaService } from '../prisma/prisma.service';
 import { Merchant, Order } from '@prisma/client';
@@ -49,8 +50,125 @@ export class NotificationsService {
       await this.sendWhatsApp(merchant.id, merchant.phone, message, order.id);
     }
 
+    await this.pushOrderUpdate(merchant, order, {
+      outcome,
+      verifyStatus:
+        outcome === 'CONFIRMED'
+          ? 'verified'
+          : outcome === 'CANCELLED'
+            ? 'cancelled'
+            : order.status.toLowerCase(),
+      courierStatus: outcome === 'CONFIRMED' ? 'processing' : undefined,
+    });
+  }
+
+  /** Push status to WooCommerce (verify, call count, courier stage). */
+  async pushOrderUpdate(
+    merchant: Merchant,
+    order: Order,
+    extra: {
+      outcome?: string;
+      verifyStatus?: string;
+      courierStatus?: string;
+    } = {},
+  ) {
+
+    const urls = new Set<string>();
+
+    const integration = await this.prisma.integration.findFirst({
+      where: { merchantId: merchant.id, type: 'WOOCOMMERCE', isActive: true },
+    });
+    const creds = (integration?.credentials || {}) as Record<string, string>;
+    const storeUrl = (creds.storeUrl || '').replace(/\/$/, '');
+    if (storeUrl) {
+      urls.add(`${storeUrl}/wp-json/maskara/v1/verification-result`);
+    }
     if (merchant.webhookUrl) {
-      await this.sendMerchantWebhook(merchant, order, outcome);
+      urls.add(merchant.webhookUrl.replace(/\/$/, ''));
+    }
+
+    if (urls.size === 0) {
+      this.logger.warn(`No WooCommerce callback URL for merchant ${merchant.id}`);
+      return;
+    }
+
+    for (const url of urls) {
+      await this.postVerification(url, merchant, order, extra);
+    }
+  }
+
+  private async postVerification(
+    url: string,
+    merchant: Merchant,
+    order: Order,
+    extra: {
+      outcome?: string;
+      verifyStatus?: string;
+      courierStatus?: string;
+    } = {},
+  ) {
+    const meta = (order.metadata || {}) as Record<string, unknown>;
+    const wooOrderId = order.externalId || meta.wooOrderId;
+    const secret =
+      merchant.webhookSecret ||
+      this.config.get<string>('WOOCOMMERCE_WEBHOOK_SECRET') ||
+      '';
+    const body = {
+      event: 'order.verification.updated',
+      orderId: order.id,
+      externalId: wooOrderId ? String(wooOrderId) : undefined,
+      wooOrderId: wooOrderId ? String(wooOrderId) : undefined,
+      orderNumber: order.orderNumber,
+      status: order.status,
+      verifyStatus: extra.verifyStatus || order.status.toLowerCase(),
+      outcome: extra.outcome,
+      callAttempts: order.callAttempts,
+      maxCallAttempts: merchant.maxCallRetries,
+      courierStatus: extra.courierStatus || 'processing',
+      customerName: order.customerName,
+      customerPhone: order.customerPhone,
+      totalAmount: order.totalAmount,
+      timestamp: new Date().toISOString(),
+    };
+    const bodyJson = JSON.stringify(body);
+
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'X-Webhook-Secret': secret,
+      };
+      if (secret) {
+        headers['X-Maskara-Signature'] = crypto
+          .createHmac('sha256', secret)
+          .update(bodyJson)
+          .digest('hex');
+      }
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: bodyJson,
+      });
+
+      await this.prisma.notification.create({
+        data: {
+          merchantId: merchant.id,
+          orderId: order.id,
+          type: 'WEBHOOK',
+          status: response.ok ? 'SENT' : 'FAILED',
+          recipient: url,
+          message: `Woo callback ${response.status} ${response.ok ? 'ok' : await response.text().catch(() => '')}`.slice(0, 500),
+          sentAt: new Date(),
+        },
+      });
+
+      if (!response.ok) {
+        this.logger.error(`WooCommerce callback failed ${response.status} → ${url}`);
+      } else {
+        this.logger.log(`WooCommerce order updated via ${url}`);
+      }
+    } catch (error) {
+      this.logger.error(`Merchant webhook failed: ${error}`);
     }
   }
 
@@ -130,49 +248,6 @@ export class NotificationsService {
     }
 
     return notification;
-  }
-
-  private async sendMerchantWebhook(
-    merchant: Merchant,
-    order: Order,
-    outcome: string,
-  ) {
-    if (!merchant.webhookUrl) return;
-
-    try {
-      const response = await fetch(merchant.webhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Webhook-Secret': merchant.webhookSecret || '',
-        },
-        body: JSON.stringify({
-          event: 'order.verification.completed',
-          orderId: order.id,
-          orderNumber: order.orderNumber,
-          status: order.status,
-          outcome,
-          customerName: order.customerName,
-          customerPhone: order.customerPhone,
-          totalAmount: order.totalAmount,
-          timestamp: new Date().toISOString(),
-        }),
-      });
-
-      await this.prisma.notification.create({
-        data: {
-          merchantId: merchant.id,
-          orderId: order.id,
-          type: 'WEBHOOK',
-          status: response.ok ? 'SENT' : 'FAILED',
-          recipient: merchant.webhookUrl,
-          message: `Webhook ${response.ok ? 'delivered' : 'failed'}`,
-          sentAt: new Date(),
-        },
-      });
-    } catch (error) {
-      this.logger.error(`Merchant webhook failed: ${error}`);
-    }
   }
 
   private getOutcomeText(outcome: string): string {

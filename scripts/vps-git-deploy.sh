@@ -37,7 +37,7 @@ APP_URL=https://app.maskara.bd
 API_URL=https://api.maskara.bd
 PUBLIC_API_URL=https://api.maskara.bd
 FRONTEND_URL=https://app.maskara.bd
-EPBX_API_KEY=znoOkJcxs6TdrKGreQ7Iobx5uTmvwMFwOHGcCQPR
+EPBX_API_KEY=
 VOICE_PROVIDER=epbx
 EPBX_API_URL=https://maskara.epbx.bd/api/v1
 EOF

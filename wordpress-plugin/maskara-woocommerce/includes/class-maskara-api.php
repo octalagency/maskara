@@ -8,7 +8,7 @@ class Maskara_API {
     private $api_key;
 
     public function __construct() {
-        $this->api_url = rtrim(get_option('maskara_api_url', 'http://localhost:4000'), '/');
+        $this->api_url = rtrim(get_option('maskara_api_url', 'https://api.maskara.bd'), '/');
         $this->api_key = get_option('maskara_api_key', '');
     }
 
@@ -27,8 +27,11 @@ class Maskara_API {
         );
 
         $webhook_secret = get_option('maskara_webhook_secret', '');
-        if ($webhook_secret && $bodyJson) {
-            $headers['X-Maskara-Signature'] = hash_hmac('sha256', $bodyJson, $webhook_secret);
+        if ($webhook_secret) {
+            $headers['X-Webhook-Secret'] = $webhook_secret;
+            if ($bodyJson) {
+                $headers['X-Maskara-Signature'] = hash_hmac('sha256', $bodyJson, $webhook_secret);
+            }
         }
 
         $args = array(
@@ -59,9 +62,8 @@ class Maskara_API {
     }
 
     public function connect() {
-        $store_url = home_url();
         $body = array(
-            'storeUrl'      => $store_url,
+            'storeUrl'      => home_url(),
             'storeName'     => get_bloginfo('name'),
             'wcVersion'     => defined('WC_VERSION') ? WC_VERSION : '',
             'pluginVersion' => MASKARA_VERSION,
@@ -73,16 +75,13 @@ class Maskara_API {
         if (!$order instanceof WC_Order) {
             return new WP_Error('invalid_order', 'Invalid order');
         }
-
-        $payload = $this->order_to_payload($order);
-        return $this->request('POST', '/webhooks/woocommerce', $payload);
+        return $this->request('POST', '/webhooks/woocommerce', $this->order_to_payload($order));
     }
 
     public function order_to_payload($order) {
         $billing  = $order->get_address('billing');
         $shipping = $order->get_address('shipping');
         $items    = array();
-
         foreach ($order->get_items() as $item) {
             $items[] = array(
                 'name'     => $item->get_name(),
@@ -90,7 +89,6 @@ class Maskara_API {
                 'total'    => $item->get_total(),
             );
         }
-
         return array(
             'id'                   => $order->get_id(),
             'number'               => $order->get_order_number(),
@@ -114,19 +112,12 @@ class Maskara_API {
         if (is_wp_error($response)) {
             return $response;
         }
-
         $code = wp_remote_retrieve_response_code($response);
         $body = json_decode(wp_remote_retrieve_body($response), true);
-
         if ($code >= 200 && $code < 300) {
             return $body;
         }
-
-        if ($code === 404) {
-            $message = 'HTTP 404 — API URL ভুল অথবা পুরনো Maskara API চলছে। Mac-এ FILOBEAUTY-CONNECT.command চালান, নতুন tunnel URL দিন।';
-        } else {
-            $message = isset($body['message']) ? $body['message'] : 'HTTP ' . $code;
-        }
+        $message = isset($body['message']) ? (is_array($body['message']) ? wp_json_encode($body['message']) : $body['message']) : ('HTTP ' . $code);
         return new WP_Error('maskara_api_error', $message, array('status' => $code));
     }
 }

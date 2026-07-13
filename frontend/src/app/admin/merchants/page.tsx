@@ -4,23 +4,17 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Search, Ban, CheckCircle, Eye, Plus, Globe, Key, Phone } from 'lucide-react';
 import { api, AdminMerchantDetail, Plan } from '@/lib/api';
-import { DEMO_PLANS } from '@/lib/demo-data';
-
-const DEMO: AdminMerchantDetail[] = [
-  { id: 'm-demo', name: 'Demo Fashion Store', email: 'demo@store.com', phone: '+8801712345678', status: 'ACTIVE', subscriptionPlan: 'GROWTH', createdAt: '2025-03-01', wooConnected: true, apiKeyCount: 1, integration: { storeUrl: 'https://filobeauty.xyz', storeName: 'Demo Fashion Store' }, _count: { orders: 890, calls: 780, users: 3 } },
-  { id: 'm-1', name: 'Fashion Hub BD', email: 'info@fashionhub.bd', phone: '+8801711111111', status: 'ACTIVE', subscriptionPlan: 'GROWTH', createdAt: '2025-02-01', wooConnected: false, apiKeyCount: 0, _count: { orders: 1234, calls: 1100, users: 2 } },
-];
 
 export default function AdminMerchantsPage() {
-  const [merchants, setMerchants] = useState<AdminMerchantDetail[]>(DEMO);
+  const [merchants, setMerchants] = useState<AdminMerchantDetail[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState<string | null>(null);
   const [selected, setSelected] = useState<AdminMerchantDetail | null>(null);
-  const [plans, setPlans] = useState<Plan[]>(DEMO_PLANS);
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [planLoading, setPlanLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ name: '', email: '', phone: '', password: 'Demo@123', planCode: 'FREE' });
+  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', planCode: 'FREE' });
 
   useEffect(() => {
     api.getAdminMerchants().then((res) => {
@@ -45,7 +39,7 @@ export default function AdminMerchantsPage() {
       const created = await api.createAdminMerchant(form);
       setMerchants((prev) => [created, ...prev]);
       setShowCreate(false);
-      setForm({ name: '', email: '', phone: '', password: 'Demo@123', planCode: 'FREE' });
+      setForm({ name: '', email: '', phone: '', password: '', planCode: 'FREE' });
       alert(`Merchant তৈরি হয়েছে: ${created.email}`);
     } catch {
       alert('Merchant create failed — email duplicate হতে পারে');

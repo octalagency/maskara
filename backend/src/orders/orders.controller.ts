@@ -43,8 +43,17 @@ export class OrdersController {
     @Query('page') page?: number,
     @Query('limit') limit?: number,
     @Query('search') search?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
-    return this.ordersService.findAll(merchantId, { status, page, limit, search });
+    return this.ordersService.findAll(merchantId, {
+      status,
+      page,
+      limit,
+      search,
+      from,
+      to,
+    });
   }
 
   @Get('stats')

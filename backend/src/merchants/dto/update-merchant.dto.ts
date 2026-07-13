@@ -22,6 +22,14 @@ export class UpdateMerchantDto {
   @IsString()
   customGreeting?: string;
 
+  @ApiProperty({
+    required: false,
+    description: 'TTS voice id, e.g. azure:bn-BD-NabanitaNeural',
+  })
+  @IsOptional()
+  @IsString()
+  voiceId?: string;
+
   @ApiProperty({ required: false })
   @IsOptional()
   @IsBoolean()

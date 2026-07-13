@@ -4,6 +4,7 @@ import { Job } from 'bull';
 import { VoiceService } from '../voice/voice.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { isWithinCallWindow } from '../common/utils/call-window.util';
 
 interface CallJobData {
   orderId: string;
@@ -28,10 +29,23 @@ export class CallsProcessor {
 
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
+      include: { merchant: true },
     });
 
     if (!order || ['VERIFIED', 'CANCELLED'].includes(order.status)) {
       this.logger.warn(`Skipping call for finalized order ${orderId}`);
+      return;
+    }
+
+    if (order.callAttempts >= order.merchant.maxCallRetries) {
+      this.logger.warn(`Max daily call attempts reached for order ${order.orderNumber}`);
+      return;
+    }
+
+    if (!isWithinCallWindow(order.merchant.timezone || 'Asia/Dhaka')) {
+      this.logger.log(
+        `Outside call window (${order.merchant.timezone || 'Asia/Dhaka'}) — retry later for ${order.orderNumber}`,
+      );
       return;
     }
 

@@ -28,7 +28,7 @@ add_if_missing APP_URL "https://app.maskara.bd"
 add_if_missing API_URL "https://api.maskara.bd"
 add_if_missing PUBLIC_API_URL "https://api.maskara.bd"
 add_if_missing FRONTEND_URL "https://app.maskara.bd"
-add_if_missing EPBX_API_KEY "znoOkJcxs6TdrKGreQ7Iobx5uTmvwMFwOHGcCQPR"
+add_if_missing EPBX_API_KEY ""
 add_if_missing ADMIN_EMAIL "admin@maskara.bd"
 add_if_missing ADMIN_INITIAL_PASSWORD "Admin@123"
 

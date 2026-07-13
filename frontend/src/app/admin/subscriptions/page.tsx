@@ -12,13 +12,6 @@ interface PlanRow {
   revenue: number;
 }
 
-const DEMO_PLANS: PlanRow[] = [
-  { plan: 'FREE', merchants: 45, revenue: 0 },
-  { plan: 'STARTER', merchants: 62, revenue: 123938 },
-  { plan: 'GROWTH', merchants: 38, revenue: 189962 },
-  { plan: 'ENTERPRISE', merchants: 11, revenue: 550000 },
-];
-
 const CALL_LIMITS: Record<string, string> = {
   FREE: '50',
   STARTER: '300',
@@ -27,7 +20,7 @@ const CALL_LIMITS: Record<string, string> = {
 };
 
 export default function AdminSubscriptionsPage() {
-  const [plans, setPlans] = useState<PlanRow[]>(DEMO_PLANS);
+  const [plans, setPlans] = useState<PlanRow[]>([]);
   const [totalMerchants, setTotalMerchants] = useState(156);
 
   useEffect(() => {

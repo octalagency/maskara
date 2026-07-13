@@ -3,37 +3,27 @@
 import { useEffect, useState } from 'react';
 import { Phone, CheckCircle, XCircle } from 'lucide-react';
 import { StatCard } from '@/components/ui/StatCard';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { api, AdminCallAnalytics } from '@/lib/api';
 
-const dailyData = [
-  { day: 'Mon', calls: 420, success: 365 },
-  { day: 'Tue', calls: 380, success: 330 },
-  { day: 'Wed', calls: 510, success: 445 },
-  { day: 'Thu', calls: 490, success: 420 },
-  { day: 'Fri', calls: 620, success: 540 },
-  { day: 'Sat', calls: 710, success: 610 },
-  { day: 'Sun', calls: 340, success: 290 },
-];
-
-const DEMO: AdminCallAnalytics = {
-  total: 3470,
-  completed: 2985,
-  confirmed: 2150,
-  successRate: 86,
-  confirmationRate: 62,
+const EMPTY_ANALYTICS: AdminCallAnalytics = {
+  total: 0,
+  completed: 0,
+  confirmed: 0,
+  successRate: 0,
+  confirmationRate: 0,
 };
 
 export default function AdminAnalyticsPage() {
-  const [stats, setStats] = useState<AdminCallAnalytics>(DEMO);
+  const [stats, setStats] = useState<AdminCallAnalytics>(EMPTY_ANALYTICS);
 
   useEffect(() => {
-    api.getAdminCallAnalytics(30).then(setStats).catch(() => {});
+    api.getAdminCallAnalytics(30).then(setStats).catch(() => setStats(EMPTY_ANALYTICS));
   }, []);
 
   const outcomeData = [
     { name: 'Confirmed', value: stats.confirmationRate, color: '#10b981' },
-    { name: 'Other', value: 100 - stats.confirmationRate, color: '#94a3b8' },
+    { name: 'Other', value: Math.max(0, 100 - stats.confirmationRate), color: '#94a3b8' },
   ];
 
   return (
@@ -50,26 +40,12 @@ export default function AdminAnalyticsPage() {
         <StatCard title="Completed" value={stats.completed.toLocaleString()} icon={XCircle} color="blue" />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="card">
-          <h3 className="text-lg font-semibold">Daily Calls (Demo Chart)</h3>
-          <div className="mt-6 h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dailyData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="day" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="calls" fill="#d9f1ff" stroke="#1a82f5" name="Total Calls" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="success" fill="#1a82f5" name="Successful" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="card">
-          <h3 className="text-lg font-semibold">Confirmation Rate</h3>
-          <div className="mt-6 h-72">
+      <div className="card">
+        <h3 className="text-lg font-semibold">Confirmation Rate</h3>
+        <div className="mt-6 h-72">
+          {stats.total === 0 ? (
+            <div className="flex h-full items-center justify-center text-slate-500">এখনো call data নেই।</div>
+          ) : (
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie data={outcomeData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} dataKey="value" label={({ name, value }) => `${name} ${value}%`}>
@@ -77,10 +53,9 @@ export default function AdminAnalyticsPage() {
                     <Cell key={i} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip />
               </PieChart>
             </ResponsiveContainer>
-          </div>
+          )}
         </div>
       </div>
     </div>

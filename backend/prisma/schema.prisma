@@ -155,7 +155,8 @@ model Merchant {
   // Voice settings
   voiceLanguage    String  @default("bn-BD")
   storeNameBangla  String?
-  customGreeting   String?
+  customGreeting   String?  // Call script / custom_text for AI verification
+  voiceId          String?  // e.g. "azure:bn-BD-NabanitaNeural" or "google_wavenet:bn-IN-Wavenet-A"
 
   // Notification settings
   smsEnabled       Boolean @default(true)
@@ -164,9 +165,9 @@ model Merchant {
   webhookUrl       String?
   webhookSecret    String?
 
-  // Retry settings
-  maxCallRetries   Int @default(3)
-  retryIntervalMin Int @default(30)
+  // Retry settings — first call ASAP; up to 9 attempts/day (10:00–22:00 BD)
+  maxCallRetries   Int @default(9)
+  retryIntervalMin Int @default(90)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { PluginDownloadLink } from '@/components/PluginDownloadLink';
 import { api, WooCommerceStatus } from '@/lib/api';
-import { Globe, ShoppingBag, Code, CheckCircle2, Copy, Download, Link2, Unplug } from 'lucide-react';
+import { fetchPluginRelease } from '@/lib/plugin-release';
+import { Globe, ShoppingBag, Code, CheckCircle2, Copy, Link2, Unplug } from 'lucide-react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
@@ -11,6 +13,13 @@ export default function IntegrationsPage() {
   const [woo, setWoo] = useState<WooCommerceStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState('');
+  const [latestPluginVersion, setLatestPluginVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchPluginRelease().then((info) => {
+      if (info?.version) setLatestPluginVersion(info.version);
+    });
+  }, []);
 
   useEffect(() => {
     api.getWooCommerceStatus().then(setWoo).catch(() => {
@@ -70,6 +79,16 @@ export default function IntegrationsPage() {
                     {woo?.connected ? `Connected — ${woo.integration?.storeUrl || woo.integration?.storeName}` : 'Not connected'}
                   </span>
                 )}
+                {!loading && woo?.connected && woo.integration?.pluginVersion && latestPluginVersion && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Store plugin: v{woo.integration.pluginVersion}
+                    {woo.integration.pluginVersion !== latestPluginVersion && (
+                      <span className="ml-1 font-medium text-amber-700">
+                        — update available (v{latestPluginVersion})
+                      </span>
+                    )}
+                  </p>
+                )}
               </div>
             </div>
             {woo?.connected && (
@@ -90,14 +109,10 @@ export default function IntegrationsPage() {
 
             <div className="rounded-lg bg-slate-50 p-4">
               <h4 className="font-semibold text-slate-900">Step 2: Plugin Download</h4>
-              <p className="mt-2 text-sm text-slate-600">WordPress → Plugins → Upload → Activate</p>
-              <a
-                href={`${API_URL}/downloads/maskara-woocommerce.zip`}
-                className="btn-secondary mt-3 inline-flex gap-2 text-sm"
-                download
-              >
-                <Download className="h-4 w-4" /> maskara-woocommerce.zip
-              </a>
+              <p className="mt-2 text-sm text-slate-600">
+                WordPress → Plugins → Deactivate + Delete পুরনো Maskara → Upload → Activate
+              </p>
+              <PluginDownloadLink />
             </div>
 
             <div className="rounded-lg bg-slate-50 p-4 lg:col-span-2">

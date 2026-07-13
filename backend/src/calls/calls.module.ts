@@ -6,12 +6,14 @@ import { CallsProcessor } from './calls.processor';
 import { CallsRetryScheduler } from './calls-retry.scheduler';
 import { VoiceModule } from '../voice/voice.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
     BullModule.registerQueue({ name: 'calls' }),
     VoiceModule,
     SubscriptionsModule,
+    NotificationsModule,
     forwardRef(() => VoiceModule),
   ],
   controllers: [CallsController],

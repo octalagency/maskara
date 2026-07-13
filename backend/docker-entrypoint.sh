@@ -34,6 +34,9 @@ p.\$connect()
   .catch((e) => { console.error('ERROR: database connection failed:', e.message); process.exit(1); });
 "
 
+echo "Generating Prisma client from schema..."
+"$PRISMA" generate
+
 echo "Running database migrations..."
 MIGRATED=
 for i in 1 2 3 4 5 6 7 8 9 10; do

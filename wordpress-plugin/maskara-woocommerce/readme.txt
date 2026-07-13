@@ -1,26 +1,49 @@
 === Maskara Order Verification for WooCommerce ===
 Contributors: maskara
-Tags: woocommerce, cod, order verification, bangla, maskara
+Tags: woocommerce, cod, order verification, bangla, maskara, pathao, courier
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.5.2
 License: GPLv2 or later
 
-Connect WooCommerce to Maskara for automatic Bangla AI voice COD order verification.
+WooCommerce COD order verification via Maskara AI voice. Confirm = Completed + Pathao; miss/cancel = Cancelled.
+
+== Description ==
+
+* Order sync to Maskara for Bangla AI voice confirmation
+* On confirm: WooCommerce status Completed + Pathao courier auto-deploy
+* On miss / cancel: WooCommerce status Cancelled
+* Orders list: Verify, Calls (x/10), Courier stage columns
+* Plugins page: Check for updates
+* Dashboard: Delivered, In Transit, Returned, Success Rate
 
 == Installation ==
 
-1. Maskara merchant dashboard → API Keys → Create new key
-2. WordPress Admin → Plugins → Add New → Upload → select maskara-woocommerce.zip
-3. Activate the plugin
-4. WooCommerce → Maskara → enter API URL and API Key
-5. Click "Test Connection" then "Connect to Maskara"
+1. Maskara merchant dashboard - API Keys - Create new key
+2. WordPress Admin - Plugins - Deactivate and Delete old Maskara plugin (if installed)
+3. Plugins - Add New - Upload Plugin - maskara-woocommerce.zip - Install - Activate
+4. Maskara - Settings - API URL, API Key, enable Pathao
+5. Test Connection - Connect to Maskara
 
-== Frequently Asked Questions ==
+== Changelog ==
 
-= Where do I get the API key? =
-Maskara Dashboard → API Keys → Create Key. Copy once — it won't show again.
+= 1.5.2 =
+* WordPress-safe zip packaging (fixes upload / incompatible archive)
+* ASCII plugin headers for broader host compatibility
+* Old short download URLs now serve full package
 
-= Which orders are verified? =
-By default only COD (Cash on Delivery) orders with a billing phone number.
+= 1.5.1 =
+* Fixed verify Pathao deploy then Completed
+* Fixed call count on Orders list
+* Safer self-updater
+
+= 1.5.0 =
+* Verify → Completed + Pathao auto-deploy
+* No-answer / cancel → Cancelled
+
+= 1.4.0 =
+* Verify / Calls / Courier columns
+
+= 1.3.0 =
+* Courier dashboard + Pathao status sync

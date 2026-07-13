@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { Phone, Radio, Save, Settings2, ExternalLink, Copy, Check, PhoneCall } from 'lucide-react';
 import { api, PlatformConfig, VoiceProviderInfo, EpbxProbe } from '@/lib/api';
-import { DEMO_PLATFORM_CONFIG } from '@/lib/demo-data';
 
 interface EpbxForm {
   enabled: boolean;
@@ -52,7 +51,7 @@ const DEFAULT_VOICE: VoiceForm = {
 };
 
 export default function AdminConfigPage() {
-  const [config, setConfig] = useState<PlatformConfig>(DEMO_PLATFORM_CONFIG);
+  const [config, setConfig] = useState<PlatformConfig | null>(null);
   const [voice, setVoice] = useState<VoiceForm>(DEFAULT_VOICE);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -155,6 +154,12 @@ export default function AdminConfigPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  if (!config) {
+    return (
+      <div className="py-16 text-center text-slate-500">Config load হচ্ছে...</div>
+    );
   }
 
   const status = (config.voice as { status?: { epbx: boolean; ippbx: boolean; twilio: boolean } })?.status

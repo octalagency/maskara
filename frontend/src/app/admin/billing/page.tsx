@@ -3,11 +3,10 @@
 import { useEffect, useState } from 'react';
 import { CheckCircle, Clock, Filter } from 'lucide-react';
 import { api, BillingRecord } from '@/lib/api';
-import { DEMO_BILLING_RECORDS } from '@/lib/demo-data';
 import { formatCurrency } from '@/lib/utils';
 
 export default function AdminBillingPage() {
-  const [records, setRecords] = useState<BillingRecord[]>(DEMO_BILLING_RECORDS);
+  const [records, setRecords] = useState<BillingRecord[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [loading, setLoading] = useState<string | null>(null);
 

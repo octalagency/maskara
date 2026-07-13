@@ -33,7 +33,7 @@ DOCKER_USERNAME=octalagency
 IMAGE_TAG=latest
 VOICE_PROVIDER=epbx
 EPBX_API_URL=https://maskara.epbx.bd/api/v1
-EPBX_API_KEY=znoOkJcxs6TdrKGreQ7Iobx5uTmvwMFwOHGcCQPR
+EPBX_API_KEY=
 ENV
   echo "⚠ .env created — nano .env করে secrets update করুন"
   nano .env

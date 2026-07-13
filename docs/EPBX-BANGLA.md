@@ -13,7 +13,7 @@
 ```env
 VOICE_PROVIDER=epbx
 EPBX_API_URL=https://maskara.epbx.bd/api/v1
-EPBX_API_KEY=JfC5gHCkVuOiRs5eOT95DMiGGPIABG99zh14713z
+EPBX_API_KEY=your_api_key_from_portal
 PUBLIC_API_URL=http://localhost:4000
 ```
 
@@ -60,10 +60,12 @@ Helpline: **01886944844** | WhatsApp: **+8801886944844**
 VOICE_PROVIDER=epbx
 PUBLIC_API_URL=https://YOUR-DOMAIN.com
 EPBX_API_URL=https://YOUR-WORKSPACE.epbx.bd/api/v1
-EPBX_API_KEY=your_api_key_here
+EPBX_API_KEY=your_api_key_from_portal
 EPBX_CUSTOMER_ID=
 EPBX_IVR_ID=
 ```
+
+Call endpoint: `POST /api/v1/calls/verify` (portal Developer API)। Wallet-এ balance থাকতে হবে (TTS + ৳০.৪৫/min)।
 
 `PUBLIC_API_URL` — production domain বা ngrok URL (webhook-এর জন্য)
 

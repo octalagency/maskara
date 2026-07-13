@@ -304,7 +304,11 @@ class ApiClient {
   // Calls
   getCalls(params?: Record<string, string>) {
     const query = params ? '?' + new URLSearchParams(params).toString() : '';
-    return this.request<{ calls: Call[]; total: number }>(`/calls${query}`);
+    return this.request<{
+      calls: Call[];
+      total: number;
+      merchantVoice?: { voiceId?: string; voiceLabel?: string; voiceProvider?: string };
+    }>(`/calls${query}`);
   }
 
   getCallAnalytics(days = 30) {
@@ -316,13 +320,17 @@ class ApiClient {
     return this.request<DailyReport[]>(`/reports/daily?days=${days}`);
   }
 
+  getReportSummary() {
+    return this.request<ReportSummary>('/reports/summary');
+  }
+
   // Merchant
   getMerchant() {
     return this.request<Merchant>('/merchants/me');
   }
 
   updateMerchant(data: Record<string, unknown>) {
-    return this.request('/merchants/me', { method: 'PATCH', body: JSON.stringify(data) });
+    return this.request<Merchant>('/merchants/me', { method: 'PATCH', body: JSON.stringify(data) });
   }
 
   // API Keys
@@ -508,6 +516,7 @@ export interface Order {
   customerPhone: string;
   totalAmount: number;
   status: string;
+  callAttempts?: number;
   paymentMethod?: string;
   createdAt: string;
   calls?: Call[];
@@ -520,6 +529,13 @@ export interface Call {
   dtmfInput?: string;
   duration?: number;
   recordingUrl?: string;
+  provider?: string | null;
+  attemptNumber?: number;
+  errorMessage?: string | null;
+  voiceId?: string;
+  voiceLabel?: string;
+  voiceProvider?: string;
+  spokenScript?: string;
   createdAt: string;
   order?: Partial<Order>;
 }
@@ -540,7 +556,23 @@ export interface DailyReport {
   ordersVerified: number;
   ordersCancelled: number;
   callsMade: number;
+  callsSuccess?: number;
   verificationRate: number;
+  callSuccessRate?: number;
+}
+
+export interface ReportSummary {
+  last30Days: {
+    ordersReceived?: number | null;
+    ordersVerified?: number | null;
+    ordersCancelled?: number | null;
+    callsMade?: number | null;
+    callsSuccess?: number | null;
+    smsSent?: number | null;
+  };
+  ordersByStatus: { status: string; count: number }[];
+  callsByOutcome: { outcome: string | null; count: number }[];
+  avgCallDuration?: number;
 }
 
 export interface Merchant {
@@ -551,6 +583,11 @@ export interface Merchant {
   phone: string;
   subscriptionPlan: string;
   status: string;
+  customGreeting?: string | null;
+  voiceId?: string | null;
+  voiceLanguage?: string;
+  maxCallRetries?: number;
+  retryIntervalMin?: number;
 }
 
 export interface ApiKey {

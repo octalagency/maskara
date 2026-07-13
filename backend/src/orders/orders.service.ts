@@ -43,13 +43,15 @@ export class OrdersService {
 
     await this.updateDailyUsage(merchantId, 'ordersReceived');
 
+    // First verification call ASAP (target: within 20 seconds)
     await this.callsQueue.add(
       'initiate-call',
-      { orderId: order.id, merchantId },
+      { orderId: order.id, merchantId, isRetry: false },
       {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 5000 },
+        attempts: 2,
+        backoff: { type: 'fixed', delay: 3000 },
         removeOnComplete: true,
+        jobId: `call-first-${order.id}`,
       },
     );
 
@@ -63,15 +65,28 @@ export class OrdersService {
       page?: number;
       limit?: number;
       search?: string;
+      from?: string;
+      to?: string;
     },
   ) {
     const page = params.page || 1;
     const limit = params.limit || 20;
     const skip = (page - 1) * limit;
 
+    const createdAt: Prisma.DateTimeFilter = {};
+    if (params.from) {
+      const from = new Date(params.from);
+      if (!Number.isNaN(from.getTime())) createdAt.gte = from;
+    }
+    if (params.to) {
+      const to = new Date(params.to);
+      if (!Number.isNaN(to.getTime())) createdAt.lte = to;
+    }
+
     const where: Prisma.OrderWhereInput = {
       merchantId,
       ...(params.status && { status: params.status }),
+      ...(Object.keys(createdAt).length > 0 && { createdAt }),
       ...(params.search && {
         OR: [
           { orderNumber: { contains: params.search, mode: 'insensitive' } },

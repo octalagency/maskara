@@ -7,32 +7,28 @@ import { StatCard } from '@/components/ui/StatCard';
 import { api, AdminDashboard, PlatformStatus } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 
-const DEMO: AdminDashboard = {
-  totalMerchants: 156,
-  activeMerchants: 134,
-  totalOrders: 45230,
-  totalCalls: 38920,
-  monthlyRevenue: 485000,
-  recentMerchants: [
-    { id: '1', name: 'Fashion Hub BD', email: 'info@fashionhub.bd', status: 'ACTIVE', subscriptionPlan: 'GROWTH', _count: { orders: 1234, calls: 1100 } },
-    { id: '2', name: 'Gadget Zone', email: 'sales@gadgetzone.bd', status: 'ACTIVE', subscriptionPlan: 'STARTER', _count: { orders: 567, calls: 490 } },
-    { id: '3', name: 'Demo Store', email: 'demo@store.com', status: 'ACTIVE', subscriptionPlan: 'GROWTH', _count: { orders: 890, calls: 780 } },
-  ],
+const EMPTY_DASHBOARD: AdminDashboard = {
+  totalMerchants: 0,
+  activeMerchants: 0,
+  totalOrders: 0,
+  totalCalls: 0,
+  monthlyRevenue: 0,
+  recentMerchants: [],
 };
 
-const DEMO_STATUS: PlatformStatus = {
-  voice: { epbx: true, ippbx: false, twilio: false },
+const EMPTY_STATUS: PlatformStatus = {
+  voice: { epbx: false, ippbx: false, twilio: false },
   voiceProvider: 'epbx',
   payments: { bkash: false, nagad: false },
-  merchants: { total: 4, active: 3, wooConnected: 1 },
+  merchants: { total: 0, active: 0, wooConnected: 0 },
 };
 
 export default function AdminDashboardPage() {
-  const [data, setData] = useState<AdminDashboard>(DEMO);
-  const [status, setStatus] = useState<PlatformStatus>(DEMO_STATUS);
+  const [data, setData] = useState<AdminDashboard>(EMPTY_DASHBOARD);
+  const [status, setStatus] = useState<PlatformStatus>(EMPTY_STATUS);
 
   useEffect(() => {
-    api.getAdminDashboard().then(setData).catch(() => setData(DEMO));
+    api.getAdminDashboard().then(setData).catch(() => setData(EMPTY_DASHBOARD));
     api.getPlatformStatus().then(setStatus).catch(() => {});
   }, []);
 

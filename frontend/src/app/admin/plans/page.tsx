@@ -3,11 +3,10 @@
 import { useEffect, useState } from 'react';
 import { Pencil, Save, X } from 'lucide-react';
 import { api, Plan } from '@/lib/api';
-import { DEMO_PLANS } from '@/lib/demo-data';
 import { formatCurrency } from '@/lib/utils';
 
 export default function AdminPlansPage() {
-  const [plans, setPlans] = useState<Plan[]>(DEMO_PLANS);
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [form, setForm] = useState<Partial<Plan>>({});
   const [saving, setSaving] = useState(false);

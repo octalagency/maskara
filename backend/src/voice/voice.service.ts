@@ -5,6 +5,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { VoiceProviderFactory } from './providers/voice-provider.factory';
 import { buildOrderVerificationPrompt } from './providers/bangla-prompt';
 import { S3StorageService } from '../common/services/s3-storage.service';
+import { isWithinCallWindow } from '../common/utils/call-window.util';
 
 @Injectable()
 export class VoiceService {
@@ -45,6 +46,16 @@ export class VoiceService {
       return;
     }
 
+    if (!isWithinCallWindow(merchant.timezone || 'Asia/Dhaka')) {
+      this.logger.log(`Outside call window — skipping call for ${order.orderNumber}`);
+      return;
+    }
+
+    if (order.callAttempts >= merchant.maxCallRetries) {
+      this.logger.warn(`Max call attempts reached for ${order.orderNumber}`);
+      return;
+    }
+
     const provider = this.providers.getActiveProvider();
     if (!provider) {
       this.logger.warn('No voice provider — simulating call');
@@ -66,6 +77,13 @@ export class VoiceService {
       data: { status: 'CALLING', callAttempts: { increment: 1 } },
     });
 
+    const updatedOrder = await this.prisma.order.findUniqueOrThrow({
+      where: { id: orderId },
+    });
+    await this.notifications.pushOrderUpdate(merchant, updatedOrder, {
+      verifyStatus: 'calling',
+    });
+
     const storeName = merchant.storeNameBangla || merchant.name;
 
     try {
@@ -77,6 +95,8 @@ export class VoiceService {
         orderNumber: order.orderNumber,
         totalAmount: Number(order.totalAmount),
         merchantId,
+        customGreeting: merchant.customGreeting,
+        voiceId: (merchant as { voiceId?: string | null }).voiceId,
       });
 
       await this.prisma.call.update({
@@ -174,7 +194,8 @@ export class VoiceService {
       }),
     ]);
 
-    await this.notifications.notifyMerchant(call.merchant, call.order, outcome);
+    const updatedOrder = await this.prisma.order.findUniqueOrThrow({ where: { id: call.orderId } });
+    await this.notifications.notifyMerchant(call.merchant, updatedOrder, outcome);
     return this.generateResponseTwiml(message);
   }
 

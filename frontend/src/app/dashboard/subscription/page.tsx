@@ -4,11 +4,10 @@ import { useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { CheckCircle2, CreditCard, Zap } from 'lucide-react';
 import { api, MerchantSubscription } from '@/lib/api';
-import { DEMO_SUBSCRIPTION } from '@/lib/demo-data';
 import { formatCurrency } from '@/lib/utils';
 
 export default function SubscriptionPage() {
-  const [data, setData] = useState<MerchantSubscription>(DEMO_SUBSCRIPTION);
+  const [data, setData] = useState<MerchantSubscription | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [paymentInfo, setPaymentInfo] = useState<{ bKash?: string; nagad?: string; amount: number; reference: string } | null>(null);
@@ -48,6 +47,14 @@ export default function SubscriptionPage() {
     } finally {
       setLoading(null);
     }
+  }
+
+  if (!data) {
+    return (
+      <DashboardLayout>
+        <div className="py-16 text-center text-slate-500">Subscription load হচ্ছে...</div>
+      </DashboardLayout>
+    );
   }
 
   const usage = data.usage;

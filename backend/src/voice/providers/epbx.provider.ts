@@ -5,13 +5,14 @@ import {
   InitiateCallResult,
   VoiceProvider,
 } from './voice-provider.interface';
-import { buildOrderVerificationPrompt } from './bangla-prompt';
+import {
+  buildOrderVerificationPrompt,
+  parseMerchantVoice,
+} from './bangla-prompt';
 
 /**
  * ePBX.bd — Bangladesh Cloud PBX
- * Docs: https://epbx.bd/developer/api-docs
- * Order verification: https://epbx.bd/auto-order-call
- * Endpoint: POST /api/v1/calls/initiate
+ * Portal docs (Developer API): POST /api/v1/calls/verify
  */
 @Injectable()
 export class EpbxProvider implements VoiceProvider {
@@ -49,67 +50,127 @@ export class EpbxProvider implements VoiceProvider {
     const apiKey = this.settings.get('EPBX_API_KEY');
     if (!apiKey) throw new Error('EPBX_API_KEY not configured');
 
+    const dialPhone = this.toLocalBdMobile(params.to);
+    const callerId =
+      this.settings.get('EPBX_CALLER_ID') ||
+      this.settings.get('EPBX_DID') ||
+      '09639444146';
+
     const ttsText = buildOrderVerificationPrompt({
       storeName: params.storeName,
       customerName: params.customerName,
       orderNumber: params.orderNumber,
       totalAmount: params.totalAmount,
+      customGreeting: params.customGreeting,
     });
 
+    const voice =
+      parseMerchantVoice(params.voiceId) ||
+      parseMerchantVoice('azure:bn-BD-NabanitaNeural');
+
+    const hasCustomScript = Boolean(params.customGreeting?.trim());
+
     const payload: Record<string, unknown> = {
-      destination_number: this.normalizeBdPhone(params.to),
-      phone: this.normalizeBdPhone(params.to),
-      tts_text: ttsText,
-      message: ttsText,
+      phone_number: dialPhone,
+      caller_id: callerId,
+      customer_name: params.customerName,
+      amount: String(params.totalAmount ?? ''),
+      order_id: params.orderNumber,
+      store_name: params.storeName,
+      custom_text: ttsText,
       reference_id: params.callId,
       external_id: params.callId,
       webhook_url: this.webhookUrl('/voice/webhook/epbx'),
       status_callback: this.webhookUrl('/voice/webhook/epbx/status'),
       dtmf_webhook: this.webhookUrl('/voice/webhook/epbx/dtmf'),
+      callback_url: this.webhookUrl('/voice/webhook/epbx'),
     };
+
+    // Only add post-keypress messages when merchant uses the default script
+    if (!hasCustomScript) {
+      payload.confirm_text = 'আপনার অর্ডার নিশ্চিত করা হয়েছে। ধন্যবাদ।';
+      payload.cancel_text = 'আপনার অর্ডার বাতিল করা হয়েছে।';
+    }
+
+    if (voice.provider) {
+      payload.provider = voice.provider;
+      payload.ai_tts_provider = voice.provider;
+    }
+    if (voice.voiceId) {
+      payload.voice_id = voice.voiceId;
+      payload.tts_voice = voice.voiceId;
+      if (voice.provider === 'azure') {
+        payload.azure_tts_voice_id = voice.voiceId;
+      }
+      if (voice.provider?.startsWith('google')) {
+        payload.google_tts_voice_id = voice.voiceId;
+      }
+    }
 
     const ivrId = this.settings.get('EPBX_IVR_ID');
     if (ivrId) payload.ivr_id = ivrId;
 
     const customerId = this.settings.get('EPBX_CUSTOMER_ID');
-    const path = customerId
-      ? `/customers/${customerId}/calls/originate`
-      : '/calls/initiate';
+    const paths = customerId
+      ? [
+          `/customers/${customerId}/calls/originate`,
+          '/calls/verify',
+          '/calls/initiate',
+        ]
+      : ['/calls/verify', '/calls/initiate'];
 
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
+    let lastError = 'ePBX call failed';
+    for (const path of paths) {
+      const res = await fetch(`${this.baseUrl}${path}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
 
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      this.logger.error(`ePBX API error: ${res.status} ${JSON.stringify(body)}`);
-      throw new Error(
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const providerCallId =
+          (body as { call_id?: string }).call_id ||
+          (body as { id?: string }).id ||
+          (body as { data?: { id?: string } }).data?.id ||
+          params.callId;
+
+        this.logger.log(
+          `ePBX call queued via ${path}: ${providerCallId} → ${dialPhone}`,
+        );
+        return { providerCallId: String(providerCallId), status: 'RINGING' };
+      }
+
+      const message =
         (body as { message?: string }).message ||
-          `ePBX call failed (${res.status})`,
+        (body as { error?: string }).error ||
+        `ePBX call failed (${res.status})`;
+      lastError = message;
+      this.logger.error(
+        `ePBX API error ${path}: ${res.status} ${JSON.stringify(body)}`,
+      );
+
+      if (res.status !== 404) break;
+    }
+
+    if (/could not be found/i.test(lastError) || /route .* not found/i.test(lastError)) {
+      throw new Error(
+        'ePBX call route missing — expected POST /api/v1/calls/verify. Check Developer API Access on maskara.epbx.bd/portal/developer',
       );
     }
 
-    const providerCallId =
-      (body as { call_id?: string }).call_id ||
-      (body as { id?: string }).id ||
-      (body as { data?: { id?: string } }).data?.id ||
-      params.callId;
-
-    this.logger.log(`ePBX call queued: ${providerCallId} → ${params.to}`);
-    return { providerCallId: String(providerCallId), status: 'RINGING' };
+    throw new Error(lastError);
   }
 
-  private normalizeBdPhone(phone: string): string {
+  private toLocalBdMobile(phone: string): string {
     const digits = phone.replace(/\D/g, '');
-    if (digits.startsWith('880')) return `+${digits}`;
-    if (digits.startsWith('0')) return `+88${digits}`;
-    if (digits.length === 10) return `+880${digits}`;
-    return phone.startsWith('+') ? phone : `+${digits}`;
+    if (digits.startsWith('880') && digits.length >= 13) return `0${digits.slice(3)}`;
+    if (digits.startsWith('0') && digits.length === 11) return digits;
+    if (digits.length === 10) return `0${digits}`;
+    return digits;
   }
 }

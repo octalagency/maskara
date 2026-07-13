@@ -148,7 +148,7 @@ def main():
     sftp = client.open_sftp()
     sftp_upload_tree(sftp, LOCAL_ROOT, REMOTE_ROOT, excludes)
 
-    epbx_key = os.environ.get("EPBX_API_KEY", "znoOkJcxs6TdrKGreQ7Iobx5uTmvwMFwOHGcCQPR")
+    epbx_key = os.environ.get("EPBX_API_KEY", "")
     admin_pass = os.environ.get("ADMIN_INITIAL_PASSWORD", "Admin@123")
     env_content = f"""NODE_ENV=production
 RUN_SEED=false

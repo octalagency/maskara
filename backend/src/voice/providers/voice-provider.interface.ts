@@ -8,6 +8,10 @@ export interface InitiateCallParams {
   orderNumber: string;
   totalAmount: number;
   merchantId: string;
+  /** Merchant custom call script (optional) */
+  customGreeting?: string | null;
+  /** Merchant TTS voice preference, e.g. azure:bn-BD-NabanitaNeural */
+  voiceId?: string | null;
 }
 
 export interface InitiateCallResult {

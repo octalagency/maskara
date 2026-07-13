@@ -64,12 +64,25 @@ export class IntegrationsService {
       connectedAt: new Date().toISOString(),
     };
 
+
+    const callbackUrl = `${credentials.storeUrl}/wp-json/maskara/v1/verification-result`;
+    const envSecret = process.env.WOOCOMMERCE_WEBHOOK_SECRET || '';
+    const merchant = await this.prisma.merchant.findUnique({ where: { id: merchantId } });
+    const secret = envSecret || merchant?.webhookSecret || '';
+    await this.prisma.merchant.update({
+      where: { id: merchantId },
+      data: {
+        webhookUrl: callbackUrl,
+        ...(secret ? { webhookSecret: secret } : {}),
+      },
+    });
+
     const existing = await this.prisma.integration.findFirst({
       where: { merchantId, type: 'WOOCOMMERCE' },
     });
 
     if (existing) {
-      return this.prisma.integration.update({
+      const updated = await this.prisma.integration.update({
         where: { id: existing.id },
         data: {
           isActive: true,
@@ -78,9 +91,10 @@ export class IntegrationsService {
           lastSyncAt: new Date(),
         },
       });
+      return { ...updated, webhookSecret: secret };
     }
 
-    return this.prisma.integration.create({
+    const created = await this.prisma.integration.create({
       data: {
         merchantId,
         type: 'WOOCOMMERCE',
@@ -90,6 +104,7 @@ export class IntegrationsService {
         lastSyncAt: new Date(),
       },
     });
+    return { ...created, webhookSecret: secret };
   }
 
   async getWooCommerceStatus(merchantId: string) {

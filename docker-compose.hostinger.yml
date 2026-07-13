@@ -111,6 +111,7 @@ services:
       VOICE_PROVIDER: ${VOICE_PROVIDER:-epbx}
       EPBX_API_URL: ${EPBX_API_URL:-https://maskara.epbx.bd/api/v1}
       EPBX_API_KEY: ${EPBX_API_KEY:-}
+      API_URL: ${API_URL:-https://api.maskara.bd}
       PUBLIC_API_URL: ${PUBLIC_API_URL:-https://api.maskara.bd}
       FRONTEND_URL: ${FRONTEND_URL:-https://app.maskara.bd}
       VOICE_WEBHOOK_SECRET: ${VOICE_WEBHOOK_SECRET:-maskara_local_voice_webhook_secret_32chars}
