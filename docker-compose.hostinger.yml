@@ -55,6 +55,7 @@ services:
       EPBX_API_KEY: ${EPBX_API_KEY:-}
       EPBX_CUSTOMER_ID: ${EPBX_CUSTOMER_ID:-}
       EPBX_IVR_ID: ${EPBX_IVR_ID:-}
+      GOOGLE_TTS_API_KEY: ${GOOGLE_TTS_API_KEY:-}
       APP_URL: ${APP_URL:-https://app.maskara.bd}
       API_URL: ${API_URL:-https://api.maskara.bd}
       PUBLIC_API_URL: ${PUBLIC_API_URL:-https://api.maskara.bd}
@@ -111,6 +112,7 @@ services:
       VOICE_PROVIDER: ${VOICE_PROVIDER:-epbx}
       EPBX_API_URL: ${EPBX_API_URL:-https://maskara.epbx.bd/api/v1}
       EPBX_API_KEY: ${EPBX_API_KEY:-}
+      GOOGLE_TTS_API_KEY: ${GOOGLE_TTS_API_KEY:-}
       API_URL: ${API_URL:-https://api.maskara.bd}
       PUBLIC_API_URL: ${PUBLIC_API_URL:-https://api.maskara.bd}
       FRONTEND_URL: ${FRONTEND_URL:-https://app.maskara.bd}

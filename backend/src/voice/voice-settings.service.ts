@@ -11,6 +11,8 @@ export interface VoiceProviderConfig {
     apiKey?: string;
     customerId?: string;
     ivrId?: string;
+    callerId?: string;
+    did?: string;
   };
   ippbx?: {
     enabled?: boolean;
@@ -22,6 +24,11 @@ export interface VoiceProviderConfig {
     accountSid?: string;
     authToken?: string;
     phoneNumber?: string;
+  };
+  /** Direct Google Cloud Text-to-Speech (Chirp3 Algieba etc.) */
+  googleTts?: {
+    enabled?: boolean;
+    apiKey?: string;
   };
 }
 
@@ -62,14 +69,16 @@ export class VoiceSettingsService implements OnModuleInit {
       EPBX_API_KEY: this.dbConfig.epbx?.apiKey,
       EPBX_CUSTOMER_ID: this.dbConfig.epbx?.customerId,
       EPBX_IVR_ID: this.dbConfig.epbx?.ivrId,
-      EPBX_CALLER_ID: (this.dbConfig.epbx as { callerId?: string } | undefined)?.callerId,
-      EPBX_DID: (this.dbConfig.epbx as { did?: string } | undefined)?.did,
+      EPBX_CALLER_ID: this.dbConfig.epbx?.callerId,
+      EPBX_DID: this.dbConfig.epbx?.did,
       IPPBX_API_URL: this.dbConfig.ippbx?.apiUrl,
       IPPBX_API_KEY: this.dbConfig.ippbx?.apiKey,
       IPPBX_API_SECRET: this.dbConfig.ippbx?.apiSecret,
       TWILIO_ACCOUNT_SID: this.dbConfig.twilio?.accountSid,
       TWILIO_AUTH_TOKEN: this.dbConfig.twilio?.authToken,
       TWILIO_PHONE_NUMBER: this.dbConfig.twilio?.phoneNumber,
+      GOOGLE_TTS_API_KEY: this.dbConfig.googleTts?.apiKey,
+      GOOGLE_CLOUD_TTS_API_KEY: this.dbConfig.googleTts?.apiKey,
     };
     const fromDb = map[key];
     if (fromDb) return fromDb;
@@ -88,6 +97,16 @@ export class VoiceSettingsService implements OnModuleInit {
     return Boolean(this.get('TWILIO_ACCOUNT_SID'));
   }
 
+  isGoogleTtsConfigured(): boolean {
+    const enabled = this.dbConfig.googleTts?.enabled !== false;
+    return (
+      enabled &&
+      Boolean(
+        this.get('GOOGLE_TTS_API_KEY') || this.get('GOOGLE_CLOUD_TTS_API_KEY'),
+      )
+    );
+  }
+
   maskSecret(value?: string): string {
     if (!value) return '';
     if (value.length <= 4) return '••••';
@@ -100,6 +119,7 @@ export class VoiceSettingsService implements OnModuleInit {
     const ippbxKey = this.get('IPPBX_API_KEY');
     const ippbxSecret = this.get('IPPBX_API_SECRET');
     const twilioToken = this.get('TWILIO_AUTH_TOKEN');
+    const googleKey = this.get('GOOGLE_TTS_API_KEY');
 
     return {
       provider: this.getProviderMode(),
@@ -131,10 +151,17 @@ export class VoiceSettingsService implements OnModuleInit {
         authTokenSet: Boolean(twilioToken),
         phoneNumber: this.get('TWILIO_PHONE_NUMBER') || '',
       },
+      googleTts: {
+        enabled: this.dbConfig.googleTts?.enabled ?? true,
+        configured: this.isGoogleTtsConfigured(),
+        apiKey: googleKey ? this.maskSecret(googleKey) : '',
+        apiKeySet: Boolean(googleKey),
+      },
       status: {
         epbx: this.isEpbxConfigured(),
         ippbx: this.isIppbxConfigured(),
         twilio: this.isTwilioConfigured(),
+        googleTts: this.isGoogleTtsConfigured(),
       },
     };
   }
@@ -149,6 +176,7 @@ export class VoiceSettingsService implements OnModuleInit {
       epbx: { ...current.epbx, ...updates.epbx },
       ippbx: { ...current.ippbx, ...updates.ippbx },
       twilio: { ...current.twilio, ...updates.twilio },
+      googleTts: { ...current.googleTts, ...updates.googleTts },
     };
 
     // Keep existing secrets if masked/empty submitted
@@ -163,6 +191,9 @@ export class VoiceSettingsService implements OnModuleInit {
     }
     if (updates.twilio?.authToken?.startsWith('••••')) {
       merged.twilio!.authToken = current.twilio?.authToken;
+    }
+    if (updates.googleTts?.apiKey?.startsWith('••••') || updates.googleTts?.apiKey === '') {
+      merged.googleTts!.apiKey = current.googleTts?.apiKey;
     }
 
     await this.prisma.systemSetting.upsert({

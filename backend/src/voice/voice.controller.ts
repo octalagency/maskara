@@ -9,6 +9,7 @@ import {
   Header,
   UseGuards,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiExcludeEndpoint, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Response } from 'express';
@@ -19,6 +20,8 @@ import { VoiceWebhookGuard } from '../common/guards/voice-webhook.guard';
 import { TwilioWebhookGuard } from '../common/guards/twilio-webhook.guard';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { TtsPreviewService } from './tts-preview.service';
+import { GoogleTtsService } from './google-tts.service';
+import { VoiceSettingsService } from './voice-settings.service';
 
 @ApiTags('Voice')
 @Controller('voice')
@@ -28,12 +31,30 @@ export class VoiceController {
     private webhooks: VoiceWebhookService,
     private prisma: PrismaService,
     private ttsPreview: TtsPreviewService,
+    private googleTts: GoogleTtsService,
+    private voiceSettings: VoiceSettingsService,
   ) {}
 
   @Get('provider')
   @ApiOperation({ summary: 'Active voice provider info' })
   getProvider() {
-    return this.voiceService.getActiveProviderInfo();
+    return {
+      ...this.voiceService.getActiveProviderInfo(),
+      googleTts: this.voiceSettings.isGoogleTtsConfigured(),
+      recommendedVoice: this.voiceSettings.isGoogleTtsConfigured()
+        ? 'google:bn-IN-Chirp3-HD-Algieba'
+        : 'azure:bn-BD-PradeepNeural',
+    };
+  }
+
+  @Get('tts-audio/:id')
+  @ApiExcludeEndpoint()
+  serveTtsAudio(@Param('id') id: string, @Res() res: Response) {
+    const audio = this.googleTts.getCached(id);
+    if (!audio) throw new NotFoundException('Audio expired or not found');
+    res.setHeader('Content-Type', audio.mime);
+    res.setHeader('Cache-Control', 'public, max-age=600');
+    res.send(audio.buf);
   }
 
   @Post('preview')

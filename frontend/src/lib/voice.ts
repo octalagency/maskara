@@ -1,12 +1,21 @@
-/** Voices that actually work on Maskara's ePBX account (Azure Neural only). */
+/** Voices — Google Chirp3 when API key connected; Azure always works via ePBX. */
 export const VOICE_OPTIONS = [
+  {
+    id: 'google:bn-IN-Chirp3-HD-Algieba',
+    label: 'Algieba',
+    short: 'Algieba',
+    gender: 'male' as const,
+    provider: 'Google Chirp3',
+    description: 'সবচেয়ে প্রাকৃতিক — Google Cloud TTS API লাগবে',
+    recommended: true,
+  },
   {
     id: 'azure:bn-BD-PradeepNeural',
     label: 'প্রদীপ',
     short: 'প্রদীপ',
     gender: 'male' as const,
     provider: 'Azure Neural',
-    description: 'বাংলাদেশি পুরুষ ভয়েস — রিয়েল কলে এটাই যায়',
+    description: 'বাংলাদেশি পুরুষ — ePBX-এ সরাসরি কাজ করে',
     recommended: true,
   },
   {
@@ -22,22 +31,18 @@ export const VOICE_OPTIONS = [
 
 export type VoiceOption = (typeof VOICE_OPTIONS)[number];
 
-const DEFAULT_VOICE = 'azure:bn-BD-PradeepNeural';
+const DEFAULT_VOICE = 'google:bn-IN-Chirp3-HD-Algieba';
 
-/** Map legacy Google/ElevenLabs picks → Azure (ePBX ignores non-Azure). */
 export function normalizeVoiceId(voiceId?: string | null): string {
   if (!voiceId) return DEFAULT_VOICE;
   if (voiceId === 'azure:bn-BD-NabanitaNeural') return voiceId;
   if (voiceId === 'azure:bn-BD-PradeepNeural') return voiceId;
-  // Old Algieba / Chirp3 / WaveNet / ElevenLabs → male Pradeep
-  if (
-    /nabanita|wavenet-a/i.test(voiceId) &&
-    !/pradeep|algieba|wavenet-b/i.test(voiceId)
-  ) {
-    // only map clear female ids
-    if (/nabanita|wavenet-a/i.test(voiceId)) return 'azure:bn-BD-NabanitaNeural';
+  if (voiceId === 'google:bn-IN-Chirp3-HD-Algieba') return voiceId;
+  if (/nabanita|wavenet-a|achernar/i.test(voiceId) && !/pradeep|algieba|wavenet-b/i.test(voiceId)) {
+    return 'azure:bn-BD-NabanitaNeural';
   }
-  if (/nabanita/i.test(voiceId)) return 'azure:bn-BD-NabanitaNeural';
+  if (/pradeep/i.test(voiceId)) return 'azure:bn-BD-PradeepNeural';
+  if (/algieba|chirp3|elevenlabs/i.test(voiceId)) return 'google:bn-IN-Chirp3-HD-Algieba';
   return DEFAULT_VOICE;
 }
 
@@ -68,7 +73,6 @@ export function stopBanglaPreview() {
   }
 }
 
-/** Play base64 audio from /voice/preview */
 export function playPreviewAudio(
   audioBase64: string,
   mimeType = 'audio/mpeg',
@@ -109,7 +113,7 @@ export function pickBrowserVoice(gender: 'male' | 'female') {
     else if (lang.startsWith('bn')) s += 80;
     else if (name.includes('bengali') || name.includes('bangla') || name.includes('বাংলা')) s += 70;
     if (gender === 'female' && /female|woman|nabanita|zira|samantha|veena|heera/i.test(name)) s += 30;
-    if (gender === 'male' && /male|man|pradeep|david|ravi|rishi/i.test(name)) s += 30;
+    if (gender === 'male' && /male|man|pradeep|david|ravi|rishi|algieba/i.test(name)) s += 30;
     return s;
   };
 

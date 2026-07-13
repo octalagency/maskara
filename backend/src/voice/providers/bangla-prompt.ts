@@ -75,13 +75,18 @@ export function buildOrderVerificationPrompt(params: {
 }
 
 /**
- * Voices via ePBX TTS.
- *
- * This ePBX account reliably plays Azure Neural only.
- * Google / ElevenLabs are ignored → portal default নবনীতা (female).
- * Default = Azure প্রদীপ (male).
+ * Merchant voice options.
+ * Chirp3 Algieba is synthesized by Maskara via Google Cloud TTS (not ePBX Google fields).
+ * Azure voices are the ePBX-native fallback when Google TTS is unavailable.
  */
 export const MERCHANT_VOICE_OPTIONS = [
+  {
+    id: 'google:bn-IN-Chirp3-HD-Algieba',
+    label: 'Algieba — Google Chirp3 পুরুষ',
+    provider: 'google',
+    voiceId: 'bn-IN-Chirp3-HD-Algieba',
+    languageCode: 'bn-IN',
+  },
   {
     id: 'azure:bn-BD-PradeepNeural',
     label: 'প্রদীপ — Azure বাংলাদেশি পুরুষ',
@@ -96,7 +101,9 @@ export const MERCHANT_VOICE_OPTIONS = [
   },
 ] as const;
 
-export const DEFAULT_MERCHANT_VOICE_ID = 'azure:bn-BD-PradeepNeural';
+/** Prefer Chirp3 when Google TTS is configured; Azure Pradeep otherwise. */
+export const DEFAULT_MERCHANT_VOICE_ID = 'google:bn-IN-Chirp3-HD-Algieba';
+export const AZURE_FALLBACK_VOICE_ID = 'azure:bn-BD-PradeepNeural';
 
 export function parseMerchantVoice(voiceId?: string | null): {
   provider?: string;
@@ -117,14 +124,38 @@ export function parseMerchantVoice(voiceId?: string | null): {
   return { provider, voiceId: id };
 }
 
-/** Map any saved voice to Azure that ePBX will actually speak. */
+/**
+ * Resolve merchant voice selection.
+ * Preserves Google Chirp3 Algieba and Azure voices.
+ * Empty / unknown → Chirp3 Algieba (Maskara Google TTS); ElevenLabs → Azure Pradeep.
+ */
 export function resolveMerchantVoice(voiceId?: string | null): {
   provider: string;
   voiceId: string;
   id: string;
+  languageCode?: string;
+  useGoogleDirect?: boolean;
 } {
   const parsed = parseMerchantVoice(voiceId);
   const raw = `${parsed.provider || ''}:${parsed.voiceId || ''}`.toLowerCase();
+  const idLower = (voiceId || '').toLowerCase();
+
+  if (
+    !voiceId ||
+    raw.includes('algieba') ||
+    raw.includes('chirp3') ||
+    idLower.includes('algieba') ||
+    idLower.includes('chirp3') ||
+    (parsed.provider === 'google' && parsed.voiceId?.includes('Chirp3'))
+  ) {
+    return {
+      provider: 'google',
+      voiceId: 'bn-IN-Chirp3-HD-Algieba',
+      id: 'google:bn-IN-Chirp3-HD-Algieba',
+      languageCode: 'bn-IN',
+      useGoogleDirect: true,
+    };
+  }
 
   if (
     raw.includes('nabanita') ||
@@ -138,10 +169,52 @@ export function resolveMerchantVoice(voiceId?: string | null): {
     };
   }
 
-  // Pradeep, Algieba, Chirp3, ElevenLabs, empty, etc. → male Azure
+  if (
+    raw.includes('pradeep') ||
+    (parsed.provider === 'azure' && parsed.voiceId === 'bn-BD-PradeepNeural')
+  ) {
+    return {
+      provider: 'azure',
+      voiceId: 'bn-BD-PradeepNeural',
+      id: 'azure:bn-BD-PradeepNeural',
+    };
+  }
+
+  // ElevenLabs / other Google → Azure male fallback for ePBX-native TTS
   return {
     provider: 'azure',
     voiceId: 'bn-BD-PradeepNeural',
-    id: 'azure:bn-BD-PradeepNeural',
+    id: AZURE_FALLBACK_VOICE_ID,
+  };
+}
+
+/** Azure voice used when Google direct TTS is unavailable. */
+export function azureFallbackFor(voiceId?: string | null): {
+  provider: string;
+  voiceId: string;
+  id: string;
+} {
+  const resolved = resolveMerchantVoice(voiceId);
+  if (resolved.provider === 'azure') {
+    return {
+      provider: resolved.provider,
+      voiceId: resolved.voiceId,
+      id: resolved.id,
+    };
+  }
+  if (
+    /nabanita|wavenet-a|achernar|female/i.test(voiceId || '') &&
+    !/pradeep|algieba|wavenet-b/i.test(voiceId || '')
+  ) {
+    return {
+      provider: 'azure',
+      voiceId: 'bn-BD-NabanitaNeural',
+      id: 'azure:bn-BD-NabanitaNeural',
+    };
+  }
+  return {
+    provider: 'azure',
+    voiceId: 'bn-BD-PradeepNeural',
+    id: AZURE_FALLBACK_VOICE_ID,
   };
 }

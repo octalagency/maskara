@@ -25,6 +25,8 @@ interface IppbxForm {
 interface VoiceForm {
   provider: string;
   publicApiUrl: string;
+  googleTtsApiKey: string;
+  googleTtsApiKeySet: boolean;
   epbx: EpbxForm;
   ippbx: IppbxForm;
 }
@@ -32,6 +34,8 @@ interface VoiceForm {
 const DEFAULT_VOICE: VoiceForm = {
   provider: 'epbx',
   publicApiUrl: 'http://localhost:4000',
+  googleTtsApiKey: '',
+  googleTtsApiKeySet: false,
   epbx: {
     enabled: true,
     apiUrl: 'https://maskara.epbx.bd/api/v1',
@@ -65,11 +69,16 @@ export default function AdminConfigPage() {
   useEffect(() => {
     api.getPlatformConfig().then((c) => {
       setConfig(c);
-      const v = c.voice as VoiceForm & { status?: { epbx: boolean; ippbx: boolean; twilio: boolean } };
+      const v = c.voice as VoiceForm & {
+        status?: { epbx: boolean; ippbx: boolean; twilio: boolean; googleTts?: boolean };
+        googleTts?: { apiKey?: string; apiKeySet?: boolean; configured?: boolean };
+      };
       if (v) {
         setVoice({
           provider: v.provider || 'epbx',
           publicApiUrl: v.publicApiUrl || 'http://localhost:4000',
+          googleTtsApiKey: v.googleTts?.apiKey || '',
+          googleTtsApiKeySet: v.googleTts?.apiKeySet ?? false,
           epbx: {
             enabled: v.epbx?.enabled ?? true,
             apiUrl: v.epbx?.apiUrl || 'https://maskara.epbx.bd/api/v1',
@@ -121,6 +130,10 @@ export default function AdminConfigPage() {
         voice_providers: {
           provider: voice.provider,
           publicApiUrl: voice.publicApiUrl,
+          googleTts: {
+            enabled: true,
+            apiKey: voice.googleTtsApiKey || undefined,
+          },
           epbx: {
             enabled: voice.epbx.enabled,
             apiUrl: voice.epbx.apiUrl,
@@ -139,11 +152,15 @@ export default function AdminConfigPage() {
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
       const updated = await api.getPlatformConfig();
-      const v = updated.voice as VoiceForm;
+      const v = updated.voice as VoiceForm & {
+        googleTts?: { apiKey?: string; apiKeySet?: boolean };
+      };
       if (v) setVoice((prev) => ({
         ...prev,
         provider: v.provider || prev.provider,
         publicApiUrl: v.publicApiUrl || prev.publicApiUrl,
+        googleTtsApiKey: v.googleTts?.apiKey || '',
+        googleTtsApiKeySet: v.googleTts?.apiKeySet ?? prev.googleTtsApiKeySet,
         epbx: { ...prev.epbx, ...v.epbx, apiKey: v.epbx?.apiKey || '' },
         ippbx: { ...prev.ippbx, ...v.ippbx, apiKey: v.ippbx?.apiKey || '', apiSecret: v.ippbx?.apiSecret || '' },
       }));
@@ -162,8 +179,8 @@ export default function AdminConfigPage() {
     );
   }
 
-  const status = (config.voice as { status?: { epbx: boolean; ippbx: boolean; twilio: boolean } })?.status
-    || { epbx: false, ippbx: false, twilio: false };
+  const status = (config.voice as { status?: { epbx: boolean; ippbx: boolean; twilio: boolean; googleTts?: boolean } })?.status
+    || { epbx: false, ippbx: false, twilio: false, googleTts: false };
 
   const webhooks = providerInfo?.epbx?.webhooks || probe?.webhooks;
   const dashboard = probe?.dashboard || {
@@ -243,6 +260,7 @@ export default function AdminConfigPage() {
               <span className={status.epbx ? 'badge-success' : 'badge-warning'}>ePBX {status.epbx ? '✓' : '—'}</span>
               <span className={status.ippbx ? 'badge-success' : 'badge-warning'}>ippbx {status.ippbx ? '✓' : '—'}</span>
               <span className={status.twilio ? 'badge-success' : 'badge-warning'}>Twilio {status.twilio ? '✓' : '—'}</span>
+              <span className={status.googleTts ? 'badge-success' : 'badge-warning'}>Google TTS {status.googleTts ? '✓' : '—'}</span>
             </div>
           </div>
         </div>
@@ -282,6 +300,27 @@ export default function AdminConfigPage() {
               placeholder="https://your-domain.com"
             />
             <p className="mt-1 text-xs text-slate-400">Production-এ ngrok বা real domain দিন</p>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-sky-200 bg-sky-50/40 p-4 space-y-3">
+          <div>
+            <h4 className="font-semibold text-slate-900">Google Cloud TTS (Chirp3 Algieba)</h4>
+            <p className="text-xs text-slate-500">
+              Maskara সরাসরি synthesize করে — ePBX Google fields নয়। API enable করতে হবে: Cloud Text-to-Speech API.
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700">
+              API Key {voice.googleTtsApiKeySet ? '(set)' : ''}
+            </label>
+            <input
+              className="input mt-1 font-mono text-sm"
+              type="password"
+              value={voice.googleTtsApiKey}
+              onChange={(e) => setVoice({ ...voice, googleTtsApiKey: e.target.value })}
+              placeholder={voice.googleTtsApiKeySet ? '•••••••• (leave to keep)' : 'AIza…'}
+            />
           </div>
         </div>
 

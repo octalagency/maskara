@@ -665,7 +665,7 @@ export interface PlatformConfig {
   voice?: {
     provider: string;
     publicApiUrl?: string;
-    status?: { epbx: boolean; ippbx: boolean; twilio: boolean };
+    status?: { epbx: boolean; ippbx: boolean; twilio: boolean; googleTts?: boolean };
     epbx?: {
       enabled?: boolean;
       configured?: boolean;
@@ -674,6 +674,12 @@ export interface PlatformConfig {
       apiKeySet?: boolean;
       customerId?: string;
       ivrId?: string;
+    };
+    googleTts?: {
+      enabled?: boolean;
+      configured?: boolean;
+      apiKey?: string;
+      apiKeySet?: boolean;
     };
     ippbx?: {
       enabled?: boolean;
@@ -815,13 +821,18 @@ export interface PlatformStatus {
 
 export interface VoiceProviderInfo {
   provider: string;
-  active: boolean;
-  epbx?: {
+  active?: boolean;
+  epbx?: boolean | {
     configured: boolean;
     enabled: boolean;
     apiUrl: string;
     webhooks: { general: string; dtmf: string; status: string };
   };
+  configured?: boolean;
+  estimatedRateBdt?: string;
+  googleTts?: boolean;
+  googleTtsConfigured?: boolean;
+  recommendedVoice?: string;
   publicApiUrl?: string;
 }
 

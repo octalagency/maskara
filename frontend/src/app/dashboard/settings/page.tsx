@@ -4,18 +4,18 @@ import { useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { api, Merchant } from '@/lib/api';
 import {
-  VOICE_OPTIONS,
   fillVoiceScript,
   getVoiceOption,
   normalizeVoiceId,
   playPreviewAudio,
   stopBanglaPreview,
   speakBangla,
+  voiceOptionsForConfig,
 } from '@/lib/voice';
 import { cn } from '@/lib/utils';
 import { Pause, Play, Volume2, Check, User } from 'lucide-react';
 
-const DEFAULT_VOICE = 'azure:bn-BD-PradeepNeural';
+const DEFAULT_VOICE = 'google:bn-IN-Chirp3-HD-Algieba';
 const DEFAULT_SCRIPT =
   'হ্যালো {{customerName}}, আপনি {{storeName}}-এ অর্ডার করেছিলেন। যার মূল্য {{amount}} টাকা। অর্ডার নম্বর {{orderNumber}}। অর্ডারটি নিশ্চিত করতে এক চাপুন। বাতিল করতে দুই চাপুন।';
 
@@ -26,8 +26,21 @@ export default function SettingsPage() {
   const [error, setError] = useState('');
   const [previewing, setPreviewing] = useState(false);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const [googleTtsConfigured, setGoogleTtsConfigured] = useState(true);
+  const voiceChoices = voiceOptionsForConfig(googleTtsConfigured);
 
   useEffect(() => {
+    api
+      .getVoiceProvider()
+      .then((info) => {
+        const configured = Boolean(
+          (info as { googleTts?: boolean }).googleTts ??
+            (info as { googleTtsConfigured?: boolean }).googleTtsConfigured,
+        );
+        setGoogleTtsConfigured(configured);
+      })
+      .catch(() => undefined);
+
     api
       .getMerchant()
       .then((m) => {
@@ -39,7 +52,7 @@ export default function SettingsPage() {
             : DEFAULT_SCRIPT,
           voiceId,
         });
-        // Migrate legacy Google/ElevenLabs → Azure Pradeep so real calls change
+        // Migrate legacy ElevenLabs / WaveNet ids → Chirp3 or Azure
         if (voiceId !== m.voiceId) {
           void api
             .updateMerchant({
@@ -271,13 +284,13 @@ export default function SettingsPage() {
             <div>
               <h3 className="section-title">AI ভয়েস বাছুন</h3>
               <p className="page-subtitle">
-                প্রদীপ = পুরুষ, নবনীতা = নারী। ePBX-এ শুধু Azure ভয়েস কাজ করে — কার্ডে ক্লিক করলেই সেভ হয়।
+                আলগিবা = Google Chirp3 (প্রস্তাবিত), প্রদীপ/নবনীতা = Azure ফলব্যাক। কার্ডে ক্লিক করলেই সেভ হয়।
               </p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              {VOICE_OPTIONS.map((v) => {
-                const active = (merchant.voiceId || VOICE_OPTIONS[0].id) === v.id;
+              {voiceChoices.map((v) => {
+                const active = (merchant.voiceId || voiceChoices[0].id) === v.id;
                 const playing = previewingId === v.id;
                 return (
                   <button

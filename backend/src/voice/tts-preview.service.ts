@@ -1,16 +1,21 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { VoiceSettingsService } from './voice-settings.service';
+import { GoogleTtsService } from './google-tts.service';
 import { resolveMerchantVoice } from './providers/bangla-prompt';
 
 @Injectable()
 export class TtsPreviewService {
   private readonly logger = new Logger(TtsPreviewService.name);
 
-  constructor(private settings: VoiceSettingsService) {}
+  constructor(
+    private settings: VoiceSettingsService,
+    private googleTts: GoogleTtsService,
+  ) {}
 
   /**
    * Build audible preview audio for settings UI.
-   * Tries ePBX TTS first (same engine as real calls), then Google Translate TTS.
+   * Prefer direct Google Cloud TTS for Chirp3 / when key present;
+   * then ePBX TTS; then Google Translate TTS fallback.
    */
   async synthesize(text: string, voiceId?: string | null): Promise<{
     mimeType: string;
@@ -23,6 +28,22 @@ export class TtsPreviewService {
 
     const voice = resolveMerchantVoice(voiceId);
     const clipped = clean.slice(0, 280);
+
+    if (voice.provider === 'google' && this.googleTts.isConfigured()) {
+      try {
+        const result = await this.googleTts.synthesize(clipped, voice.voiceId);
+        return {
+          mimeType: result.mimeType,
+          audioBase64: result.buffer.toString('base64'),
+          engine: 'google_cloud_tts',
+          voice: voice.id,
+        };
+      } catch (err) {
+        this.logger.warn(
+          `Google Cloud TTS preview failed, falling back: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
 
     const fromEpbx = await this.tryEpbxTts(clipped, voice);
     if (fromEpbx) return { ...fromEpbx, voice: voice.id };
@@ -51,7 +72,7 @@ export class TtsPreviewService {
       tts_text: text,
       message: text,
       language: 'bn',
-      tts_language: 'bn-BD',
+      tts_language: voice.provider === 'google' ? 'bn-IN' : 'bn-BD',
       provider: voice.provider,
       ai_tts_provider: voice.provider,
       tts_provider: voice.provider,
@@ -142,7 +163,7 @@ export class TtsPreviewService {
     return null;
   }
 
-  /** Reliable Bangla preview when ePBX has no TTS preview route */
+  /** Reliable Bangla preview when Cloud TTS / ePBX unavailable */
   private async googleTranslateTts(
     text: string,
   ): Promise<{ mimeType: string; audioBase64: string; engine: string }> {

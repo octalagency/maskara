@@ -11,12 +11,14 @@ import { IppbxProvider } from './providers/ippbx.provider';
 import { VoiceProviderFactory } from './providers/voice-provider.factory';
 import { VoiceSettingsService } from './voice-settings.service';
 import { TtsPreviewService } from './tts-preview.service';
+import { GoogleTtsService } from './google-tts.service';
 
 @Module({
   imports: [NotificationsModule],
   controllers: [VoiceController],
   providers: [
     VoiceSettingsService,
+    GoogleTtsService,
     VoiceService,
     VoiceWebhookService,
     VoiceWebhookGuard,
@@ -27,6 +29,11 @@ import { TtsPreviewService } from './tts-preview.service';
     VoiceProviderFactory,
     TtsPreviewService,
   ],
-  exports: [VoiceService, VoiceProviderFactory, VoiceSettingsService],
+  exports: [
+    VoiceService,
+    VoiceProviderFactory,
+    VoiceSettingsService,
+    GoogleTtsService,
+  ],
 })
 export class VoiceModule {}
