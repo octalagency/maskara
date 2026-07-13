@@ -76,14 +76,16 @@ export function buildOrderVerificationPrompt(params: {
 
 /**
  * Voices via ePBX TTS.
- * Default = ElevenLabs Algieba (ManyDial demo voice).
+ * Default = Google Chirp3 Algieba (ManyDial-style). ElevenLabs Algieba only
+ * works if the ePBX portal has ElevenLabs enabled; otherwise ePBX falls back
+ * to Azure নবনীতা (female) — which is why merchants heard the old voice.
  */
 export const MERCHANT_VOICE_OPTIONS = [
   {
-    id: 'elevenlabs:Algieba',
+    id: 'google:bn-IN-Chirp3-HD-Algieba',
     label: 'Algieba — ManyDial স্টাইল (সবচেয়ে প্রাকৃতিক)',
-    provider: 'elevenlabs',
-    voiceId: 'Algieba',
+    provider: 'google',
+    voiceId: 'bn-IN-Chirp3-HD-Algieba',
   },
   {
     id: 'azure:bn-BD-NabanitaNeural',
@@ -96,12 +98,6 @@ export const MERCHANT_VOICE_OPTIONS = [
     label: 'প্রদীপ — Azure বাংলাদেশি পুরুষ',
     provider: 'azure',
     voiceId: 'bn-BD-PradeepNeural',
-  },
-  {
-    id: 'google:bn-IN-Chirp3-HD-Algieba',
-    label: 'Chirp3 Algieba — Google HD',
-    provider: 'google',
-    voiceId: 'bn-IN-Chirp3-HD-Algieba',
   },
   {
     id: 'google:bn-IN-Wavenet-A',
@@ -117,7 +113,7 @@ export const MERCHANT_VOICE_OPTIONS = [
   },
 ] as const;
 
-export const DEFAULT_MERCHANT_VOICE_ID = 'elevenlabs:Algieba';
+export const DEFAULT_MERCHANT_VOICE_ID = 'google:bn-IN-Chirp3-HD-Algieba';
 
 export function parseMerchantVoice(voiceId?: string | null): {
   provider?: string;
@@ -144,6 +140,17 @@ export function resolveMerchantVoice(voiceId?: string | null): {
   voiceId: string;
   id: string;
 } {
+  // Legacy saved id: ElevenLabs Algieba isn't enabled on most ePBX accounts,
+  // so calls fell back to Azure নবনীতা (female). Map to Chirp3 Algieba.
+  if (!voiceId || voiceId === 'elevenlabs:Algieba') {
+    const fallback = parseMerchantVoice(DEFAULT_MERCHANT_VOICE_ID);
+    return {
+      provider: fallback.provider!,
+      voiceId: fallback.voiceId!,
+      id: DEFAULT_MERCHANT_VOICE_ID,
+    };
+  }
+
   const parsed = parseMerchantVoice(voiceId);
   if (parsed.provider && parsed.voiceId) {
     return {

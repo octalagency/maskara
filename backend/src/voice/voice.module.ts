@@ -10,6 +10,7 @@ import { EpbxProvider } from './providers/epbx.provider';
 import { IppbxProvider } from './providers/ippbx.provider';
 import { VoiceProviderFactory } from './providers/voice-provider.factory';
 import { VoiceSettingsService } from './voice-settings.service';
+import { TtsPreviewService } from './tts-preview.service';
 
 @Module({
   imports: [NotificationsModule],
@@ -24,6 +25,7 @@ import { VoiceSettingsService } from './voice-settings.service';
     EpbxProvider,
     IppbxProvider,
     VoiceProviderFactory,
+    TtsPreviewService,
   ],
   exports: [VoiceService, VoiceProviderFactory, VoiceSettingsService],
 })

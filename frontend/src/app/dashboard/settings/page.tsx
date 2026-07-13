@@ -5,14 +5,17 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { api, Merchant } from '@/lib/api';
 import {
   VOICE_OPTIONS,
-  speakBangla,
   fillVoiceScript,
   getVoiceOption,
   normalizeVoiceId,
+  playPreviewAudio,
+  stopBanglaPreview,
+  speakBangla,
 } from '@/lib/voice';
 import { cn } from '@/lib/utils';
 import { Pause, Play, Volume2, Check, User } from 'lucide-react';
 
+const DEFAULT_VOICE = 'google:bn-IN-Chirp3-HD-Algieba';
 const DEFAULT_SCRIPT =
   'হ্যালো {{customerName}}, আপনি {{storeName}}-এ অর্ডার করেছিলেন। যার মূল্য {{amount}} টাকা। অর্ডার নম্বর {{orderNumber}}। অর্ডারটি নিশ্চিত করতে এক চাপুন। বাতিল করতে দুই চাপুন।';
 
@@ -28,13 +31,28 @@ export default function SettingsPage() {
     api
       .getMerchant()
       .then((m) => {
+        const voiceId = normalizeVoiceId(m.voiceId) || DEFAULT_VOICE;
         setMerchant({
           ...m,
           customGreeting: m.customGreeting?.trim()
             ? m.customGreeting.replace(/কনফার্ম/gi, 'নিশ্চিত')
             : DEFAULT_SCRIPT,
-          voiceId: normalizeVoiceId(m.voiceId) || 'elevenlabs:Algieba',
+          voiceId,
         });
+        // Migrate legacy ElevenLabs id so real calls stop using Azure female fallback
+        if (m.voiceId === 'elevenlabs:Algieba' || m.voiceId === 'eleven_labs:Algieba') {
+          void api
+            .updateMerchant({
+              name: m.name,
+              storeNameBangla: m.storeNameBangla,
+              phone: m.phone,
+              customGreeting: m.customGreeting?.trim() || DEFAULT_SCRIPT,
+              voiceId: DEFAULT_VOICE,
+              maxCallRetries: m.maxCallRetries ?? 9,
+              retryIntervalMin: m.retryIntervalMin ?? 90,
+            })
+            .catch(() => undefined);
+        }
       })
       .catch(() => {
         setMerchant({
@@ -43,33 +61,22 @@ export default function SettingsPage() {
           email: '',
           phone: '',
           customGreeting: DEFAULT_SCRIPT,
-          voiceId: 'elevenlabs:Algieba',
+          voiceId: DEFAULT_VOICE,
         });
       });
 
-    // Warm browser voices
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      window.speechSynthesis.getVoices();
-      window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
-    }
-
-    return () => {
-      if (typeof window !== 'undefined') {
-        window.speechSynthesis?.cancel();
-        window.speechSynthesis.onvoiceschanged = null;
-      }
-    };
+    return () => stopBanglaPreview();
   }, []);
 
   function stopPreview() {
-    if (typeof window !== 'undefined') window.speechSynthesis.cancel();
+    stopBanglaPreview();
     setPreviewing(false);
     setPreviewingId(null);
   }
 
-  /** Reads whatever is currently written in the script box */
-  function playScript(voiceId?: string | null) {
-    const m = { ...merchant, voiceId: voiceId || merchant.voiceId };
+  /** Reads whatever is currently written in the script box — server TTS audio */
+  async function playScript(voiceId?: string | null) {
+    const m = { ...merchant, voiceId: voiceId || merchant.voiceId || DEFAULT_VOICE };
     const script = (m.customGreeting || DEFAULT_SCRIPT).trim() || DEFAULT_SCRIPT;
     const text = fillVoiceScript(script, {
       storeName: m.storeNameBangla || m.name || 'আমাদের স্টোর',
@@ -83,21 +90,31 @@ export default function SettingsPage() {
     setPreviewingId(m.voiceId || null);
     setError('');
 
-    const ok = speakBangla(text, m.voiceId, () => {
-      setPreviewing(false);
-      setPreviewingId(null);
-    });
-    if (!ok) {
-      setPreviewing(false);
-      setPreviewingId(null);
-      setError('এই ব্রাউজারে ভয়েস প্রিভিউ সাপোর্ট করে না। Chrome ব্যবহার করুন।');
+    try {
+      const result = await api.previewVoice(text, m.voiceId);
+      const ok = playPreviewAudio(result.audioBase64, result.mimeType, () => {
+        setPreviewing(false);
+        setPreviewingId(null);
+      });
+      if (!ok) throw new Error('audio play failed');
+    } catch {
+      // Last resort: browser speech (often silent on Bangla)
+      const ok = speakBangla(text, m.voiceId, () => {
+        setPreviewing(false);
+        setPreviewingId(null);
+      });
+      if (!ok) {
+        setPreviewing(false);
+        setPreviewingId(null);
+        setError('প্রিভিউ চালু হয়নি। পেজ রিফ্রেশ করে আবার চেষ্টা করুন।');
+      }
     }
   }
 
   async function selectVoice(voiceId: string) {
     const next = { ...merchant, voiceId };
     setMerchant(next);
-    window.setTimeout(() => playScript(voiceId), 50);
+    void playScript(voiceId);
 
     // Immediately persist — otherwise real calls keep the old voice
     setSaving(true);
@@ -115,7 +132,7 @@ export default function SettingsPage() {
       setMerchant({
         ...updated,
         customGreeting: updated.customGreeting || DEFAULT_SCRIPT,
-        voiceId: updated.voiceId || voiceId,
+        voiceId: normalizeVoiceId(updated.voiceId) || voiceId,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -131,19 +148,20 @@ export default function SettingsPage() {
     setSaving(true);
     setError('');
     try {
+      const voiceId = normalizeVoiceId(merchant.voiceId) || DEFAULT_VOICE;
       const updated = await api.updateMerchant({
         name: merchant.name,
         storeNameBangla: merchant.storeNameBangla,
         phone: merchant.phone,
         customGreeting: merchant.customGreeting?.trim() || DEFAULT_SCRIPT,
-        voiceId: merchant.voiceId || 'elevenlabs:Algieba',
+        voiceId,
         maxCallRetries: merchant.maxCallRetries ?? 9,
         retryIntervalMin: merchant.retryIntervalMin ?? 90,
       });
       setMerchant({
         ...updated,
         customGreeting: updated.customGreeting || DEFAULT_SCRIPT,
-        voiceId: updated.voiceId || 'elevenlabs:Algieba',
+        voiceId: normalizeVoiceId(updated.voiceId) || DEFAULT_VOICE,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -253,7 +271,7 @@ export default function SettingsPage() {
             <div>
               <h3 className="section-title">AI ভয়েস বাছুন</h3>
               <p className="page-subtitle">
-                কার্ডে ক্লিক করলেই ভয়েস সেভ হয় ও প্রিভিউ শোনায়। রিয়েল কলে সেই ভয়েসই যাবে — ইংরেজি প্রম্পট বন্ধ।
+                কার্ডে ক্লিক করলেই ভয়েস সেভ হয় ও প্রিভিউ শোনায়। রিয়েল কলে Algieba (Google Chirp3) যাবে।
               </p>
             </div>
 

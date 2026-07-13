@@ -8,14 +8,17 @@ import {
   Query,
   Header,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiExcludeEndpoint, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiExcludeEndpoint, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Response } from 'express';
 import { VoiceService } from './voice.service';
 import { VoiceWebhookService } from './voice-webhook.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { VoiceWebhookGuard } from '../common/guards/voice-webhook.guard';
 import { TwilioWebhookGuard } from '../common/guards/twilio-webhook.guard';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { TtsPreviewService } from './tts-preview.service';
 
 @ApiTags('Voice')
 @Controller('voice')
@@ -24,12 +27,29 @@ export class VoiceController {
     private voiceService: VoiceService,
     private webhooks: VoiceWebhookService,
     private prisma: PrismaService,
+    private ttsPreview: TtsPreviewService,
   ) {}
 
   @Get('provider')
   @ApiOperation({ summary: 'Active voice provider info' })
   getProvider() {
     return this.voiceService.getActiveProviderInfo();
+  }
+
+  @Post('preview')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Generate Bangla TTS preview audio for settings' })
+  async preview(@Body() body: { text?: string; voiceId?: string }) {
+    const text = (body.text || '').trim();
+    if (!text) throw new BadRequestException('text required');
+    try {
+      return await this.ttsPreview.synthesize(text, body.voiceId);
+    } catch (err) {
+      throw new BadRequestException(
+        err instanceof Error ? err.message : 'Preview failed',
+      );
+    }
   }
 
   // --- Twilio TwiML (legacy) ---
@@ -83,7 +103,6 @@ export class VoiceController {
   }
 
   // --- ePBX.bd webhooks ---
-  // ePBX Asterisk sends GET ?phone=&status=confirmed&digit=1 (not POST JSON)
   @Get('webhook/epbx')
   @UseGuards(VoiceWebhookGuard)
   @ApiExcludeEndpoint()

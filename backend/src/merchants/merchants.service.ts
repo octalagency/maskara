@@ -15,14 +15,51 @@ export class MerchantsService {
       },
     });
     if (!merchant) throw new NotFoundException('Merchant not found');
-    return merchant;
+
+    // Ensure voiceId is present even if Prisma client types are stale
+    let voiceId = (merchant as { voiceId?: string | null }).voiceId ?? null;
+    if (voiceId == null) {
+      try {
+        const rows = await this.prisma.$queryRaw<Array<{ voiceId: string | null }>>`
+          SELECT "voiceId" FROM "Merchant" WHERE id = ${merchantId} LIMIT 1
+        `;
+        voiceId = rows[0]?.voiceId ?? null;
+      } catch {
+        voiceId = null;
+      }
+    }
+    return { ...merchant, voiceId };
   }
 
   async update(merchantId: string, dto: UpdateMerchantDto) {
-    return this.prisma.merchant.update({
+    const { voiceId, ...rest } = dto;
+    const merchant = await this.prisma.merchant.update({
       where: { id: merchantId },
-      data: dto,
+      data: rest,
     });
+
+    let savedVoiceId = (merchant as { voiceId?: string | null }).voiceId ?? null;
+    if (voiceId !== undefined) {
+      try {
+        await this.prisma.$executeRaw`
+          UPDATE "Merchant" SET "voiceId" = ${voiceId} WHERE id = ${merchantId}
+        `;
+        savedVoiceId = voiceId;
+      } catch {
+        // Column may be missing until migrate; still try Prisma field if available
+        try {
+          const updated = await this.prisma.merchant.update({
+            where: { id: merchantId },
+            data: { voiceId } as never,
+          });
+          savedVoiceId = (updated as { voiceId?: string | null }).voiceId ?? voiceId;
+        } catch {
+          savedVoiceId = voiceId;
+        }
+      }
+    }
+
+    return { ...merchant, voiceId: savedVoiceId };
   }
 
   async updateWebhookConfig(

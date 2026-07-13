@@ -454,6 +454,18 @@ class ApiClient {
     return this.request<VoiceProviderInfo>('/voice/provider');
   }
 
+  previewVoice(text: string, voiceId?: string | null) {
+    return this.request<{
+      mimeType: string;
+      audioBase64: string;
+      engine: string;
+      voice: string;
+    }>('/voice/preview', {
+      method: 'POST',
+      body: JSON.stringify({ text, voiceId }),
+    });
+  }
+
   getEpbxProbe() {
     return this.request<EpbxProbe>('/voice/epbx-probe');
   }

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { api, Call } from '@/lib/api';
 import { formatDate, getStatusBadge } from '@/lib/utils';
-import { speakBangla, voiceShort } from '@/lib/voice';
+import { speakBangla, voiceShort, playPreviewAudio, stopBanglaPreview } from '@/lib/voice';
 import {
   Phone,
   Play,
@@ -48,9 +48,11 @@ export default function CallsPage() {
   }, []);
 
   function stopAll() {
-    audioRef.current?.pause();
-    audioRef.current = null;
-    if (typeof window !== 'undefined') window.speechSynthesis?.cancel();
+    stopBanglaPreview();
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
     setPlayingId(null);
     setPreviewId(null);
   }
@@ -69,18 +71,29 @@ export default function CallsPage() {
     void audio.play();
   }
 
-  function previewVoice(call: Call) {
+  async function previewVoice(call: Call) {
     stopAll();
     const text =
       call.spokenScript ||
       'আসসালামু আলাইকুম। আপনার অর্ডারটি নিশ্চিত করতে এক চাপুন। বাতিল করতে দুই চাপুন।';
     setPreviewId(call.id);
-    const ok = speakBangla(text, call.voiceId || merchantVoice?.voiceId, () =>
-      setPreviewId(null),
-    );
-    if (!ok) {
-      setPreviewId(null);
-      setError('এই ব্রাউজারে ভয়েস প্রিভিউ সাপোর্ট করে না। Chrome ব্যবহার করুন।');
+    try {
+      const result = await api.previewVoice(
+        text,
+        call.voiceId || merchantVoice?.voiceId,
+      );
+      const ok = playPreviewAudio(result.audioBase64, result.mimeType, () =>
+        setPreviewId(null),
+      );
+      if (!ok) throw new Error('play failed');
+    } catch {
+      const ok = speakBangla(text, call.voiceId || merchantVoice?.voiceId, () =>
+        setPreviewId(null),
+      );
+      if (!ok) {
+        setPreviewId(null);
+        setError('প্রিভিউ চালু হয়নি। পেজ রিফ্রেশ করে আবার চেষ্টা করুন।');
+      }
     }
   }
 

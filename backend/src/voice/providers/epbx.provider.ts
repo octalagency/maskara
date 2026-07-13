@@ -140,6 +140,13 @@ export class EpbxProvider implements VoiceProvider {
       payload.google_voice = voice.voiceId;
       payload.ai_tts_provider = 'google';
       payload.provider = 'google';
+      payload.tts_provider = 'google';
+      // Chirp3 short name — some ePBX builds expect this
+      if (voice.voiceId.includes('Algieba')) {
+        payload.voice_name = 'Algieba';
+        payload.chirp_voice = 'Algieba';
+        payload.google_voice_name = 'Algieba';
+      }
     } else if (voice.provider === 'elevenlabs') {
       payload.elevenlabs_voice_id = voice.voiceId;
       payload.eleven_labs_voice_id = voice.voiceId;

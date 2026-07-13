@@ -1,12 +1,12 @@
-/** Voices for merchant settings — default matches ManyDial (ElevenLabs Algieba). */
+/** Voices for merchant settings — default matches ManyDial (Google Chirp3 Algieba). */
 export const VOICE_OPTIONS = [
   {
-    id: 'elevenlabs:Algieba',
+    id: 'google:bn-IN-Chirp3-HD-Algieba',
     label: 'Algieba',
     short: 'Algieba',
     gender: 'male' as const,
-    provider: 'ElevenLabs',
-    description: 'ManyDial-এর মতো একই প্রাকৃতিক ভয়েস — সবচেয়ে রিয়েল',
+    provider: 'Google Chirp3',
+    description: 'ManyDial-এর মতো প্রাকৃতিক ভয়েস — রিয়েল কলে কাজ করে',
     recommended: true,
   },
   {
@@ -16,7 +16,7 @@ export const VOICE_OPTIONS = [
     gender: 'female' as const,
     provider: 'Azure Neural',
     description: 'প্রাকৃতিক বাংলাদেশি নারী ভয়েস',
-    recommended: true,
+    recommended: false,
   },
   {
     id: 'azure:bn-BD-PradeepNeural',
@@ -25,16 +25,7 @@ export const VOICE_OPTIONS = [
     gender: 'male' as const,
     provider: 'Azure Neural',
     description: 'প্রাকৃতিক বাংলাদেশি পুরুষ ভয়েস',
-    recommended: false,
-  },
-  {
-    id: 'google:bn-IN-Chirp3-HD-Algieba',
-    label: 'Chirp3 Algieba',
-    short: 'Chirp3',
-    gender: 'male' as const,
-    provider: 'Google Chirp3',
-    description: 'Google HD Algieba',
-    recommended: false,
+    recommended: true,
   },
   {
     id: 'google:bn-IN-Wavenet-A',
@@ -58,11 +49,17 @@ export const VOICE_OPTIONS = [
 
 export type VoiceOption = (typeof VOICE_OPTIONS)[number];
 
-/** Normalize legacy google_wavenet:* ids saved in DB */
+/** Normalize legacy google_wavenet / elevenlabs Algieba ids saved in DB */
 export function normalizeVoiceId(voiceId?: string | null): string {
   if (!voiceId) return VOICE_OPTIONS[0].id;
+  // Old ElevenLabs pick → Chirp3 Algieba (ePBX actually uses Google)
+  if (voiceId === 'elevenlabs:Algieba' || voiceId === 'eleven_labs:Algieba') {
+    return 'google:bn-IN-Chirp3-HD-Algieba';
+  }
   const fixed = voiceId.replace(/^google_wavenet:/, 'google:');
-  return VOICE_OPTIONS.some((v) => v.id === fixed) ? fixed : voiceId.replace(/^google_wavenet:/, 'google:');
+  return VOICE_OPTIONS.some((v) => v.id === fixed)
+    ? fixed
+    : voiceId.replace(/^google_wavenet:/, 'google:');
 }
 
 export function voiceLabel(voiceId?: string | null) {
@@ -78,6 +75,46 @@ export function voiceShort(voiceId?: string | null) {
 export function getVoiceOption(voiceId?: string | null) {
   const id = normalizeVoiceId(voiceId);
   return VOICE_OPTIONS.find((v) => v.id === id) || VOICE_OPTIONS[0];
+}
+
+let previewAudio: HTMLAudioElement | null = null;
+
+export function stopBanglaPreview() {
+  if (typeof window === 'undefined') return;
+  window.speechSynthesis?.cancel();
+  if (previewAudio) {
+    previewAudio.pause();
+    previewAudio.src = '';
+    previewAudio = null;
+  }
+}
+
+/** Play base64 audio from /voice/preview */
+export function playPreviewAudio(
+  audioBase64: string,
+  mimeType = 'audio/mpeg',
+  onEnd?: () => void,
+): boolean {
+  if (typeof window === 'undefined') return false;
+  stopBanglaPreview();
+  try {
+    const src = `data:${mimeType};base64,${audioBase64}`;
+    const audio = new Audio(src);
+    previewAudio = audio;
+    audio.onended = () => {
+      previewAudio = null;
+      onEnd?.();
+    };
+    audio.onerror = () => {
+      previewAudio = null;
+      onEnd?.();
+    };
+    void audio.play().catch(() => onEnd?.());
+    return true;
+  } catch {
+    onEnd?.();
+    return false;
+  }
 }
 
 export function pickBrowserVoice(gender: 'male' | 'female') {
@@ -103,6 +140,7 @@ export function pickBrowserVoice(gender: 'male' | 'female') {
     : ranked.find((v) => score(v) > 0) || ranked[0] || null;
 }
 
+/** Legacy browser TTS fallback (often silent for Bangla) */
 export function speakBangla(
   text: string,
   voiceId?: string | null,
@@ -112,7 +150,7 @@ export function speakBangla(
   const clean = text.replace(/\s+/g, ' ').trim();
   if (!clean) return false;
 
-  window.speechSynthesis.cancel();
+  stopBanglaPreview();
   const selected = getVoiceOption(voiceId);
   const utter = new SpeechSynthesisUtterance(clean);
   utter.lang = 'bn-BD';
@@ -137,9 +175,9 @@ export function speakBangla(
       window.speechSynthesis.onvoiceschanged = null;
       applyVoiceAndSpeak();
     };
-    window.setTimeout(applyVoiceAndSpeak, 200);
+    window.setTimeout(applyVoiceAndSpeak, 250);
   } else {
-    window.setTimeout(applyVoiceAndSpeak, 40);
+    window.setTimeout(applyVoiceAndSpeak, 120);
   }
   return true;
 }
