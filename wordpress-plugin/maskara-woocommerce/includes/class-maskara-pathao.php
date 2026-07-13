@@ -235,6 +235,11 @@ class Maskara_Pathao {
      * @return array|WP_Error
      */
     public static function fetch_status($consignment_id) {
+        $consignment_id = self::clean_consignment_id($consignment_id);
+        if ($consignment_id === '') {
+            return new WP_Error('pathao_consignment', 'Empty consignment id');
+        }
+
         $token = self::get_token();
         if (is_wp_error($token)) {
             return $token;
@@ -263,14 +268,43 @@ class Maskara_Pathao {
             );
         }
 
-        $data = $body['data'] ?? array();
-        // Prefer slug when present (e.g. pickup_cancelled); else human label (Pickup Cancel)
-        $raw_status = (string) (
-            $data['order_status_slug']
-            ?? $data['order_status']
-            ?? $data['status']
-            ?? 'pending'
+        $data = is_array($body['data'] ?? null) ? $body['data'] : (is_array($body) ? $body : array());
+
+        $candidates = array(
+            $data['order_status_slug'] ?? '',
+            $data['order_status'] ?? '',
+            $data['status'] ?? '',
+            $data['delivery_status'] ?? '',
+            $body['order_status_slug'] ?? '',
+            $body['order_status'] ?? '',
         );
+        $raw_status = '';
+        foreach ($candidates as $c) {
+            $c = trim((string) $c);
+            if ($c !== '') {
+                $raw_status = $c;
+                break;
+            }
+        }
+        if ($raw_status === '') {
+            $raw_status = 'pending';
+        }
+
+        // Pathao merchant UI "Pickup Cancel" sometimes only appears in nested payload text
+        $blob = strtolower(wp_json_encode($data));
+        if (
+            $raw_status
+            && stripos($raw_status, 'cancel') === false
+            && (
+                strpos($blob, 'pickup cancel') !== false
+                || strpos($blob, 'pickup_cancel') !== false
+                || strpos($blob, 'pickup-cancelled') !== false
+                || strpos($blob, '"cancelled"') !== false
+            )
+        ) {
+            $raw_status = 'Pickup Cancel';
+        }
+
         $normalized = Maskara_Shipments::normalize_pathao_status($raw_status);
 
         return array(
@@ -278,10 +312,17 @@ class Maskara_Pathao {
             'status'           => $normalized,
             'status_raw'       => $raw_status,
             'collected_amount' => (float) ($data['collected_amount'] ?? 0),
-            'delivery_charge'  => (float) ($data['delivery_fee'] ?? 0),
-            'return_charge'    => (float) ($data['return_fee'] ?? 0),
+            'delivery_charge'  => (float) ($data['delivery_fee'] ?? $data['delivery_charge'] ?? 0),
+            'return_charge'    => (float) ($data['return_fee'] ?? $data['return_charge'] ?? 0),
             'is_paid_return'   => $normalized === Maskara_Shipments::STATUS_PAID_RETURN,
             'raw'              => $body,
         );
+    }
+
+    /** Normalize consignment id (strip # / spaces). */
+    public static function clean_consignment_id($id) {
+        $id = trim((string) $id);
+        $id = ltrim($id, "# \t");
+        return $id;
     }
 }

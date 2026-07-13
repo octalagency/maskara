@@ -16,6 +16,20 @@ class Maskara_Order_Columns {
         add_action('manage_shop_order_posts_custom_column', array($this, 'render_legacy'), 20, 2);
 
         add_action('admin_head', array($this, 'admin_styles'));
+        add_action('admin_notices', array($this, 'sync_notices'));
+    }
+
+    public function sync_notices() {
+        if (!empty($_GET['maskara_sync_ok'])) {
+            echo '<div class="notice notice-success is-dismissible"><p>'
+                . esc_html(wp_unslash((string) $_GET['maskara_sync_ok']))
+                . '</p></div>';
+        }
+        if (!empty($_GET['maskara_sync_err'])) {
+            echo '<div class="notice notice-error is-dismissible"><p>'
+                . esc_html(wp_unslash((string) $_GET['maskara_sync_err']))
+                . '</p></div>';
+        }
     }
 
     public function columns($columns) {
@@ -105,9 +119,10 @@ class Maskara_Order_Columns {
             $status = (string) $order->get_meta('_maskara_pathao_status');
         }
         $block_reason = (string) $order->get_meta('_maskara_courier_block_reason');
+        $consignment  = Maskara_Pathao::clean_consignment_id($order->get_meta('_maskara_pathao_consignment'));
 
         $verify = strtolower((string) $order->get_meta('_maskara_verify_status'));
-        if ($status === '' && !in_array($verify, array('verified', 'confirmed'), true)) {
+        if ($status === '' && !in_array($verify, array('verified', 'confirmed'), true) && $consignment === '') {
             return '<span class="msk-badge msk-muted">—</span>';
         }
         if ($status === '') {
@@ -132,11 +147,9 @@ class Maskara_Order_Columns {
             'class' => 'msk-courier-processing',
         );
 
-        $title = $block_reason !== ''
-            ? $block_reason
-            : ($status === 'address_invalid'
-                ? 'ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি'
-                : $info['label']);
+        $raw = (string) $order->get_meta('_maskara_pathao_status_raw');
+        $title_bits = array_filter(array($info['label'], $raw !== '' ? 'Pathao: ' . $raw : '', $consignment !== '' ? $consignment : ''));
+        $title = $block_reason !== '' ? $block_reason : implode(' · ', $title_bits);
 
         $html = '<span class="msk-badge ' . esc_attr($info['class']) . '" title="' . esc_attr($title) . '">'
             . esc_html($info['label']) . '</span>';
@@ -146,6 +159,19 @@ class Maskara_Order_Columns {
                 ? $block_reason
                 : 'ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি';
             $html .= '<div class="msk-courier-reason">' . esc_html($reason) . '</div>';
+        }
+
+        // Quick sync for stuck Processing / In Transit
+        if (
+            $consignment !== ''
+            && in_array(strtolower($status), array('processing', 'pending', 'in_transit', 'hold'), true)
+            && current_user_can('manage_woocommerce')
+        ) {
+            $url = wp_nonce_url(
+                admin_url('admin-post.php?action=maskara_sync_order&order_id=' . $order->get_id()),
+                'maskara_sync_order'
+            );
+            $html .= '<div class="msk-courier-sync"><a href="' . esc_url($url) . '">Pathao সিঙ্ক</a></div>';
         }
 
         return $html;
@@ -208,6 +234,8 @@ class Maskara_Order_Columns {
             .msk-courier-return{color:#c2410c;background:#ffedd5}
             .msk-address-bad{color:#9f1239;background:#ffe4e6}
             .msk-courier-reason{margin-top:4px;max-width:180px;font-size:10px;line-height:1.35;color:#9f1239;font-weight:500}
+            .msk-courier-sync{margin-top:4px}
+            .msk-courier-sync a{font-size:11px;font-weight:600;text-decoration:none}
             .msk-calls{font-weight:600;color:#0f172a}
             .msk-calls .msk-muted{font-weight:400;color:#94a3b8}
         </style>';

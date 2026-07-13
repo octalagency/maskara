@@ -14,8 +14,12 @@ class Maskara_Sync {
         add_filter('cron_schedules', array(__CLASS__, 'register_cron_schedules'));
         add_action(self::CRON_HOOK, array($this, 'sync_all'));
         add_action('wp', array($this, 'maybe_schedule'));
+        add_action('admin_init', array($this, 'maybe_schedule'));
         // Manual sync from admin
         add_action('admin_post_maskara_sync_couriers', array($this, 'handle_manual_sync'));
+        add_action('admin_post_maskara_sync_order', array($this, 'handle_sync_order'));
+        // When opening Orders list, pull Pathao status for stuck Processing rows
+        add_action('current_screen', array($this, 'maybe_autosync_orders_screen'));
     }
 
     public static function schedule() {
@@ -77,10 +81,156 @@ class Maskara_Sync {
             (int) $result['failed']
         );
         wp_safe_redirect(add_query_arg(
-            array('page' => 'maskara', 'maskara_sync' => rawurlencode($msg)),
+            array(
+                'page'         => 'maskara-settings',
+                'maskara_sync' => rawurlencode($msg),
+            ),
             admin_url('admin.php')
         ));
         exit;
+    }
+
+    public function handle_sync_order() {
+        if (!current_user_can('manage_woocommerce')) {
+            wp_die('Forbidden');
+        }
+        check_admin_referer('maskara_sync_order');
+        $order_id = isset($_GET['order_id']) ? absint($_GET['order_id']) : 0;
+        $order    = $order_id ? wc_get_order($order_id) : false;
+        $redirect = wp_get_referer() ?: admin_url('admin.php?page=wc-orders');
+
+        if (!$order) {
+            wp_safe_redirect(add_query_arg('maskara_sync_err', 'Order not found', $redirect));
+            exit;
+        }
+
+        $res = self::sync_wc_order($order);
+        if (is_wp_error($res)) {
+            wp_safe_redirect(add_query_arg('maskara_sync_err', rawurlencode($res->get_error_message()), $redirect));
+            exit;
+        }
+
+        wp_safe_redirect(add_query_arg(
+            'maskara_sync_ok',
+            rawurlencode('Order #' . $order_id . ' → ' . ($res['status'] ?? 'updated')),
+            $redirect
+        ));
+        exit;
+    }
+
+    /**
+     * On WooCommerce orders screen, sync a few stuck Processing consignments.
+     */
+    public function maybe_autosync_orders_screen($screen) {
+        if (!$screen || !current_user_can('manage_woocommerce')) {
+            return;
+        }
+        $id = (string) ($screen->id ?? '');
+        if (
+            strpos($id, 'wc-orders') === false
+            && strpos($id, 'shop_order') === false
+            && $id !== 'edit-shop_order'
+        ) {
+            return;
+        }
+        if (get_transient('maskara_autosync_orders_lock')) {
+            return;
+        }
+        set_transient('maskara_autosync_orders_lock', 1, 90);
+
+        $orders = wc_get_orders(array(
+            'limit'        => 8,
+            'status'       => array('processing', 'completed', 'on-hold'),
+            'meta_key'     => '_maskara_pathao_consignment',
+            'meta_compare' => 'EXISTS',
+            'orderby'      => 'date',
+            'order'        => 'DESC',
+        ));
+
+        foreach ($orders as $order) {
+            if (!$order instanceof WC_Order) {
+                continue;
+            }
+            $courier = strtolower((string) (
+                $order->get_meta('_maskara_courier_status')
+                ?: $order->get_meta('_maskara_pathao_status')
+                ?: 'processing'
+            ));
+            if (!in_array($courier, array('processing', 'pending', 'in_transit', 'hold', ''), true)) {
+                continue;
+            }
+            self::sync_wc_order($order);
+        }
+    }
+
+    /**
+     * Sync one WooCommerce order from Pathao by consignment meta.
+     *
+     * @return array|WP_Error
+     */
+    public static function sync_wc_order(WC_Order $order) {
+        $consignment = Maskara_Pathao::clean_consignment_id(
+            $order->get_meta('_maskara_pathao_consignment')
+        );
+        if ($consignment === '') {
+            return new WP_Error('maskara_no_consignment', 'No Pathao consignment on this order');
+        }
+
+        // Persist cleaned id
+        if ((string) $order->get_meta('_maskara_pathao_consignment') !== $consignment) {
+            $order->update_meta_data('_maskara_pathao_consignment', $consignment);
+            $order->save();
+        }
+
+        $result = Maskara_Pathao::fetch_status($consignment);
+        if (is_wp_error($result)) {
+            return $result;
+        }
+        if (empty($result['success'])) {
+            return new WP_Error('maskara_sync', $result['error'] ?? 'Pathao sync failed');
+        }
+
+        $shipments = new Maskara_Shipments();
+        $shipments->record_dispatch($order, array(
+            'consignment_id' => $consignment,
+            'order_status'   => $result['status_raw'],
+            'delivery_fee'   => $result['delivery_charge'] ?? 0,
+            'raw'            => $result['raw'] ?? array(),
+        ));
+        $row = $shipments->get_by_consignment($consignment);
+        if ($row) {
+            $shipments->update((int) $row->id, array(
+                'status'            => $result['status_raw'],
+                'status_normalized' => $result['status'],
+                'collected_amount'  => $result['collected_amount'],
+                'delivery_charge'   => $result['delivery_charge'],
+                'return_charge'     => $result['return_charge'],
+                'is_paid_return'    => !empty($result['is_paid_return']) ? 1 : 0,
+                'raw_response'      => wp_json_encode($result['raw'] ?? array()),
+            ));
+        }
+
+        $prev = (string) ($order->get_meta('_maskara_courier_status') ?: 'unknown');
+        if ($result['status'] !== $prev) {
+            $order->add_order_note(sprintf(
+                'Pathao status: %s → %s (%s)',
+                $prev,
+                $result['status'],
+                $result['status_raw']
+            ));
+        }
+
+        self::apply_courier_status_to_order(
+            $order,
+            $result['status'],
+            (string) $result['status_raw']
+        );
+
+        return array(
+            'success' => true,
+            'status'  => $result['status'],
+            'raw'     => $result['status_raw'],
+        );
     }
 
     /**
@@ -93,6 +243,7 @@ class Maskara_Sync {
         if ($raw_status !== '') {
             $order->update_meta_data('_maskara_pathao_status_raw', sanitize_text_field((string) $raw_status));
         }
+        $order->save();
 
         if ($normalized_status === Maskara_Shipments::STATUS_CANCELLED) {
             if (!in_array($order->get_status(), array('cancelled', 'refunded', 'failed'), true)) {
@@ -100,13 +251,8 @@ class Maskara_Sync {
                     'cancelled',
                     'কুরিয়ার থেকে অর্ডার ক্যান্সেল হয়েছে (Pickup Cancel) — WooCommerce-এও Cancelled করা হয়েছে।'
                 );
-            } else {
-                $order->save();
             }
-            return;
         }
-
-        $order->save();
     }
 
     /**
