@@ -105,16 +105,16 @@ $status_choices = array(
 			<span class="msk-card__meta">Success rate = Delivered ÷ Total</span>
 		</header>
 		<div class="msk-table-wrap">
-			<table class="msk-table" id="msk-courier-table">
+			<table class="msk-table msk-table--perf" id="msk-courier-table">
 				<thead>
 					<tr>
-						<th>Courier</th>
-						<th>Total</th>
-						<th>Delivered</th>
-						<th>In Transit</th>
-						<th>Returned</th>
-						<th>Success rate</th>
-						<th>Collected</th>
+						<th class="msk-col-name">Courier</th>
+						<th class="msk-num">Total</th>
+						<th class="msk-num">Delivered</th>
+						<th class="msk-num">In Transit</th>
+						<th class="msk-num">Returned</th>
+						<th class="msk-num">Success rate</th>
+						<th class="msk-num">Collected</th>
 					</tr>
 				</thead>
 				<tbody>

@@ -171,17 +171,23 @@
 				return;
 			}
 			rows.forEach((r) => {
-				$tbody.append(`
-					<tr>
-						<td><strong>${this.escape(r.courier_slug)}</strong></td>
-						<td class="msk-num">${this.formatNumber(r.total)}</td>
-						<td class="msk-num">${this.formatNumber(r.delivered)}</td>
-						<td class="msk-num">${this.formatNumber(r.in_transit)}</td>
-						<td class="msk-num">${this.formatNumber(r.returned)}</td>
-						<td class="msk-num">${(+r.success_rate || 0).toFixed(1)}%</td>
-						<td class="msk-num">${this.formatMoney(r.collected)}</td>
-					</tr>
-				`);
+				const total = Number(r.total) || 0;
+				const delivered = Number(r.delivered) || 0;
+				const inTransit = Number(r.in_transit) || 0;
+				const returned = Number(r.returned) || 0;
+				const rate = Number(r.success_rate);
+				const rateText = Number.isFinite(rate) ? rate.toFixed(1) + '%' : '0.0%';
+				$tbody.append(
+					'<tr>' +
+						'<td class="msk-col-name"><strong>' + this.escape(r.courier_slug || '—') + '</strong></td>' +
+						'<td class="msk-num">' + this.formatNumber(total) + '</td>' +
+						'<td class="msk-num">' + this.formatNumber(delivered) + '</td>' +
+						'<td class="msk-num">' + this.formatNumber(inTransit) + '</td>' +
+						'<td class="msk-num">' + this.formatNumber(returned) + '</td>' +
+						'<td class="msk-num">' + rateText + '</td>' +
+						'<td class="msk-num">' + this.formatMoney(r.collected) + '</td>' +
+					'</tr>'
+				);
 			});
 		},
 

@@ -206,23 +206,39 @@
 .msk-table {
 	width: 100%;
 	border-collapse: collapse;
+	table-layout: fixed;
 	font-size: 13px;
 }
 .msk-table th {
-	text-align: left;
 	padding: 10px 12px;
 	border-bottom: 1px solid var(--msk-border);
 	color: var(--msk-ink-soft);
 	font-size: 11px;
 	text-transform: uppercase;
 	letter-spacing: .04em;
+	text-align: left;
+	white-space: nowrap;
 }
 .msk-table td {
 	padding: 12px;
 	border-bottom: 1px solid #f1f5f9;
 	vertical-align: middle;
+	text-align: left;
 }
-.msk-table .msk-num { text-align: right; font-variant-numeric: tabular-nums; }
+.msk-table th.msk-num,
+.msk-table td.msk-num {
+	text-align: right !important;
+	font-variant-numeric: tabular-nums;
+}
+.msk-table th.msk-col-name,
+.msk-table td.msk-col-name {
+	text-align: left !important;
+	width: 18%;
+}
+.msk-table--perf th.msk-num,
+.msk-table--perf td.msk-num {
+	width: 13.5%;
+}
 .msk-empty { text-align: center; color: var(--msk-muted); padding: 28px !important; }
 
 .msk-badge {
