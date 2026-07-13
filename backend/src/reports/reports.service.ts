@@ -16,21 +16,57 @@ export class ReportsService {
     });
 
     if (records.length > 0) {
-      return records.map((r) => ({
-        date: r.date.toISOString().split('T')[0],
-        ordersReceived: r.ordersReceived,
-        ordersVerified: r.ordersVerified,
-        ordersCancelled: r.ordersCancelled,
-        callsMade: r.callsMade,
-        callsSuccess: r.callsSuccess,
-        smsSent: r.smsSent,
-        verificationRate:
-          r.ordersReceived > 0
-            ? Math.round((r.ordersVerified / r.ordersReceived) * 100)
-            : 0,
-        callSuccessRate:
-          r.callsMade > 0 ? Math.round((r.callsSuccess / r.callsMade) * 100) : 0,
-      }));
+      const byDate = new Map(
+        records.map((r) => [
+          r.date.toISOString().split('T')[0],
+          {
+            ordersReceived: r.ordersReceived,
+            ordersVerified: r.ordersVerified,
+            ordersCancelled: r.ordersCancelled,
+            callsMade: r.callsMade,
+            callsSuccess: r.callsSuccess,
+            smsSent: r.smsSent,
+          },
+        ]),
+      );
+
+      // Always return a continuous day range (zeros for empty days)
+      const filled: Array<{
+        date: string;
+        ordersReceived: number;
+        ordersVerified: number;
+        ordersCancelled: number;
+        callsMade: number;
+        callsSuccess: number;
+        smsSent: number;
+        verificationRate: number;
+        callSuccessRate: number;
+      }> = [];
+
+      for (let i = 0; i < days; i++) {
+        const d = new Date(startDate);
+        d.setDate(startDate.getDate() + i);
+        const key = d.toISOString().split('T')[0];
+        const r = byDate.get(key) || {
+          ordersReceived: 0,
+          ordersVerified: 0,
+          ordersCancelled: 0,
+          callsMade: 0,
+          callsSuccess: 0,
+          smsSent: 0,
+        };
+        filled.push({
+          date: key,
+          ...r,
+          verificationRate:
+            r.ordersReceived > 0
+              ? Math.round((r.ordersVerified / r.ordersReceived) * 100)
+              : 0,
+          callSuccessRate:
+            r.callsMade > 0 ? Math.round((r.callsSuccess / r.callsMade) * 100) : 0,
+        });
+      }
+      return filled;
     }
 
     // Fallback: compute live from orders + calls (usageRecord may be empty)

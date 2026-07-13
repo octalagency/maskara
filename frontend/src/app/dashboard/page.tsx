@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { StatCard } from '@/components/ui/StatCard';
@@ -17,6 +17,13 @@ import {
 import { api, OrderStats, DailyReport, Merchant } from '@/lib/api';
 import { voiceShort } from '@/lib/voice';
 import {
+  fillDailyReport,
+  formatChartDate,
+  formatChartDateLong,
+  sumDailyReport,
+  CHART_COLORS,
+} from '@/lib/report-chart';
+import {
   AreaChart,
   Area,
   XAxis,
@@ -25,6 +32,31 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+
+function ChartTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 shadow-lg">
+      <p className="mb-2 text-[12px] font-semibold text-slate-500">
+        {formatChartDateLong(String(label))}
+      </p>
+      <div className="space-y-1.5">
+        {payload.map((p: any) => (
+          <div key={p.dataKey} className="flex items-center justify-between gap-6 text-[13px]">
+            <span className="flex items-center gap-2 text-slate-600">
+              <span
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ background: p.color }}
+              />
+              {p.name}
+            </span>
+            <span className="font-bold text-slate-900">{p.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<OrderStats | null>(null);
@@ -46,6 +78,11 @@ export default function DashboardPage() {
       setLoading(false);
     });
   }, []);
+
+  const chartData = useMemo(() => fillDailyReport(report, 14), [report]);
+  const period = useMemo(() => sumDailyReport(chartData), [chartData]);
+  const hasAny =
+    period.received > 0 || period.verified > 0 || period.cancelled > 0;
 
   if (loading) {
     return (
@@ -69,6 +106,8 @@ export default function DashboardPage() {
 
   const storeName = merchant?.storeNameBangla || merchant?.name || 'আপনার স্টোর';
   const voice = voiceShort(merchant?.voiceId);
+  const verifyPct =
+    period.received > 0 ? Math.round((period.verified / period.received) * 100) : 0;
 
   return (
     <DashboardLayout>
@@ -121,41 +160,136 @@ export default function DashboardPage() {
           />
         </section>
 
-        <section className="card">
-          <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <section className="card overflow-hidden">
+          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h3 className="section-title">শেষ ১৪ দিনের অর্ডার</h3>
-              <p className="page-subtitle mt-0.5">রিসিভড · ভেরিফাইড · বাতিল</p>
+              <h3 className="section-title">শেষ ১৪ দিনের অর্ডার ট্রেন্ড</h3>
+              <p className="page-subtitle mt-0.5">
+                প্রতিদিন কত অর্ডার এসেছে, কত নিশ্চিত হয়েছে, কত বাতিল হয়েছে
+              </p>
             </div>
-            <Link href="/dashboard/reports" className="text-[13px] font-semibold text-brand-600 hover:text-brand-700">
-              পূর্ণ রিপোর্ট →
+            <Link
+              href="/dashboard/reports"
+              className="inline-flex items-center gap-1 text-[13px] font-semibold text-brand-600 hover:text-brand-700"
+            >
+              পূর্ণ রিপোর্ট <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
+
+          <div className="mb-5 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl bg-blue-50/80 px-4 py-3 ring-1 ring-blue-100">
+              <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full bg-blue-600" />
+                <p className="text-[12px] font-semibold text-blue-700">রিসিভড</p>
+              </div>
+              <p className="mt-1 text-[22px] font-bold text-slate-900">{period.received}</p>
+              <p className="text-[12px] text-slate-500">অর্ডার এসেছে</p>
+            </div>
+            <div className="rounded-xl bg-emerald-50/80 px-4 py-3 ring-1 ring-emerald-100">
+              <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-600" />
+                <p className="text-[12px] font-semibold text-emerald-700">ভেরিফাইড</p>
+              </div>
+              <p className="mt-1 text-[22px] font-bold text-slate-900">{period.verified}</p>
+              <p className="text-[12px] text-slate-500">
+                নিশ্চিত · {verifyPct}% রেট
+              </p>
+            </div>
+            <div className="rounded-xl bg-rose-50/80 px-4 py-3 ring-1 ring-rose-100">
+              <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full bg-rose-600" />
+                <p className="text-[12px] font-semibold text-rose-700">বাতিল</p>
+              </div>
+              <p className="mt-1 text-[22px] font-bold text-slate-900">{period.cancelled}</p>
+              <p className="text-[12px] text-slate-500">কাস্টমার বাতিল করেছে</p>
+            </div>
+          </div>
+
+          <div className="mb-3 flex flex-wrap gap-4 text-[12px] font-medium text-slate-600">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-4 rounded-sm" style={{ background: CHART_COLORS.received }} />
+              রিসিভড
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-4 rounded-sm" style={{ background: CHART_COLORS.verified }} />
+              ভেরিফাইড
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-4 rounded-sm" style={{ background: CHART_COLORS.cancelled }} />
+              বাতিল
+            </span>
+          </div>
+
           <div className="h-72 sm:h-80">
-            {report.length === 0 ? (
-              <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-[14px] text-slate-500">
-                এখনো ডেটা নেই — অর্ডার এলে চার্ট দেখাবে।
+            {!hasAny ? (
+              <div className="flex h-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-center">
+                <p className="text-[14px] font-medium text-slate-600">এখনো অর্ডার ডেটা নেই</p>
+                <p className="max-w-sm text-[13px] text-slate-400">
+                  অর্ডার আসলে এখানে ১৪ দিনের ট্রেন্ড দেখাবে — কোন দিন কত এসেছে ও কত ভেরিফাই হয়েছে।
+                </p>
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={report}>
+                <AreaChart data={chartData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="recv" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#1a82f5" stopOpacity={0.28} />
-                      <stop offset="100%" stopColor="#1a82f5" stopOpacity={0} />
+                    <linearGradient id="recvGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={CHART_COLORS.received} stopOpacity={0.22} />
+                      <stop offset="100%" stopColor={CHART_COLORS.received} stopOpacity={0} />
                     </linearGradient>
-                    <linearGradient id="ver" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.25} />
-                      <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
+                    <linearGradient id="verGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={CHART_COLORS.verified} stopOpacity={0.2} />
+                      <stop offset="100%" stopColor={CHART_COLORS.verified} stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="canGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={CHART_COLORS.cancelled} stopOpacity={0.18} />
+                      <stop offset="100%" stopColor={CHART_COLORS.cancelled} stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="date" tick={{ fontSize: 12 }} tickFormatter={(v) => String(v).slice(5)} />
-                  <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-                  <Tooltip />
-                  <Area type="monotone" dataKey="ordersReceived" stroke="#1a82f5" fill="url(#recv)" name="রিসিভড" />
-                  <Area type="monotone" dataKey="ordersVerified" stroke="#10b981" fill="url(#ver)" name="ভেরিফাইড" />
-                  <Area type="monotone" dataKey="ordersCancelled" stroke="#ef4444" fill="#fee2e2" name="বাতিল" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 11, fill: '#64748b' }}
+                    tickLine={false}
+                    axisLine={{ stroke: '#e2e8f0' }}
+                    tickFormatter={formatChartDate}
+                    interval="preserveStartEnd"
+                    minTickGap={28}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: '#64748b' }}
+                    tickLine={false}
+                    axisLine={false}
+                    allowDecimals={false}
+                    width={32}
+                  />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Area
+                    type="monotone"
+                    dataKey="ordersReceived"
+                    stroke={CHART_COLORS.received}
+                    strokeWidth={2.5}
+                    fill="url(#recvGrad)"
+                    name="রিসিভড"
+                    activeDot={{ r: 5 }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="ordersVerified"
+                    stroke={CHART_COLORS.verified}
+                    strokeWidth={2.5}
+                    fill="url(#verGrad)"
+                    name="ভেরিফাইড"
+                    activeDot={{ r: 5 }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="ordersCancelled"
+                    stroke={CHART_COLORS.cancelled}
+                    strokeWidth={2}
+                    fill="url(#canGrad)"
+                    name="বাতিল"
+                    activeDot={{ r: 4 }}
+                  />
                 </AreaChart>
               </ResponsiveContainer>
             )}
