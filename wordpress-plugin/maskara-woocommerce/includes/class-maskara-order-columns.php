@@ -161,6 +161,22 @@ class Maskara_Order_Columns {
             $html .= '<div class="msk-courier-reason">' . esc_html($reason) . '</div>';
         }
 
+        // Manual Pathao deploy when verified but no consignment yet
+        if (
+            $consignment === ''
+            && class_exists('Maskara_Pathao')
+            && Maskara_Pathao::is_enabled()
+            && Maskara_Pathao::needs_pathao_deploy($order)
+            && current_user_can('manage_woocommerce')
+        ) {
+            $deploy_url = wp_nonce_url(
+                admin_url('admin-post.php?action=maskara_deploy_pathao&order_id=' . $order->get_id()),
+                'maskara_deploy_pathao'
+            );
+            $html .= '<div class="msk-courier-deploy"><a class="msk-deploy-btn" href="'
+                . esc_url($deploy_url) . '">Pathao তে পাঠান</a></div>';
+        }
+
         // Quick sync for stuck Processing / In Transit
         if (
             $consignment !== ''
@@ -236,6 +252,9 @@ class Maskara_Order_Columns {
             .msk-courier-reason{margin-top:4px;max-width:180px;font-size:10px;line-height:1.35;color:#9f1239;font-weight:500}
             .msk-courier-sync{margin-top:4px}
             .msk-courier-sync a{font-size:11px;font-weight:600;text-decoration:none}
+            .msk-courier-deploy{margin-top:6px}
+            .msk-deploy-btn{display:inline-block;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none;color:#fff!important;background:#2563eb}
+            .msk-deploy-btn:hover{background:#1d4ed8;color:#fff!important}
             .msk-calls{font-weight:600;color:#0f172a}
             .msk-calls .msk-muted{font-weight:400;color:#94a3b8}
         </style>';

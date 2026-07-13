@@ -124,17 +124,13 @@ class Maskara_Callback {
         $consignment = '';
         $courier_blocked = false;
         if (class_exists('Maskara_Pathao') && Maskara_Pathao::is_enabled()) {
-            $pathao = Maskara_Pathao::create_order_from_wc($order);
+            $pathao = Maskara_Pathao::deploy_verified_order($order, 'confirm');
             if (is_wp_error($pathao)) {
                 $err_code = $pathao->get_error_code();
                 $msg = $pathao->get_error_message();
                 if ($err_code === 'maskara_bad_address') {
                     $courier_blocked = true;
-                    $order->update_meta_data('_maskara_courier_status', 'address_invalid');
-                    $order->update_meta_data('_maskara_courier_block_reason', $msg);
-                    // Keep order editable (processing) — do NOT mark completed when courier blocked
-                    $order->add_order_note($msg);
-                    $order->save();
+                    // Meta already set inside create_order_from_wc
                     return array(
                         'ok' => true,
                         'orderId' => $order->get_id(),
@@ -149,22 +145,37 @@ class Maskara_Callback {
                 $order->add_order_note('Pathao auto-deploy failed: ' . $msg);
                 $order->update_meta_data('_maskara_courier_status', 'failed');
                 $order->update_meta_data('_maskara_courier_block_reason', $msg);
+                $order->save();
             } else {
-                $order->delete_meta_data('_maskara_courier_block_reason');
-                $order->update_meta_data('_maskara_courier_status', 'processing');
                 if (is_array($pathao)) {
                     $consignment = (string) (
                         $pathao['consignment']
                         ?? ($pathao['data']['consignment_id'] ?? ($pathao['consignment_id'] ?? ''))
                     );
                 }
-                if ($consignment !== '') {
-                    $order->add_order_note('Pathao auto-deployed: ' . $consignment);
+                if ($consignment === '') {
+                    $consignment = Maskara_Pathao::clean_consignment_id(
+                        $order->get_meta('_maskara_pathao_consignment')
+                    );
                 }
             }
         } else {
             $order->update_meta_data('_maskara_courier_status', 'processing');
             $order->add_order_note('Maskara: Pathao not enabled — enable in Maskara → Settings for auto-deploy.');
+            $new_status = apply_filters('maskara_confirmed_order_status', 'completed', $order, $body);
+            if ($order->get_status() !== $new_status) {
+                $order->update_status($new_status, 'Maskara: verified — order marked Completed.');
+            } else {
+                $order->save();
+            }
+            return array(
+                'ok' => true,
+                'orderId' => $order->get_id(),
+                'status' => $order->get_status(),
+                'verifyStatus' => 'verified',
+                'pathao' => null,
+                'consignment' => '',
+            );
         }
 
         if ($courier_blocked) {
@@ -177,17 +188,11 @@ class Maskara_Callback {
             );
         }
 
-        $new_status = apply_filters('maskara_confirmed_order_status', 'completed', $order, $body);
-        if ($order->get_status() !== $new_status) {
-            $order->update_status($new_status, 'Maskara: verified — order marked Completed.');
-        } else {
-            $order->save();
-        }
-
+        // deploy_verified_order already marks Completed on success
         return array(
             'ok' => true,
             'orderId' => $order->get_id(),
-            'status' => $new_status,
+            'status' => $order->get_status(),
             'verifyStatus' => 'verified',
             'pathao' => is_wp_error($pathao) ? array('error' => $pathao->get_error_message()) : $pathao,
             'consignment' => $consignment,
