@@ -60,7 +60,7 @@ class Maskara_Updater {
             return null;
         }
 
-        set_transient('maskara_update_info', $body, HOUR_IN_SECONDS);
+        set_transient('maskara_update_info', $body, 10 * MINUTE_IN_SECONDS);
         return $body;
     }
 
@@ -71,7 +71,12 @@ class Maskara_Updater {
         if (!isset($transient->response)) {
             $transient->response = array();
         }
+        if (!isset($transient->checked)) {
+            $transient->checked = array();
+        }
 
+        // Always re-check remote when WP asks (bypass stale 1h cache on "Check for updates")
+        delete_transient('maskara_update_info');
         $info = $this->remote_info();
         if (!$info) {
             return $transient;
@@ -79,6 +84,7 @@ class Maskara_Updater {
 
         $plugin_file = plugin_basename(MASKARA_PLUGIN_FILE);
         $current     = defined('MASKARA_VERSION') ? MASKARA_VERSION : '0';
+        $transient->checked[$plugin_file] = $current;
 
         if (version_compare((string) $info['version'], (string) $current, '>')) {
             $transient->response[$plugin_file] = (object) array(
@@ -92,6 +98,16 @@ class Maskara_Updater {
                 'tested'       => $info['tested'] ?? '',
                 'requires'     => $info['requires'] ?? '5.8',
                 'requires_php' => $info['requires_php'] ?? '7.4',
+            );
+            unset($transient->no_update[$plugin_file]);
+        } else {
+            unset($transient->response[$plugin_file]);
+            $transient->no_update[$plugin_file] = (object) array(
+                'slug'        => self::SLUG,
+                'plugin'      => $plugin_file,
+                'new_version' => $current,
+                'url'         => $info['homepage'] ?? 'https://maskara.bd',
+                'package'     => '',
             );
         }
 

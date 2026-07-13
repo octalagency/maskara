@@ -25,7 +25,8 @@ export async function GET() {
     headers: {
       'Content-Type': 'application/zip',
       'Content-Disposition': 'attachment; filename="maskara-woocommerce.zip"',
-      'Cache-Control': 'public, max-age=3600',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+      Pragma: 'no-cache',
     },
   });
 }
