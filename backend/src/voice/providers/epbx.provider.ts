@@ -110,6 +110,15 @@ export class EpbxProvider implements VoiceProvider {
       payload.google_tts_voice_id = voice.voiceId;
       payload.google_voice = voice.voiceId;
     }
+    if (voice.provider === 'elevenlabs') {
+      // Same stack ManyDial uses on manydial.com (voiceId: Algieba)
+      payload.elevenlabs_voice_id = voice.voiceId;
+      payload.eleven_labs_voice_id = voice.voiceId;
+      payload.el_voice_id = voice.voiceId;
+      payload.model_id = 'eleven_multilingual_v2';
+      payload.stability = 0.45;
+      payload.similarity_boost = 0.8;
+    }
 
     // Do NOT attach portal IVR by default — IVR menus often speak English first.
     // Only if explicitly forced via EPBX_FORCE_IVR=1

@@ -16,8 +16,6 @@ export function sanitizeBanglaSpeech(text: string): string {
     .replace(/\bconfirm\b/gi, 'নিশ্চিত')
     .replace(/\bcancel(?:led)?\b/gi, 'বাতিল')
     .replace(/\bthank you\b/gi, 'ধন্যবাদ')
-    .replace(/\bhello\b/gi, '')
-    .replace(/\bhi\b/gi, '')
     .replace(/\bwelcome\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -50,29 +48,45 @@ export function buildOrderVerificationPrompt(params: {
     return sanitizeBanglaSpeech(filled);
   }
 
+  // ManyDial-style natural Bangla COD script (হ্যালো + এক/দুই চাপুন)
   const namePart = name ? name : 'মাননীয় গ্রাহক';
-  const amountPart = amount ? `${amount} টাকার` : 'একটি';
-  const orderPart = orderNumber ? `, অর্ডার নম্বর ${orderNumber}` : '';
+  const amountPart = amount ? `${amount} টাকা` : 'অর্ডার';
+  const orderPart = orderNumber ? ` অর্ডার নম্বর ${orderNumber}।` : '';
 
   return sanitizeBanglaSpeech(
-    `আসসালামু আলাইকুম ${namePart}। ${store} থেকে বলছি। আপনার ${amountPart} অর্ডারটি আমরা পেয়েছি${orderPart}। ` +
-      `অর্ডার নিশ্চিত করতে এক চাপুন। বাতিল করতে দুই চাপুন। ধন্যবাদ।`,
+    `হ্যালো ${namePart}, আপনি ${store}-এ অর্ডার করেছিলেন। যার মূল্য ${amountPart}।${orderPart} ` +
+      `আপনার অর্ডারটি যদি কনফার্ম হয়, তাহলে এক চাপুন। বাতিল করতে দুই চাপুন।`,
   );
 }
 
-/** Preset Bangla TTS voices — Azure bn-BD first (most natural for Bangladesh). */
+/**
+ * Voices available via ePBX TTS.
+ * Default = ElevenLabs Algieba — same voice ManyDial demo uses (manydial.com).
+ */
 export const MERCHANT_VOICE_OPTIONS = [
   {
+    id: 'elevenlabs:Algieba',
+    label: 'Algieba — ManyDial স্টাইল (সবচেয়ে প্রাকৃতিক)',
+    provider: 'elevenlabs',
+    voiceId: 'Algieba',
+  },
+  {
     id: 'azure:bn-BD-NabanitaNeural',
-    label: 'নবনীতা — সবচেয়ে প্রাকৃতিক বাংলাদেশি নারী',
+    label: 'নবনীতা — Azure বাংলাদেশি নারী',
     provider: 'azure',
     voiceId: 'bn-BD-NabanitaNeural',
   },
   {
     id: 'azure:bn-BD-PradeepNeural',
-    label: 'প্রদীপ — সবচেয়ে প্রাকৃতিক বাংলাদেশি পুরুষ',
+    label: 'প্রদীপ — Azure বাংলাদেশি পুরুষ',
     provider: 'azure',
     voiceId: 'bn-BD-PradeepNeural',
+  },
+  {
+    id: 'google_wavenet:bn-IN-Chirp3-HD-Algieba',
+    label: 'Chirp3 Algieba — Google HD',
+    provider: 'google_wavenet',
+    voiceId: 'bn-IN-Chirp3-HD-Algieba',
   },
   {
     id: 'google_wavenet:bn-IN-Wavenet-A',
@@ -88,7 +102,8 @@ export const MERCHANT_VOICE_OPTIONS = [
   },
 ] as const;
 
-export const DEFAULT_MERCHANT_VOICE_ID = 'azure:bn-BD-NabanitaNeural';
+/** Same voice as https://www.manydial.com/ demo (ElevenLabs Algieba). */
+export const DEFAULT_MERCHANT_VOICE_ID = 'elevenlabs:Algieba';
 
 export function parseMerchantVoice(voiceId?: string | null): {
   provider?: string;
@@ -101,7 +116,7 @@ export function parseMerchantVoice(voiceId?: string | null): {
   return { provider, voiceId: id };
 }
 
-/** Always returns a usable Azure/Google voice (never empty object). */
+/** Always returns a usable voice (never empty object). */
 export function resolveMerchantVoice(voiceId?: string | null): {
   provider: string;
   voiceId: string;

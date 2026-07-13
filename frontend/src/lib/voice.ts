@@ -1,12 +1,21 @@
-/** Most natural Bangla voices for Bangladesh — Azure Neural first */
+/** Voices for merchant settings — default matches ManyDial (ElevenLabs Algieba). */
 export const VOICE_OPTIONS = [
+  {
+    id: 'elevenlabs:Algieba',
+    label: 'Algieba',
+    short: 'Algieba',
+    gender: 'male' as const,
+    provider: 'ElevenLabs',
+    description: 'ManyDial-এর মতো একই প্রাকৃতিক ভয়েস — সবচেয়ে রিয়েল',
+    recommended: true,
+  },
   {
     id: 'azure:bn-BD-NabanitaNeural',
     label: 'নবনীতা',
     short: 'নবনীতা',
     gender: 'female' as const,
     provider: 'Azure Neural',
-    description: 'সবচেয়ে প্রাকৃতিক বাংলাদেশি নারী ভয়েস — রিয়েল মানুষের মতো',
+    description: 'প্রাকৃতিক বাংলাদেশি নারী ভয়েস',
     recommended: true,
   },
   {
@@ -15,8 +24,17 @@ export const VOICE_OPTIONS = [
     short: 'প্রদীপ',
     gender: 'male' as const,
     provider: 'Azure Neural',
-    description: 'সবচেয়ে প্রাকৃতিক বাংলাদেশি পুরুষ ভয়েস — পরিষ্কার ও গম্ভীর',
-    recommended: true,
+    description: 'প্রাকৃতিক বাংলাদেশি পুরুষ ভয়েস',
+    recommended: false,
+  },
+  {
+    id: 'google_wavenet:bn-IN-Chirp3-HD-Algieba',
+    label: 'Chirp3 Algieba',
+    short: 'Chirp3',
+    gender: 'male' as const,
+    provider: 'Google Chirp3',
+    description: 'Google HD Algieba — কাছাকাছি মান',
+    recommended: false,
   },
   {
     id: 'google_wavenet:bn-IN-Wavenet-A',
@@ -24,7 +42,7 @@ export const VOICE_OPTIONS = [
     short: 'WaveNet A',
     gender: 'female' as const,
     provider: 'Google WaveNet',
-    description: 'নরম বাংলা নারী ভয়েস (ভারতীয় উচ্চারণ)',
+    description: 'নরম বাংলা নারী ভয়েস',
     recommended: false,
   },
   {
@@ -33,7 +51,7 @@ export const VOICE_OPTIONS = [
     short: 'WaveNet B',
     gender: 'male' as const,
     provider: 'Google WaveNet',
-    description: 'স্পষ্ট বাংলা পুরুষ ভয়েস (ভারতীয় উচ্চারণ)',
+    description: 'স্পষ্ট বাংলা পুরুষ ভয়েস',
     recommended: false,
   },
 ] as const;
@@ -65,7 +83,7 @@ export function pickBrowserVoice(gender: 'male' | 'female') {
     else if (lang.startsWith('bn')) s += 80;
     else if (name.includes('bengali') || name.includes('bangla') || name.includes('বাংলা')) s += 70;
     if (gender === 'female' && /female|woman|nabanita|zira|samantha|veena|heera/i.test(name)) s += 30;
-    if (gender === 'male' && /male|man|pradeep|david|ravi|rishi/i.test(name)) s += 30;
+    if (gender === 'male' && /male|man|pradeep|david|ravi|rishi|algieba/i.test(name)) s += 30;
     if (lang.startsWith('bn-in') && gender === 'female') s += 10;
     if (lang.startsWith('bn-in') && gender === 'male') s += 10;
     return s;
@@ -91,7 +109,6 @@ export function speakBangla(
   const selected = getVoiceOption(voiceId);
   const utter = new SpeechSynthesisUtterance(clean);
   utter.lang = 'bn-BD';
-  // Slightly slower = more human / clear for Bangla
   utter.rate = selected.gender === 'female' ? 0.9 : 0.88;
   utter.pitch = selected.gender === 'female' ? 1.05 : 0.95;
   utter.volume = 1;
@@ -107,7 +124,6 @@ export function speakBangla(
     window.speechSynthesis.speak(utter);
   };
 
-  // Chrome often needs getVoices() warm-up
   const voices = window.speechSynthesis.getVoices();
   if (!voices.length) {
     window.speechSynthesis.onvoiceschanged = () => {
@@ -132,7 +148,7 @@ export function fillVoiceScript(
 
   return script
     .replace(/\{\{\s*storeName\s*\}\}/gi, vars.storeName || 'আমাদের স্টোর')
-    .replace(/\{\{\s*customerName\s*\}\}/gi, vars.customerName || 'রহিম')
+    .replace(/\{\{\s*customerName\s*\}\}/gi, vars.customerName || 'সাকিব')
     .replace(/\{\{\s*amount\s*\}\}/gi, bn(vars.amount) || '১২০০')
     .replace(/\{\{\s*orderNumber\s*\}\}/gi, bn(vars.orderNumber) || '১১৩৮০');
 }
