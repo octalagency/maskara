@@ -11,11 +11,10 @@ import {
 } from './bangla-prompt';
 
 /**
- * ePBX.bd — Bangladesh Cloud PBX
- * Portal docs (Developer API): POST /api/v1/calls/verify
+ * ePBX.bd — Bangla-only TTS outbound calls.
  *
- * Important: send Bangla-only TTS text and force Azure bn-BD voice.
- * Do NOT rely on ePBX default English verify template.
+ * Avoid /calls/verify default English template: prefer /calls/initiate with
+ * a single custom Bangla script + explicit voice provider.
  */
 @Injectable()
 export class EpbxProvider implements VoiceProvider {
@@ -68,33 +67,65 @@ export class EpbxProvider implements VoiceProvider {
     });
 
     const voice = resolveMerchantVoice(params.voiceId);
+    const confirmBn = 'আপনার অর্ডার নিশ্চিত করা হয়েছে। ধন্যবাদ।';
+    const cancelBn = 'আপনার অর্ডার বাতিল করা হয়েছে। ধন্যবাদ।';
 
-    // Bangla-only payload — avoid fields that trigger ePBX English default IVR template
+    // Minimal Bangla-only payload — do NOT send customer_name/amount/order_id
+    // (those trigger ePBX English COD template after Bangla).
     const payload: Record<string, unknown> = {
       phone_number: dialPhone,
       caller_id: callerId,
-      // Full script only (no English template merge)
+      to: dialPhone,
+      from: callerId,
+
+      // Single script source
       custom_text: ttsText,
       tts_text: ttsText,
       message: ttsText,
+      text: ttsText,
       prompt: ttsText,
-      language: 'bn-BD',
+      greeting: ttsText,
+
+      // Language hard-lock
+      language: 'bn',
+      lang: 'bn',
       tts_language: 'bn-BD',
       locale: 'bn-BD',
+      speech_language: 'bn-BD',
+      speak_english: false,
+      english_enabled: false,
       skip_default_prompt: true,
       use_custom_text_only: true,
       disable_default_greeting: true,
+      template: 'custom',
+      mode: 'custom_tts',
+
+      // DTMF replies — Bangla only
+      confirm_text: confirmBn,
+      cancel_text: cancelBn,
+      success_text: confirmBn,
+      failure_text: cancelBn,
+      invalid_text: 'দয়া করে এক চাপুন নিশ্চিত করতে, দুই চাপুন বাতিল করতে।',
+
+      // Explicitly clear English template slots
+      customer_name: '',
+      amount: '',
+      order_id: '',
+      store_name: '',
+      default_greeting: '',
+      english_text: '',
+      english_prompt: '',
+
       reference_id: params.callId,
       external_id: params.callId,
       webhook_url: this.webhookUrl('/voice/webhook/epbx'),
       status_callback: this.webhookUrl('/voice/webhook/epbx/status'),
       dtmf_webhook: this.webhookUrl('/voice/webhook/epbx/dtmf'),
       callback_url: this.webhookUrl('/voice/webhook/epbx'),
-      confirm_text: 'আপনার অর্ডার নিশ্চিত করা হয়েছে। ধন্যবাদ।',
-      cancel_text: 'আপনার অর্ডার বাতিল করা হয়েছে। ধন্যবাদ।',
-      // Force realistic BD Azure Neural voice
+
       provider: voice.provider,
       ai_tts_provider: voice.provider,
+      tts_provider: voice.provider,
       voice_id: voice.voiceId,
       tts_voice: voice.voiceId,
       voice: voice.voiceId,
@@ -104,24 +135,23 @@ export class EpbxProvider implements VoiceProvider {
       payload.azure_tts_voice_id = voice.voiceId;
       payload.azure_voice = voice.voiceId;
       payload.speech_rate = '0.92';
-      payload.prosody_rate = '0.92';
-    }
-    if (voice.provider?.startsWith('google')) {
+    } else if (voice.provider === 'google') {
       payload.google_tts_voice_id = voice.voiceId;
       payload.google_voice = voice.voiceId;
-    }
-    if (voice.provider === 'elevenlabs') {
-      // Same stack ManyDial uses on manydial.com (voiceId: Algieba)
+      payload.ai_tts_provider = 'google';
+      payload.provider = 'google';
+    } else if (voice.provider === 'elevenlabs') {
       payload.elevenlabs_voice_id = voice.voiceId;
       payload.eleven_labs_voice_id = voice.voiceId;
       payload.el_voice_id = voice.voiceId;
       payload.model_id = 'eleven_multilingual_v2';
       payload.stability = 0.45;
       payload.similarity_boost = 0.8;
+      payload.ai_tts_provider = 'elevenlabs';
+      payload.provider = 'elevenlabs';
     }
 
-    // Do NOT attach portal IVR by default — IVR menus often speak English first.
-    // Only if explicitly forced via EPBX_FORCE_IVR=1
+    // Never attach portal IVR (English menus) unless forced
     const forceIvr = this.settings.get('EPBX_FORCE_IVR') === '1';
     const ivrId = this.settings.get('EPBX_IVR_ID');
     if (forceIvr && ivrId) {
@@ -129,17 +159,18 @@ export class EpbxProvider implements VoiceProvider {
     }
 
     this.logger.log(
-      `ePBX TTS voice=${voice.id} lang=bn-BD chars=${ttsText.length} ivr=${forceIvr && ivrId ? ivrId : 'off'}`,
+      `ePBX call voice=${voice.id} merchantVoice=${params.voiceId || 'default'} chars=${ttsText.length} preview="${ttsText.slice(0, 80)}…"`,
     );
 
     const customerId = this.settings.get('EPBX_CUSTOMER_ID');
+    // Prefer initiate (pure TTS) over verify (COD template often adds English)
     const paths = customerId
       ? [
           `/customers/${customerId}/calls/originate`,
-          '/calls/verify',
           '/calls/initiate',
+          '/calls/verify',
         ]
-      : ['/calls/verify', '/calls/initiate'];
+      : ['/calls/initiate', '/calls/verify'];
 
     let lastError = 'ePBX call failed';
     for (const path of paths) {
@@ -162,7 +193,7 @@ export class EpbxProvider implements VoiceProvider {
           params.callId;
 
         this.logger.log(
-          `ePBX call queued via ${path}: ${providerCallId} → ${dialPhone}`,
+          `ePBX OK ${path} voice=${voice.id} → ${dialPhone} id=${providerCallId}`,
         );
         return { providerCallId: String(providerCallId), status: 'RINGING' };
       }
@@ -181,7 +212,7 @@ export class EpbxProvider implements VoiceProvider {
 
     if (/could not be found/i.test(lastError) || /route .* not found/i.test(lastError)) {
       throw new Error(
-        'ePBX call route missing — expected POST /api/v1/calls/verify. Check Developer API Access on maskara.epbx.bd/portal/developer',
+        'ePBX call route missing — expected POST /api/v1/calls/initiate. Check Developer API Access on maskara.epbx.bd/portal/developer',
       );
     }
 

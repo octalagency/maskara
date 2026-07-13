@@ -28,16 +28,16 @@ export const VOICE_OPTIONS = [
     recommended: false,
   },
   {
-    id: 'google_wavenet:bn-IN-Chirp3-HD-Algieba',
+    id: 'google:bn-IN-Chirp3-HD-Algieba',
     label: 'Chirp3 Algieba',
     short: 'Chirp3',
     gender: 'male' as const,
     provider: 'Google Chirp3',
-    description: 'Google HD Algieba — কাছাকাছি মান',
+    description: 'Google HD Algieba',
     recommended: false,
   },
   {
-    id: 'google_wavenet:bn-IN-Wavenet-A',
+    id: 'google:bn-IN-Wavenet-A',
     label: 'WaveNet নারী',
     short: 'WaveNet A',
     gender: 'female' as const,
@@ -46,7 +46,7 @@ export const VOICE_OPTIONS = [
     recommended: false,
   },
   {
-    id: 'google_wavenet:bn-IN-Wavenet-B',
+    id: 'google:bn-IN-Wavenet-B',
     label: 'WaveNet পুরুষ',
     short: 'WaveNet B',
     gender: 'male' as const,
@@ -58,16 +58,26 @@ export const VOICE_OPTIONS = [
 
 export type VoiceOption = (typeof VOICE_OPTIONS)[number];
 
+/** Normalize legacy google_wavenet:* ids saved in DB */
+export function normalizeVoiceId(voiceId?: string | null): string {
+  if (!voiceId) return VOICE_OPTIONS[0].id;
+  const fixed = voiceId.replace(/^google_wavenet:/, 'google:');
+  return VOICE_OPTIONS.some((v) => v.id === fixed) ? fixed : voiceId.replace(/^google_wavenet:/, 'google:');
+}
+
 export function voiceLabel(voiceId?: string | null) {
-  return VOICE_OPTIONS.find((v) => v.id === voiceId)?.label || VOICE_OPTIONS[0].label;
+  const id = normalizeVoiceId(voiceId);
+  return VOICE_OPTIONS.find((v) => v.id === id)?.label || VOICE_OPTIONS[0].label;
 }
 
 export function voiceShort(voiceId?: string | null) {
-  return VOICE_OPTIONS.find((v) => v.id === voiceId)?.short || VOICE_OPTIONS[0].short;
+  const id = normalizeVoiceId(voiceId);
+  return VOICE_OPTIONS.find((v) => v.id === id)?.short || VOICE_OPTIONS[0].short;
 }
 
 export function getVoiceOption(voiceId?: string | null) {
-  return VOICE_OPTIONS.find((v) => v.id === voiceId) || VOICE_OPTIONS[0];
+  const id = normalizeVoiceId(voiceId);
+  return VOICE_OPTIONS.find((v) => v.id === id) || VOICE_OPTIONS[0];
 }
 
 export function pickBrowserVoice(gender: 'male' | 'female') {
@@ -84,8 +94,6 @@ export function pickBrowserVoice(gender: 'male' | 'female') {
     else if (name.includes('bengali') || name.includes('bangla') || name.includes('বাংলা')) s += 70;
     if (gender === 'female' && /female|woman|nabanita|zira|samantha|veena|heera/i.test(name)) s += 30;
     if (gender === 'male' && /male|man|pradeep|david|ravi|rishi|algieba/i.test(name)) s += 30;
-    if (lang.startsWith('bn-in') && gender === 'female') s += 10;
-    if (lang.startsWith('bn-in') && gender === 'male') s += 10;
     return s;
   };
 
@@ -95,7 +103,6 @@ export function pickBrowserVoice(gender: 'male' | 'female') {
     : ranked.find((v) => score(v) > 0) || ranked[0] || null;
 }
 
-/** Speak exact Bangla text (script as written after placeholder fill). */
 export function speakBangla(
   text: string,
   voiceId?: string | null,
@@ -150,7 +157,8 @@ export function fillVoiceScript(
     .replace(/\{\{\s*storeName\s*\}\}/gi, vars.storeName || 'আমাদের স্টোর')
     .replace(/\{\{\s*customerName\s*\}\}/gi, vars.customerName || 'সাকিব')
     .replace(/\{\{\s*amount\s*\}\}/gi, bn(vars.amount) || '১২০০')
-    .replace(/\{\{\s*orderNumber\s*\}\}/gi, bn(vars.orderNumber) || '১১৩৮০');
+    .replace(/\{\{\s*orderNumber\s*\}\}/gi, bn(vars.orderNumber) || '১১৩৮০')
+    .replace(/কনফার্ম/gi, 'নিশ্চিত');
 }
 
 export function dateRangeForPeriod(

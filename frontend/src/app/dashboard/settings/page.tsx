@@ -8,12 +8,13 @@ import {
   speakBangla,
   fillVoiceScript,
   getVoiceOption,
+  normalizeVoiceId,
 } from '@/lib/voice';
 import { cn } from '@/lib/utils';
 import { Pause, Play, Volume2, Check, User } from 'lucide-react';
 
 const DEFAULT_SCRIPT =
-  'হ্যালো {{customerName}}, আপনি {{storeName}}-এ অর্ডার করেছিলেন। যার মূল্য {{amount}} টাকা। অর্ডার নম্বর {{orderNumber}}। আপনার অর্ডারটি যদি কনফার্ম হয়, তাহলে এক চাপুন। বাতিল করতে দুই চাপুন।';
+  'হ্যালো {{customerName}}, আপনি {{storeName}}-এ অর্ডার করেছিলেন। যার মূল্য {{amount}} টাকা। অর্ডার নম্বর {{orderNumber}}। অর্ডারটি নিশ্চিত করতে এক চাপুন। বাতিল করতে দুই চাপুন।';
 
 export default function SettingsPage() {
   const [merchant, setMerchant] = useState<Partial<Merchant>>({});
@@ -29,9 +30,10 @@ export default function SettingsPage() {
       .then((m) => {
         setMerchant({
           ...m,
-          customGreeting: m.customGreeting?.trim() ? m.customGreeting : DEFAULT_SCRIPT,
-          // Default to most natural BD female voice
-          voiceId: m.voiceId || 'elevenlabs:Algieba',
+          customGreeting: m.customGreeting?.trim()
+            ? m.customGreeting.replace(/কনফার্ম/gi, 'নিশ্চিত')
+            : DEFAULT_SCRIPT,
+          voiceId: normalizeVoiceId(m.voiceId) || 'elevenlabs:Algieba',
         });
       })
       .catch(() => {
@@ -92,9 +94,36 @@ export default function SettingsPage() {
     }
   }
 
-  function selectVoice(voiceId: string) {
-    setMerchant({ ...merchant, voiceId });
+  async function selectVoice(voiceId: string) {
+    const next = { ...merchant, voiceId };
+    setMerchant(next);
     window.setTimeout(() => playScript(voiceId), 50);
+
+    // Immediately persist — otherwise real calls keep the old voice
+    setSaving(true);
+    setError('');
+    try {
+      const updated = await api.updateMerchant({
+        name: next.name,
+        storeNameBangla: next.storeNameBangla,
+        phone: next.phone,
+        customGreeting: next.customGreeting?.trim() || DEFAULT_SCRIPT,
+        voiceId,
+        maxCallRetries: next.maxCallRetries ?? 9,
+        retryIntervalMin: next.retryIntervalMin ?? 90,
+      });
+      setMerchant({
+        ...updated,
+        customGreeting: updated.customGreeting || DEFAULT_SCRIPT,
+        voiceId: updated.voiceId || voiceId,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch {
+      setError('ভয়েস সেভ হয়নি। আবার ক্লিক করুন বা নিচে সেভ চাপুন।');
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -224,7 +253,7 @@ export default function SettingsPage() {
             <div>
               <h3 className="section-title">AI ভয়েস বাছুন</h3>
               <p className="page-subtitle">
-                ডিফল্ট: <strong>Algieba</strong> — ManyDial-এর মতো একই ElevenLabs ভয়েস। কার্ডে ক্লিক করে শুনুন ও সেভ করুন।
+                কার্ডে ক্লিক করলেই ভয়েস সেভ হয় ও প্রিভিউ শোনায়। রিয়েল কলে সেই ভয়েসই যাবে — ইংরেজি প্রম্পট বন্ধ।
               </p>
             </div>
 

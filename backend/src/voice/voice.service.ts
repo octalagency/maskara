@@ -110,7 +110,7 @@ export class VoiceService {
       });
 
       this.logger.log(
-        `${provider.name} call initiated for order ${order.orderNumber}`,
+        `${provider.name} call initiated for order ${order.orderNumber} voice=${(merchant as { voiceId?: string | null }).voiceId || 'default'}`,
       );
       return call;
     } catch (error) {

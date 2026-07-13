@@ -4,21 +4,38 @@ export function toBanglaDigits(value: string | number | null | undefined): strin
   return String(value).replace(/\d/g, (d) => '০১২৩৪৫৬৭৮৯'[Number(d)] ?? d);
 }
 
-/** Strip Latin words / # that TTS often reads in English. */
+/**
+ * Remove English / Banglish so TTS never switches language mid-call.
+ */
 export function sanitizeBanglaSpeech(text: string): string {
-  return text
+  let out = text
     .replace(/#/g, '')
+    // Banglish → Bangla
+    .replace(/কনফার্ম|কনফার্মড|কনফার্মড|কনফারম/gi, 'নিশ্চিত')
+    .replace(/ক্যান্সেল|ক্যানসেল|ক্যানসেলড/gi, 'বাতিল')
+    .replace(/অর্ডারটি\s*যদি\s*নিশ্চিত\s*হয়/g, 'অর্ডারটি নিশ্চিত করতে')
+    // English phrases
     .replace(/\border\b/gi, 'অর্ডার')
-    .replace(/\bpress\s*one\b/gi, 'এক চাপুন')
-    .replace(/\bpress\s*1\b/gi, 'এক চাপুন')
-    .replace(/\bpress\s*two\b/gi, 'দুই চাপুন')
-    .replace(/\bpress\s*2\b/gi, 'দুই চাপুন')
-    .replace(/\bconfirm\b/gi, 'নিশ্চিত')
+    .replace(/\bpress\s*(?:one|1)\b/gi, 'এক চাপুন')
+    .replace(/\bpress\s*(?:two|2)\b/gi, 'দুই চাপুন')
+    .replace(/\bconfirm(?:ed)?\b/gi, 'নিশ্চিত')
     .replace(/\bcancel(?:led)?\b/gi, 'বাতিল')
     .replace(/\bthank you\b/gi, 'ধন্যবাদ')
+    .replace(/\bhello\b/gi, 'হ্যালো')
+    .replace(/\bhi\b/gi, 'হ্যালো')
     .replace(/\bwelcome\b/gi, '')
+    .replace(/\bplease\b/gi, '')
+    .replace(/\bcustomer\b/gi, 'গ্রাহক')
+    .replace(/\bredex\b/gi, 'রেডেক্স')
+    .replace(/\bpathao\b/gi, 'পাঠাও')
+    .replace(/\bcourier\b/gi, 'কুরিয়ার')
+    // Drop leftover Latin word runs (TTS often reads these in English)
+    .replace(/[A-Za-z][A-Za-z0-9+._-]{1,}/g, '')
     .replace(/\s+/g, ' ')
+    .replace(/\s+([।,?])/g, '$1')
     .trim();
+
+  return out;
 }
 
 export function buildOrderVerificationPrompt(params: {
@@ -26,7 +43,6 @@ export function buildOrderVerificationPrompt(params: {
   customerName?: string;
   orderNumber?: string;
   totalAmount?: number;
-  /** Merchant-written script. Supports {{storeName}} {{customerName}} {{orderNumber}} {{amount}} */
   customGreeting?: string | null;
 }): string {
   const store = params.storeName || 'স্টোর';
@@ -48,20 +64,19 @@ export function buildOrderVerificationPrompt(params: {
     return sanitizeBanglaSpeech(filled);
   }
 
-  // ManyDial-style natural Bangla COD script (হ্যালো + এক/দুই চাপুন)
   const namePart = name ? name : 'মাননীয় গ্রাহক';
   const amountPart = amount ? `${amount} টাকা` : 'অর্ডার';
   const orderPart = orderNumber ? ` অর্ডার নম্বর ${orderNumber}।` : '';
 
   return sanitizeBanglaSpeech(
     `হ্যালো ${namePart}, আপনি ${store}-এ অর্ডার করেছিলেন। যার মূল্য ${amountPart}।${orderPart} ` +
-      `আপনার অর্ডারটি যদি কনফার্ম হয়, তাহলে এক চাপুন। বাতিল করতে দুই চাপুন।`,
+      `অর্ডারটি নিশ্চিত করতে এক চাপুন। বাতিল করতে দুই চাপুন।`,
   );
 }
 
 /**
- * Voices available via ePBX TTS.
- * Default = ElevenLabs Algieba — same voice ManyDial demo uses (manydial.com).
+ * Voices via ePBX TTS.
+ * Default = ElevenLabs Algieba (ManyDial demo voice).
  */
 export const MERCHANT_VOICE_OPTIONS = [
   {
@@ -83,26 +98,25 @@ export const MERCHANT_VOICE_OPTIONS = [
     voiceId: 'bn-BD-PradeepNeural',
   },
   {
-    id: 'google_wavenet:bn-IN-Chirp3-HD-Algieba',
+    id: 'google:bn-IN-Chirp3-HD-Algieba',
     label: 'Chirp3 Algieba — Google HD',
-    provider: 'google_wavenet',
+    provider: 'google',
     voiceId: 'bn-IN-Chirp3-HD-Algieba',
   },
   {
-    id: 'google_wavenet:bn-IN-Wavenet-A',
+    id: 'google:bn-IN-Wavenet-A',
     label: 'Google WaveNet — নারী',
-    provider: 'google_wavenet',
+    provider: 'google',
     voiceId: 'bn-IN-Wavenet-A',
   },
   {
-    id: 'google_wavenet:bn-IN-Wavenet-B',
+    id: 'google:bn-IN-Wavenet-B',
     label: 'Google WaveNet — পুরুষ',
-    provider: 'google_wavenet',
+    provider: 'google',
     voiceId: 'bn-IN-Wavenet-B',
   },
 ] as const;
 
-/** Same voice as https://www.manydial.com/ demo (ElevenLabs Algieba). */
 export const DEFAULT_MERCHANT_VOICE_ID = 'elevenlabs:Algieba';
 
 export function parseMerchantVoice(voiceId?: string | null): {
@@ -110,13 +124,21 @@ export function parseMerchantVoice(voiceId?: string | null): {
   voiceId?: string;
 } {
   if (!voiceId?.includes(':')) return {};
-  const [provider, ...rest] = voiceId.split(':');
+  let [provider, ...rest] = voiceId.split(':');
   const id = rest.join(':');
   if (!provider || !id) return {};
+
+  // Normalize legacy / UI provider aliases for ePBX
+  if (provider === 'google_wavenet' || provider === 'google_cloud') {
+    provider = 'google';
+  }
+  if (provider === 'eleven_labs') {
+    provider = 'elevenlabs';
+  }
+
   return { provider, voiceId: id };
 }
 
-/** Always returns a usable voice (never empty object). */
 export function resolveMerchantVoice(voiceId?: string | null): {
   provider: string;
   voiceId: string;
