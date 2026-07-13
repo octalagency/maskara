@@ -130,10 +130,11 @@ export class GoogleTtsService {
   }
 
   getCached(id: string): { buf: Buffer; mime: string } | null {
-    const row = this.cache.get(id);
+    const clean = id.replace(/\.mp3$/i, '');
+    const row = this.cache.get(clean);
     if (!row) return null;
     if (row.expires < Date.now()) {
-      this.cache.delete(id);
+      this.cache.delete(clean);
       return null;
     }
     return { buf: row.buf, mime: row.mime };

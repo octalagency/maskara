@@ -6,8 +6,9 @@ export const VOICE_OPTIONS = [
     short: 'Algieba',
     gender: 'male' as const,
     provider: 'Google Chirp3',
-    description: 'সবচেয়ে প্রাকৃতিক — Google Cloud TTS API লাগবে',
+    description: 'সবচেয়ে প্রাকৃতিক — Google Cloud TTS দিয়ে প্রিভিউ ও কল',
     recommended: true,
+    requiresGoogleTts: true,
   },
   {
     id: 'azure:bn-BD-PradeepNeural',
@@ -15,8 +16,9 @@ export const VOICE_OPTIONS = [
     short: 'প্রদীপ',
     gender: 'male' as const,
     provider: 'Azure Neural',
-    description: 'বাংলাদেশি পুরুষ — ePBX-এ সরাসরি কাজ করে',
-    recommended: true,
+    description: 'বাংলাদেশি পুরুষ — ePBX ফলব্যাক',
+    recommended: false,
+    requiresGoogleTts: false,
   },
   {
     id: 'azure:bn-BD-NabanitaNeural',
@@ -26,12 +28,16 @@ export const VOICE_OPTIONS = [
     provider: 'Azure Neural',
     description: 'বাংলাদেশি নারী ভয়েস',
     recommended: false,
+    requiresGoogleTts: false,
   },
 ] as const;
 
 export type VoiceOption = (typeof VOICE_OPTIONS)[number];
 
-const DEFAULT_VOICE = 'google:bn-IN-Chirp3-HD-Algieba';
+export const GOOGLE_VOICE = 'google:bn-IN-Chirp3-HD-Algieba';
+export const AZURE_MALE_VOICE = 'azure:bn-BD-PradeepNeural';
+
+const DEFAULT_VOICE = GOOGLE_VOICE;
 
 export function normalizeVoiceId(voiceId?: string | null): string {
   if (!voiceId) return DEFAULT_VOICE;
@@ -44,6 +50,16 @@ export function normalizeVoiceId(voiceId?: string | null): string {
   if (/pradeep/i.test(voiceId)) return 'azure:bn-BD-PradeepNeural';
   if (/algieba|chirp3|elevenlabs/i.test(voiceId)) return 'google:bn-IN-Chirp3-HD-Algieba';
   return DEFAULT_VOICE;
+}
+
+/** Hide Chirp3 when Google TTS key is not configured. */
+export function voiceOptionsForConfig(googleTtsConfigured?: boolean): VoiceOption[] {
+  if (googleTtsConfigured === false) {
+    return VOICE_OPTIONS.filter((v) => !('requiresGoogleTts' in v && v.requiresGoogleTts)).map(
+      (v, i) => (i === 0 ? { ...v, recommended: true } : { ...v, recommended: false }),
+    ) as unknown as VoiceOption[];
+  }
+  return [...VOICE_OPTIONS] as unknown as VoiceOption[];
 }
 
 export function voiceLabel(voiceId?: string | null) {
