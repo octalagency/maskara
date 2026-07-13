@@ -113,9 +113,12 @@ class Maskara_Settings {
         ?>
         <div class="wrap maskara-wrap">
             <h1>Maskara Settings <span style="font-size:14px;font-weight:600;color:#2271b1;background:#f0f6fc;padding:4px 10px;border-radius:4px;vertical-align:middle;">v<?php echo esc_html(MASKARA_VERSION); ?></span></h1>
-            <p>Order → Maskara AI call → Confirm হলে Completed + Pathao dispatch → Dashboard-এ delivery / in-transit / return / success rate.</p>
-            <?php if (version_compare(MASKARA_VERSION, '1.5.0', '<')) : ?>
-                <div class="notice notice-error"><p><strong>পুরনো plugin!</strong> v1.5.0+ install করুন — Plugins → Maskara Deactivate → Delete → নতুন zip upload।</p></div>
+            <p>Order → Maskara AI call → Confirm হলে Completed + Pathao dispatch → কুরিয়ার Cancel হলে WooCommerce-ও Cancelled।</p>
+            <?php if (!empty($_GET['maskara_sync'])) : ?>
+                <div class="notice notice-success is-dismissible"><p><?php echo esc_html(wp_unslash((string) $_GET['maskara_sync'])); ?></p></div>
+            <?php endif; ?>
+            <?php if (version_compare(MASKARA_VERSION, '1.5.5', '<')) : ?>
+                <div class="notice notice-error"><p><strong>পুরনো plugin!</strong> v1.5.5+ install করুন — Pickup Cancel sync + কঠোর ঠিকানা চেক।</p></div>
             <?php endif; ?>
 
             <?php if ($connected) : ?>
@@ -149,7 +152,12 @@ class Maskara_Settings {
                 </table>
 
                 <h2>2) Pathao Courier</h2>
-                <p>Maskara call confirm হলে automatically Pathao-তে order submit হবে। Status hourly sync হবে Dashboard-এ।</p>
+                <p>Confirm হলে Pathao-তে যাবে। <strong>Pickup Cancel</strong> হলে প্রতি ~৫ মিনিটে WooCommerce Cancelled হবে। ভুল/ছোট ঠিকানায় কুরিয়ার যাবে না।</p>
+                <p>
+                    <a class="button button-secondary" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=maskara_sync_couriers'), 'maskara_sync_couriers')); ?>">
+                        এখনই কুরিয়ার স্ট্যাটাস সিঙ্ক করুন
+                    </a>
+                </p>
                 <table class="form-table">
                     <tr>
                         <th>Enable Pathao</th>

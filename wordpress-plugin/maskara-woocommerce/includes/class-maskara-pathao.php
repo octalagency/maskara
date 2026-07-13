@@ -39,23 +39,36 @@ class Maskara_Pathao {
             );
         };
 
-        if ($name === '' || mb_strlen($name) < 2) {
-            return $invalid('ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি — প্রাপকের নাম নেই।');
+        $junk = array(
+            'n/a', 'na', 'nil', 'none', 'test', 'testing', 'asdf', 'xxx', 'xyz',
+            'address', 'ঠিকানা', '...', '..', '.', '-', '--', '0', '00',
+            'bangladesh', 'bd', 'dhaka', 'demo', 'sample', 'customer', 'user',
+            'abc', 'abcd', 'qwerty', 'unknown', 'নাম', 'নাই',
+        );
+
+        $name_c = strtolower(preg_replace('/\s+/u', '', $name));
+        if ($name === '' || mb_strlen($name) < 3) {
+            return $invalid('ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি — প্রাপকের নাম নেই বা খুব ছোট।');
+        }
+        foreach ($junk as $j) {
+            if ($name_c === $j) {
+                return $invalid('ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি — প্রাপকের নাম সঠিক নয় (যেমন Test)।');
+            }
         }
 
-        if ($line1 === '' || mb_strlen($line1) < 8) {
-            return $invalid('ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি — বিস্তারিত রোড/বাড়ির ঠিকানা নেই।');
+        if ($line1 === '' || mb_strlen($line1) < 12) {
+            return $invalid('ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি — বিস্তারিত রোড/বাড়ির ঠিকানা নেই (কমপক্ষে ১২ অক্ষর)।');
         }
 
-        if (mb_strlen($address) < 15) {
+        // City or area/zone required — Pathao often shows Area N/A otherwise
+        if ($city === '' && $state === '') {
+            return $invalid('ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি — শহর/এলাকা (City) নেই।');
+        }
+
+        if (mb_strlen($address) < 20) {
             return $invalid('ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি — ঠিকানা খুব ছোট বা অসম্পূর্ণ।');
         }
 
-        $junk = array(
-            'n/a', 'na', 'nil', 'none', 'test', 'asdf', 'xxx', 'xyz',
-            'address', 'ঠিকানা', '...', '..', '.', '-', '--', '0', '00',
-            'bangladesh', 'bd', 'dhaka',
-        );
         $compact = strtolower(preg_replace('/\s+/u', '', $address));
         $line1c  = strtolower(preg_replace('/\s+/u', '', $line1));
         foreach ($junk as $j) {
@@ -66,11 +79,20 @@ class Maskara_Pathao {
 
         // Mostly symbols / digits without real street text
         $letters = preg_replace('/[^\p{L}\p{N}\s]/u', '', $line1);
-        if (mb_strlen(trim($letters)) < 6) {
+        if (mb_strlen(trim($letters)) < 8) {
             return $invalid('ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি — ঠিকানায় অর্থপূর্ণ লেখা নেই।');
         }
 
-        // Garbled: very few letters relative to length, or repeated chars
+        // Need at least 2 address parts (house/road + area) — single village name is too vague
+        $parts = preg_split('/[,،\-\|\/]+/u', $line1);
+        $parts = array_values(array_filter(array_map('trim', $parts ?: array()), function ($p) {
+            return $p !== '' && mb_strlen($p) >= 2;
+        }));
+        if (count($parts) < 2 && mb_strlen($line1) < 25) {
+            return $invalid('ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি — বাড়ি/রোড ও এলাকা আলাদা করে লিখুন।');
+        }
+
+        // Garbled: repeated chars
         if (preg_match('/(.)\1{5,}/u', $line1)) {
             return $invalid('ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি — ঠিকানা উল্টাপাল্টা/ভুল মনে হচ্ছে।');
         }
@@ -241,8 +263,14 @@ class Maskara_Pathao {
             );
         }
 
-        $data       = $body['data'] ?? array();
-        $raw_status = $data['order_status'] ?? 'pending';
+        $data = $body['data'] ?? array();
+        // Prefer slug when present (e.g. pickup_cancelled); else human label (Pickup Cancel)
+        $raw_status = (string) (
+            $data['order_status_slug']
+            ?? $data['order_status']
+            ?? $data['status']
+            ?? 'pending'
+        );
         $normalized = Maskara_Shipments::normalize_pathao_status($raw_status);
 
         return array(

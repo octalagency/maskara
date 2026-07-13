@@ -111,6 +111,10 @@ class Maskara_Shipments {
 
     public static function normalize_pathao_status($raw) {
         $raw = strtolower(trim((string) $raw));
+        // Pathao UI / API variants: "Pickup Cancel", "pickup-cancelled", "Pickup_Cancel"
+        $raw = str_replace(array('-', ' '), '_', $raw);
+        $raw = preg_replace('/_+/', '_', $raw);
+
         $normalized = array(
             self::STATUS_PENDING,
             self::STATUS_PROCESSING,
@@ -124,21 +128,36 @@ class Maskara_Shipments {
         if (in_array($raw, $normalized, true)) {
             return $raw;
         }
+
+        // Any cancel-like Pathao status (Pickup Cancel is the common merchant-panel label)
+        if (
+            strpos($raw, 'cancel') !== false
+            || strpos($raw, 'canceled') !== false
+        ) {
+            return self::STATUS_CANCELLED;
+        }
+
         $map = array(
             'pickup_requested'          => self::STATUS_PROCESSING,
             'assigned_for_pickup'       => self::STATUS_PROCESSING,
+            'accepted'                  => self::STATUS_PROCESSING,
+            'pending'                   => self::STATUS_PENDING,
             'picked'                    => self::STATUS_IN_TRANSIT,
+            'pickup_failed'             => self::STATUS_HOLD,
             'at_the_sorting_hub'        => self::STATUS_IN_TRANSIT,
             'in_transit'                => self::STATUS_IN_TRANSIT,
             'received_at_last_mile_hub' => self::STATUS_IN_TRANSIT,
             'assigned_for_delivery'     => self::STATUS_IN_TRANSIT,
             'delivered'                 => self::STATUS_DELIVERED,
             'partial_delivery'          => self::STATUS_DELIVERED,
+            'partial_delivered'         => self::STATUS_DELIVERED,
             'returned'                  => self::STATUS_RETURNED,
+            'return_requested'          => self::STATUS_RETURNED,
             'paid_return'               => self::STATUS_PAID_RETURN,
             'exchanged'                 => self::STATUS_DELIVERED,
             'on_hold'                   => self::STATUS_HOLD,
-            'cancelled'                 => self::STATUS_CANCELLED,
+            'hold'                      => self::STATUS_HOLD,
+            'delivery_failed'           => self::STATUS_HOLD,
         );
         return $map[$raw] ?? self::STATUS_PROCESSING;
     }

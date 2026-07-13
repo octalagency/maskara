@@ -81,12 +81,14 @@ PY
 
 mkdir -p "$DOWNLOADS_DIR"
 cp -f "$ROOT/maskara-woocommerce-$VERSION.zip" "$DOWNLOADS_DIR/maskara-woocommerce.zip"
-cp -f "$UPDATE_JSON" "$DOWNLOADS_DIR/maskara-woocommerce-update.json"
+if [ "$UPDATE_JSON" != "$DOWNLOADS_DIR/maskara-woocommerce-update.json" ]; then
+  cp -f "$UPDATE_JSON" "$DOWNLOADS_DIR/maskara-woocommerce-update.json"
+fi
 cp -f "$DOWNLOADS_DIR/maskara-woocommerce.zip" "$PUBLIC_DIR/maskara-woocommerce.zip"
 cp -f "$DOWNLOADS_DIR/maskara-woocommerce.zip" "$PUBLIC_DIR/maskara-woocommerce-$VERSION.zip"
 
 # Keep legacy URLs serving the latest full package.
-for legacy in 1.1.0 1.2.0 1.4.0 1.5.0 1.5.1 1.5.2; do
+for legacy in 1.1.0 1.2.0 1.4.0 1.5.0 1.5.1 1.5.2 1.5.3 1.5.4; do
   cp -f "$DOWNLOADS_DIR/maskara-woocommerce.zip" "$PUBLIC_DIR/maskara-woocommerce-$legacy.zip"
 done
 
