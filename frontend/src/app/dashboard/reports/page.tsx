@@ -82,8 +82,8 @@ export default function ReportsPage() {
       <div className="space-y-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="font-display text-2xl font-bold text-slate-900">রিপোর্ট</h2>
-            <p className="mt-1 max-w-2xl text-sm text-slate-500">
+            <h2 className="page-title">রিপোর্ট</h2>
+            <p className="page-subtitle">
               কত অর্ডার এসেছে, কত ভেরিফাই হয়েছে, কত কল হয়েছে — সহজে বোঝার মতো সারাংশ।
             </p>
           </div>

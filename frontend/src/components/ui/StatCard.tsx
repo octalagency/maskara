@@ -23,25 +23,26 @@ export function StatCard({ title, value, icon: Icon, change, trend, color = 'bra
   };
 
   return (
-    <div className="card relative overflow-hidden p-5">
-      <div className="absolute -right-4 -top-4 h-20 w-20 rounded-full bg-slate-50/80" />
-      <div className="relative flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{title}</p>
-          <p className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-900">{value}</p>
+    <div className="card p-4 sm:p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="label-muted">{title}</p>
+          <p className="mt-1.5 font-latin text-[28px] font-bold leading-none tracking-tight text-slate-900">
+            {value}
+          </p>
           {change && (
             <p
               className={cn(
-                'mt-1 text-xs font-medium',
+                'mt-2 text-[12px] font-medium',
                 trend === 'up' ? 'text-emerald-600' : trend === 'down' ? 'text-rose-600' : 'text-slate-500',
               )}
             >
               {change}
             </p>
           )}
-          {hint && <p className="mt-1 text-xs text-slate-400">{hint}</p>}
+          {hint && <p className="mt-1.5 text-[12px] text-slate-400">{hint}</p>}
         </div>
-        <div className={cn('rounded-2xl p-3', colorMap[color])}>
+        <div className={cn('rounded-xl p-2.5', colorMap[color])}>
           <Icon className="h-5 w-5" />
         </div>
       </div>

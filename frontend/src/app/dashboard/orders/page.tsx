@@ -67,8 +67,8 @@ export default function OrdersPage() {
       <div className="space-y-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h2 className="font-display text-2xl font-bold text-slate-900">অর্ডার</h2>
-            <p className="text-sm text-slate-500">
+            <h2 className="page-title">অর্ডার</h2>
+            <p className="page-subtitle">
               সময় অনুযায়ী ফিল্টার করুন · {total} টি অর্ডার
             </p>
           </div>

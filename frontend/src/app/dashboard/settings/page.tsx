@@ -102,8 +102,8 @@ export default function SettingsPage() {
     <DashboardLayout>
       <div className="mx-auto max-w-2xl space-y-6">
         <div>
-          <h2 className="font-display text-2xl font-bold text-slate-900">সেটিংস</h2>
-          <p className="text-sm text-slate-500">স্টোর ও AI কল ভয়েস — কাস্টমার যা শুনবে</p>
+          <h2 className="page-title">সেটিংস</h2>
+          <p className="page-subtitle">স্টোর ও AI কল ভয়েস — কাস্টমার যা শুনবে</p>
         </div>
 
         <form onSubmit={handleSave} className="card space-y-5">

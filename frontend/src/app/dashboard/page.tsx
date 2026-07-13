@@ -42,7 +42,7 @@ export default function DashboardPage() {
       setStats(s);
       setReport(Array.isArray(r) ? r : []);
       setMerchant(m);
-      if (!s) setError('স্ট্যাটস লোড হয়নি — API চালু আছে কিনা চেক করুন।');
+      if (!s) setError('স্ট্যাটস লোড হয়নি। API চালু আছে কিনা চেক করুন।');
       setLoading(false);
     });
   }, []);
@@ -67,61 +67,73 @@ export default function DashboardPage() {
     totalCalls: 0,
   };
 
+  const storeName = merchant?.storeNameBangla || merchant?.name || 'আপনার স্টোর';
+  const voice = voiceShort(merchant?.voiceId);
+
   return (
     <DashboardLayout>
-      <div className="space-y-8">
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-brand-950 to-brand-800 p-6 text-white sm:p-8">
-          <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-brand-400/20 blur-2xl" />
-          <div className="absolute bottom-0 left-1/3 h-32 w-32 rounded-full bg-sky-400/10 blur-2xl" />
-          <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-sm font-medium text-brand-200">আজকের ওভারভিউ</p>
-              <h2 className="mt-1 font-display text-3xl font-bold tracking-tight">
-                {merchant?.storeNameBangla || merchant?.name || 'আপনার স্টোর'}
-              </h2>
-              <p className="mt-2 max-w-xl text-sm text-slate-300">
-                কাস্টমারকে যে ভয়েসে কল যাচ্ছে:{' '}
-                <span className="font-semibold text-white">{voiceShort(merchant?.voiceId)}</span>
-                . অর্ডার আসলে AI বাংলায় ভেরিফাই করে।
+      <div className="mx-auto max-w-6xl space-y-6">
+        <section className="overflow-hidden rounded-2xl bg-slate-900 p-5 text-white sm:p-7">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-2xl">
+              <p className="text-[13px] font-medium text-brand-200">আজকের সারাংশ</p>
+              <h2 className="mt-1 text-[26px] font-bold leading-snug sm:text-[30px]">{storeName}</h2>
+              <p className="mt-2 text-[14px] leading-relaxed text-slate-300">
+                কাস্টমার যে ভয়েস শুনছে: <span className="font-semibold text-white">{voice}</span>।
+                নতুন অর্ডার এলে AI বাংলায় কল করে ভেরিফাই করে।
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Link href="/dashboard/orders" className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900">
+              <Link
+                href="/dashboard/orders"
+                className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-[14px] font-semibold text-slate-900"
+              >
                 অর্ডার দেখুন <ArrowRight className="h-4 w-4" />
               </Link>
-              <Link href="/dashboard/settings" className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white ring-1 ring-white/20 hover:bg-white/15">
+              <Link
+                href="/dashboard/settings"
+                className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/5 px-4 py-2.5 text-[14px] font-semibold text-white hover:bg-white/10"
+              >
                 <Mic2 className="h-4 w-4" /> ভয়েস সেটআপ
               </Link>
             </div>
           </div>
-        </div>
+        </section>
 
         {error && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{error}</div>
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[14px] text-amber-800">
+            {error}
+          </div>
         )}
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <StatCard title="মোট অর্ডার" value={s.totalOrders} icon={ShoppingCart} color="blue" />
           <StatCard title="ভেরিফাইড" value={s.verifiedOrders} icon={CheckCircle} color="green" />
           <StatCard title="বাতিল" value={s.cancelledOrders} icon={XCircle} color="red" />
           <StatCard title="পেন্ডিং" value={s.pendingOrders} icon={Clock} color="amber" />
           <StatCard title="আজকের অর্ডার" value={s.todayOrders} icon={TrendingUp} color="brand" />
-          <StatCard title="কল সাকসেস" value={`${s.callSuccessRate}%`} icon={Phone} color="green" hint={`${s.totalCalls} কল`} />
-        </div>
+          <StatCard
+            title="কল সাকসেস"
+            value={`${s.callSuccessRate}%`}
+            icon={Phone}
+            color="green"
+            hint={`${s.totalCalls} টি কল`}
+          />
+        </section>
 
-        <div className="card">
-          <div className="flex flex-wrap items-end justify-between gap-3">
+        <section className="card">
+          <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h3 className="font-display text-lg font-bold text-slate-900">শেষ ১৪ দিনের অর্ডার</h3>
-              <p className="text-sm text-slate-500">রিসিভড · ভেরিফাইড · বাতিল</p>
+              <h3 className="section-title">শেষ ১৪ দিনের অর্ডার</h3>
+              <p className="page-subtitle mt-0.5">রিসিভড · ভেরিফাইড · বাতিল</p>
             </div>
-            <Link href="/dashboard/reports" className="text-sm font-semibold text-brand-600 hover:text-brand-700">
+            <Link href="/dashboard/reports" className="text-[13px] font-semibold text-brand-600 hover:text-brand-700">
               পূর্ণ রিপোর্ট →
             </Link>
           </div>
-          <div className="mt-6 h-80">
+          <div className="h-72 sm:h-80">
             {report.length === 0 ? (
-              <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-500">
+              <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-[14px] text-slate-500">
                 এখনো ডেটা নেই — অর্ডার এলে চার্ট দেখাবে।
               </div>
             ) : (
@@ -129,11 +141,11 @@ export default function DashboardPage() {
                 <AreaChart data={report}>
                   <defs>
                     <linearGradient id="recv" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#1a82f5" stopOpacity={0.35} />
+                      <stop offset="0%" stopColor="#1a82f5" stopOpacity={0.28} />
                       <stop offset="100%" stopColor="#1a82f5" stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="ver" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
+                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.25} />
                       <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
                     </linearGradient>
                   </defs>
@@ -148,7 +160,7 @@ export default function DashboardPage() {
               </ResponsiveContainer>
             )}
           </div>
-        </div>
+        </section>
       </div>
     </DashboardLayout>
   );

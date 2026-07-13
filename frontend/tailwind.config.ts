@@ -20,8 +20,9 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
-        display: ['Syne', 'Plus Jakarta Sans', 'sans-serif'],
+        sans: ['Noto Sans Bengali', 'Hind Siliguri', 'system-ui', 'sans-serif'],
+        display: ['Noto Sans Bengali', 'Hind Siliguri', 'system-ui', 'sans-serif'],
+        latin: ['ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
       },
     },
   },

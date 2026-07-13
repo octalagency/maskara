@@ -36,73 +36,78 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex min-h-screen bg-[#f4f7fb]">
+    <div className="flex min-h-screen bg-[#f3f6fa]">
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 w-64 transform border-r border-slate-200/80 bg-white transition-transform lg:static lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-50 flex w-[240px] flex-col border-r border-slate-200/80 bg-white transition-transform lg:static lg:translate-x-0',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        <div className="flex h-16 items-center gap-2.5 border-b border-slate-100 px-5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 shadow-sm">
+        <div className="flex h-[64px] items-center gap-3 border-b border-slate-100 px-5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-600">
             <Phone className="h-4 w-4 text-white" />
           </div>
-          <div>
-            <span className="font-display text-lg font-bold tracking-tight text-slate-900">Maskara</span>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Merchant</p>
+          <div className="min-w-0">
+            <p className="font-latin text-[16px] font-bold text-slate-900">Maskara</p>
+            <p className="text-[12px] text-slate-500">মার্চেন্ট প্যানেল</p>
           </div>
-          <button className="ml-auto lg:hidden" onClick={() => setSidebarOpen(false)}>
+          <button type="button" className="ml-auto rounded-lg p-1 text-slate-400 lg:hidden" onClick={() => setSidebarOpen(false)}>
             <X className="h-5 w-5" />
           </button>
         </div>
-        <nav className="space-y-0.5 p-3">
+
+        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
           {navItems.map((item) => {
-            const active = pathname === item.href;
+            const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 onClick={() => setSidebarOpen(false)}
                 className={cn(
-                  'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition',
+                  'flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-medium transition',
                   active
-                    ? 'bg-brand-50 text-brand-700 shadow-sm ring-1 ring-brand-100'
-                    : 'text-slate-600 hover:bg-slate-50',
+                    ? 'bg-brand-50 text-brand-700'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',
                 )}
               >
-                <item.icon className={cn('h-4.5 w-4.5', active ? 'text-brand-600' : 'text-slate-400')} />
-                {item.label}
+                <item.icon className={cn('h-[18px] w-[18px] shrink-0', active ? 'text-brand-600' : 'text-slate-400')} />
+                <span className="leading-none">{item.label}</span>
               </Link>
             );
           })}
+        </nav>
+
+        <div className="border-t border-slate-100 p-3">
           <button
+            type="button"
             onClick={() => {
               localStorage.removeItem('token');
               window.location.href = '/login';
             }}
-            className="mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-rose-600 hover:bg-rose-50"
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-medium text-rose-600 hover:bg-rose-50"
           >
-            <LogOut className="h-4 w-4" />
+            <LogOut className="h-[18px] w-[18px]" />
             লগআউট
           </button>
-        </nav>
+        </div>
       </aside>
 
-      <div className="flex flex-1 flex-col">
-        <header className="flex h-16 items-center border-b border-slate-200/80 bg-white/80 px-4 backdrop-blur lg:px-8">
-          <button className="mr-4 lg:hidden" onClick={() => setSidebarOpen(true)}>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-30 flex h-[64px] items-center border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur lg:px-8">
+          <button type="button" className="mr-3 rounded-lg p-1 text-slate-600 lg:hidden" onClick={() => setSidebarOpen(true)}>
             <Menu className="h-6 w-6" />
           </button>
           <div>
-            <h1 className="font-display text-lg font-bold text-slate-900">Merchant Dashboard</h1>
-            <p className="hidden text-xs text-slate-400 sm:block">AI voice দিয়ে COD অর্ডার ভেরিফিকেশন</p>
+            <h1 className="text-[16px] font-bold text-slate-900 sm:text-[17px]">মার্চেন্ট ড্যাশবোর্ড</h1>
+            <p className="hidden text-[12px] text-slate-500 sm:block">AI ভয়েস দিয়ে COD অর্ডার ভেরিফিকেশন</p>
           </div>
         </header>
-        <main className="flex-1 p-4 lg:p-8">{children}</main>
+        <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
       </div>
 
       {sidebarOpen && (
-        <div className="fixed inset-0 z-40 bg-black/30 lg:hidden" onClick={() => setSidebarOpen(false)} />
+        <div className="fixed inset-0 z-40 bg-slate-900/40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
     </div>
   );
