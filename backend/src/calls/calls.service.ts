@@ -37,7 +37,6 @@ export class CallsService {
           name: true,
           storeNameBangla: true,
           customGreeting: true,
-          voiceId: true,
         },
       }),
       this.prisma.call.findMany({
@@ -59,7 +58,17 @@ export class CallsService {
       this.prisma.call.count({ where }),
     ]);
 
-    const voiceId = merchant?.voiceId || DEFAULT_MERCHANT_VOICE_ID;
+    // Read voiceId via raw SQL so builds don't fail if Prisma client types are stale
+    let savedVoiceId: string | null = null;
+    try {
+      const rows = await this.prisma.$queryRaw<Array<{ voiceId: string | null }>>`
+        SELECT "voiceId" FROM "Merchant" WHERE id = ${merchantId} LIMIT 1
+      `;
+      savedVoiceId = rows[0]?.voiceId ?? null;
+    } catch {
+      savedVoiceId = null;
+    }
+    const voiceId = savedVoiceId || DEFAULT_MERCHANT_VOICE_ID;
     const voiceMeta =
       MERCHANT_VOICE_OPTIONS.find((v) => v.id === voiceId) || MERCHANT_VOICE_OPTIONS[0];
     const storeName = merchant?.storeNameBangla || merchant?.name || 'স্টোর';

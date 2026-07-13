@@ -86,6 +86,19 @@ export class VoiceService {
 
     const storeName = merchant.storeNameBangla || merchant.name;
 
+    let merchantVoiceId: string | null =
+      (merchant as { voiceId?: string | null }).voiceId ?? null;
+    if (!merchantVoiceId) {
+      try {
+        const rows = await this.prisma.$queryRaw<Array<{ voiceId: string | null }>>`
+          SELECT "voiceId" FROM "Merchant" WHERE id = ${merchantId} LIMIT 1
+        `;
+        merchantVoiceId = rows[0]?.voiceId ?? null;
+      } catch {
+        merchantVoiceId = null;
+      }
+    }
+
     try {
       const result = await provider.initiateCall({
         callId: call.id,
@@ -96,7 +109,7 @@ export class VoiceService {
         totalAmount: Number(order.totalAmount),
         merchantId,
         customGreeting: merchant.customGreeting,
-        voiceId: (merchant as { voiceId?: string | null }).voiceId,
+        voiceId: merchantVoiceId,
       });
 
       await this.prisma.call.update({
@@ -110,7 +123,7 @@ export class VoiceService {
       });
 
       this.logger.log(
-        `${provider.name} call initiated for order ${order.orderNumber} voice=${(merchant as { voiceId?: string | null }).voiceId || 'default'}`,
+        `${provider.name} call initiated for order ${order.orderNumber} voice=${merchantVoiceId || 'default'}`,
       );
       return call;
     } catch (error) {

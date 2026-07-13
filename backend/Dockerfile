@@ -7,7 +7,13 @@ COPY prisma ./prisma/
 RUN npm install
 
 COPY . .
-RUN npx prisma generate
+
+# Always regenerate client from the FINAL schema (bust stale types)
+RUN test -f prisma/schema.prisma \
+  && grep -q 'voiceId' prisma/schema.prisma \
+  && npx prisma generate --schema=./prisma/schema.prisma \
+  && grep -q 'voiceId' node_modules/.prisma/client/index.d.ts
+
 RUN npm run build
 RUN ls -la dist && test -f dist/main.js
 
@@ -31,7 +37,12 @@ COPY scripts ./scripts/
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
 
-RUN ./node_modules/.bin/prisma --version && test -f dist/main.js && test -f dist/worker.js
+# Regenerate again in production image so runtime client matches schema
+RUN npx prisma generate --schema=./prisma/schema.prisma \
+  && grep -q 'voiceId' node_modules/.prisma/client/index.d.ts \
+  && ./node_modules/.bin/prisma --version \
+  && test -f dist/main.js \
+  && test -f dist/worker.js
 
 EXPOSE 4000
 
