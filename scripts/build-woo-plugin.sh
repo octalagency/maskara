@@ -52,7 +52,7 @@ manifest = {
     "tested": "6.7",
     "requires_php": "7.4",
     "description": "AI voice order verification for WooCommerce. Confirm sets Completed + Pathao auto-deploy. Miss/cancel sets Cancelled.",
-    "changelog": f"<h4>{version}</h4><ul><li>Latest Maskara WooCommerce plugin release</li></ul>",
+    "changelog": f"<h4>{version}</h4><ul><li>ঠিকানা ঠিক হলে Pathao তে অটো-ডিপ্লয়</li><li>Orders লিস্টে ম্যানুয়াল «Pathao তে পাঠান» বাটন</li><li>Shipping+Billing ঠিকানা একসাথে যাচাই (City মিস হওয়া ফিক্স)</li></ul>",
 }
 update_json.parent.mkdir(parents=True, exist_ok=True)
 update_json.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
