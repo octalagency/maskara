@@ -104,6 +104,7 @@ class Maskara_Order_Columns {
         if ($status === '') {
             $status = (string) $order->get_meta('_maskara_pathao_status');
         }
+        $block_reason = (string) $order->get_meta('_maskara_courier_block_reason');
 
         $verify = strtolower((string) $order->get_meta('_maskara_verify_status'));
         if ($status === '' && !in_array($verify, array('verified', 'confirmed'), true)) {
@@ -114,14 +115,16 @@ class Maskara_Order_Columns {
         }
 
         $map = array(
-            'pending'    => array('label' => 'Processing', 'class' => 'msk-courier-processing'),
-            'processing' => array('label' => 'Processing', 'class' => 'msk-courier-processing'),
-            'in_transit' => array('label' => 'In Transit', 'class' => 'msk-courier-transit'),
-            'delivered'  => array('label' => 'Delivered', 'class' => 'msk-courier-delivered'),
-            'returned'   => array('label' => 'Return', 'class' => 'msk-courier-return'),
-            'paid_return'=> array('label' => 'Return', 'class' => 'msk-courier-return'),
-            'cancelled'  => array('label' => 'Cancelled', 'class' => 'msk-cancelled'),
-            'hold'       => array('label' => 'Hold', 'class' => 'msk-pending'),
+            'pending'          => array('label' => 'Processing', 'class' => 'msk-courier-processing'),
+            'processing'       => array('label' => 'Processing', 'class' => 'msk-courier-processing'),
+            'in_transit'       => array('label' => 'In Transit', 'class' => 'msk-courier-transit'),
+            'delivered'        => array('label' => 'Delivered', 'class' => 'msk-courier-delivered'),
+            'returned'         => array('label' => 'Return', 'class' => 'msk-courier-return'),
+            'paid_return'      => array('label' => 'Return', 'class' => 'msk-courier-return'),
+            'cancelled'        => array('label' => 'Cancelled', 'class' => 'msk-cancelled'),
+            'hold'             => array('label' => 'Hold', 'class' => 'msk-pending'),
+            'failed'           => array('label' => 'Failed', 'class' => 'msk-failed'),
+            'address_invalid'  => array('label' => 'ঠিকানা ভুল', 'class' => 'msk-address-bad'),
         );
 
         $info = $map[strtolower($status)] ?? array(
@@ -129,7 +132,23 @@ class Maskara_Order_Columns {
             'class' => 'msk-courier-processing',
         );
 
-        return '<span class="msk-badge ' . esc_attr($info['class']) . '">' . esc_html($info['label']) . '</span>';
+        $title = $block_reason !== ''
+            ? $block_reason
+            : ($status === 'address_invalid'
+                ? 'ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি'
+                : $info['label']);
+
+        $html = '<span class="msk-badge ' . esc_attr($info['class']) . '" title="' . esc_attr($title) . '">'
+            . esc_html($info['label']) . '</span>';
+
+        if ($status === 'address_invalid' || $block_reason !== '') {
+            $reason = $block_reason !== ''
+                ? $block_reason
+                : 'ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি';
+            $html .= '<div class="msk-courier-reason">' . esc_html($reason) . '</div>';
+        }
+
+        return $html;
     }
 
     /** Persist Maskara fields from webhook payload. */
@@ -187,6 +206,8 @@ class Maskara_Order_Columns {
             .msk-courier-transit{color:#0e7490;background:#cffafe}
             .msk-courier-delivered{color:#15803d;background:#bbf7d0}
             .msk-courier-return{color:#c2410c;background:#ffedd5}
+            .msk-address-bad{color:#9f1239;background:#ffe4e6}
+            .msk-courier-reason{margin-top:4px;max-width:180px;font-size:10px;line-height:1.35;color:#9f1239;font-weight:500}
             .msk-calls{font-weight:600;color:#0f172a}
             .msk-calls .msk-muted{font-weight:400;color:#94a3b8}
         </style>';

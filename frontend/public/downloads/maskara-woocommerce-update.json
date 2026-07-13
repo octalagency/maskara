@@ -1,12 +1,12 @@
 {
   "name": "Maskara Order Verification",
   "slug": "maskara-woocommerce",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "download_url": "https://app.maskara.bd/downloads/maskara-woocommerce.zip",
   "homepage": "https://maskara.bd",
   "requires": "5.8",
   "tested": "6.7",
   "requires_php": "7.4",
   "description": "AI voice order verification for WooCommerce. Confirm sets Completed + Pathao auto-deploy. Miss/cancel sets Cancelled.",
-  "changelog": "<h4>1.5.3</h4><ul><li>Version badge on Settings page</li><li>Manual replace required from v1.2.x and older (no auto-update on old builds)</li></ul><h4>1.5.2</h4><ul><li>WordPress-safe zip packaging</li><li>All download URLs serve full package</li></ul>"
+  "changelog": "<h4>1.5.4</h4><ul><li>Latest Maskara WooCommerce plugin release</li></ul>"
 }

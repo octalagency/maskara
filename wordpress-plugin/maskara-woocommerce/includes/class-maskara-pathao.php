@@ -14,6 +14,78 @@ class Maskara_Pathao {
             && get_option('maskara_pathao_store_id');
     }
 
+    /**
+     * Validate Bangladesh delivery address before Pathao deploy.
+     * Returns cleaned address string or WP_Error with Bangla reason.
+     *
+     * @param WC_Order $order
+     * @return string|WP_Error
+     */
+    public static function validate_delivery_address(WC_Order $order) {
+        $line1 = trim((string) $order->get_billing_address_1());
+        $line2 = trim((string) $order->get_billing_address_2());
+        $city  = trim((string) $order->get_billing_city());
+        $state = trim((string) $order->get_billing_state());
+        $name  = trim((string) $order->get_formatted_billing_full_name());
+        $phone = preg_replace('/\D+/', '', (string) $order->get_billing_phone());
+
+        $address = trim(implode(', ', array_filter(array($line1, $line2, $city, $state))));
+
+        $invalid = function ($reason) {
+            return new WP_Error(
+                'maskara_bad_address',
+                $reason,
+                array('code' => 'address_invalid')
+            );
+        };
+
+        if ($name === '' || mb_strlen($name) < 2) {
+            return $invalid('ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি — প্রাপকের নাম নেই।');
+        }
+
+        if ($line1 === '' || mb_strlen($line1) < 8) {
+            return $invalid('ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি — বিস্তারিত রোড/বাড়ির ঠিকানা নেই।');
+        }
+
+        if (mb_strlen($address) < 15) {
+            return $invalid('ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি — ঠিকানা খুব ছোট বা অসম্পূর্ণ।');
+        }
+
+        $junk = array(
+            'n/a', 'na', 'nil', 'none', 'test', 'asdf', 'xxx', 'xyz',
+            'address', 'ঠিকানা', '...', '..', '.', '-', '--', '0', '00',
+            'bangladesh', 'bd', 'dhaka',
+        );
+        $compact = strtolower(preg_replace('/\s+/u', '', $address));
+        $line1c  = strtolower(preg_replace('/\s+/u', '', $line1));
+        foreach ($junk as $j) {
+            if ($line1c === $j || $compact === $j) {
+                return $invalid('ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি — ঠিকানা সঠিক নয়।');
+            }
+        }
+
+        // Mostly symbols / digits without real street text
+        $letters = preg_replace('/[^\p{L}\p{N}\s]/u', '', $line1);
+        if (mb_strlen(trim($letters)) < 6) {
+            return $invalid('ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি — ঠিকানায় অর্থপূর্ণ লেখা নেই।');
+        }
+
+        // Garbled: very few letters relative to length, or repeated chars
+        if (preg_match('/(.)\1{5,}/u', $line1)) {
+            return $invalid('ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি — ঠিকানা উল্টাপাল্টা/ভুল মনে হচ্ছে।');
+        }
+
+        // Phone: BD mobile 01XXXXXXXXX
+        if (strlen($phone) === 13 && strpos($phone, '880') === 0) {
+            $phone = '0' . substr($phone, 3);
+        }
+        if (!preg_match('/^01[3-9]\d{8}$/', $phone)) {
+            return $invalid('ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি — মোবাইল নম্বর সঠিক নয়।');
+        }
+
+        return $address;
+    }
+
     public static function get_token() {
         $cached = get_transient('maskara_pathao_token');
         if ($cached) {
@@ -59,18 +131,18 @@ class Maskara_Pathao {
             return $token;
         }
 
+        $address = self::validate_delivery_address($order);
+        if (is_wp_error($address)) {
+            $order->update_meta_data('_maskara_courier_status', 'address_invalid');
+            $order->update_meta_data('_maskara_courier_block_reason', $address->get_error_message());
+            $order->add_order_note($address->get_error_message());
+            $order->save();
+            return $address;
+        }
+
         $phone = preg_replace('/\D+/', '', $order->get_billing_phone());
         if (strlen($phone) === 13 && strpos($phone, '880') === 0) {
             $phone = '0' . substr($phone, 3);
-        }
-        $address = trim(implode(', ', array_filter(array(
-            $order->get_billing_address_1(),
-            $order->get_billing_address_2(),
-            $order->get_billing_city(),
-            $order->get_billing_state(),
-        ))));
-        if (strlen($address) < 10) {
-            $address = $address . ', Bangladesh';
         }
 
         $payload = array(
