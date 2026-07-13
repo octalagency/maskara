@@ -58,9 +58,7 @@ function ChartTooltip({ active, payload, label }: any) {
   );
 }
 
-function LegendDots(
-  items: { color: string; label: string }[],
-) {
+function LegendDots({ items }: { items: { color: string; label: string }[] }) {
   return (
     <div className="flex flex-wrap gap-4 text-[12px] font-medium text-slate-600">
       {items.map((it) => (
