@@ -76,23 +76,12 @@ export function buildOrderVerificationPrompt(params: {
 
 /**
  * Voices via ePBX TTS.
- * Default = Google Chirp3 Algieba (ManyDial-style). ElevenLabs Algieba only
- * works if the ePBX portal has ElevenLabs enabled; otherwise ePBX falls back
- * to Azure নবনীতা (female) — which is why merchants heard the old voice.
+ *
+ * This ePBX account reliably plays Azure Neural only.
+ * Google / ElevenLabs are ignored → portal default নবনীতা (female).
+ * Default = Azure প্রদীপ (male).
  */
 export const MERCHANT_VOICE_OPTIONS = [
-  {
-    id: 'google:bn-IN-Chirp3-HD-Algieba',
-    label: 'Algieba — ManyDial স্টাইল (সবচেয়ে প্রাকৃতিক)',
-    provider: 'google',
-    voiceId: 'bn-IN-Chirp3-HD-Algieba',
-  },
-  {
-    id: 'azure:bn-BD-NabanitaNeural',
-    label: 'নবনীতা — Azure বাংলাদেশি নারী',
-    provider: 'azure',
-    voiceId: 'bn-BD-NabanitaNeural',
-  },
   {
     id: 'azure:bn-BD-PradeepNeural',
     label: 'প্রদীপ — Azure বাংলাদেশি পুরুষ',
@@ -100,20 +89,14 @@ export const MERCHANT_VOICE_OPTIONS = [
     voiceId: 'bn-BD-PradeepNeural',
   },
   {
-    id: 'google:bn-IN-Wavenet-A',
-    label: 'Google WaveNet — নারী',
-    provider: 'google',
-    voiceId: 'bn-IN-Wavenet-A',
-  },
-  {
-    id: 'google:bn-IN-Wavenet-B',
-    label: 'Google WaveNet — পুরুষ',
-    provider: 'google',
-    voiceId: 'bn-IN-Wavenet-B',
+    id: 'azure:bn-BD-NabanitaNeural',
+    label: 'নবনীতা — Azure বাংলাদেশি নারী',
+    provider: 'azure',
+    voiceId: 'bn-BD-NabanitaNeural',
   },
 ] as const;
 
-export const DEFAULT_MERCHANT_VOICE_ID = 'google:bn-IN-Chirp3-HD-Algieba';
+export const DEFAULT_MERCHANT_VOICE_ID = 'azure:bn-BD-PradeepNeural';
 
 export function parseMerchantVoice(voiceId?: string | null): {
   provider?: string;
@@ -124,7 +107,6 @@ export function parseMerchantVoice(voiceId?: string | null): {
   const id = rest.join(':');
   if (!provider || !id) return {};
 
-  // Normalize legacy / UI provider aliases for ePBX
   if (provider === 'google_wavenet' || provider === 'google_cloud') {
     provider = 'google';
   }
@@ -135,34 +117,31 @@ export function parseMerchantVoice(voiceId?: string | null): {
   return { provider, voiceId: id };
 }
 
+/** Map any saved voice to Azure that ePBX will actually speak. */
 export function resolveMerchantVoice(voiceId?: string | null): {
   provider: string;
   voiceId: string;
   id: string;
 } {
-  // Legacy saved id: ElevenLabs Algieba isn't enabled on most ePBX accounts,
-  // so calls fell back to Azure নবনীতা (female). Map to Chirp3 Algieba.
-  if (!voiceId || voiceId === 'elevenlabs:Algieba') {
-    const fallback = parseMerchantVoice(DEFAULT_MERCHANT_VOICE_ID);
+  const parsed = parseMerchantVoice(voiceId);
+  const raw = `${parsed.provider || ''}:${parsed.voiceId || ''}`.toLowerCase();
+
+  if (
+    raw.includes('nabanita') ||
+    raw.includes('wavenet-a') ||
+    (parsed.provider === 'azure' && parsed.voiceId === 'bn-BD-NabanitaNeural')
+  ) {
     return {
-      provider: fallback.provider!,
-      voiceId: fallback.voiceId!,
-      id: DEFAULT_MERCHANT_VOICE_ID,
+      provider: 'azure',
+      voiceId: 'bn-BD-NabanitaNeural',
+      id: 'azure:bn-BD-NabanitaNeural',
     };
   }
 
-  const parsed = parseMerchantVoice(voiceId);
-  if (parsed.provider && parsed.voiceId) {
-    return {
-      provider: parsed.provider,
-      voiceId: parsed.voiceId,
-      id: `${parsed.provider}:${parsed.voiceId}`,
-    };
-  }
-  const fallback = parseMerchantVoice(DEFAULT_MERCHANT_VOICE_ID);
+  // Pradeep, Algieba, Chirp3, ElevenLabs, empty, etc. → male Azure
   return {
-    provider: fallback.provider!,
-    voiceId: fallback.voiceId!,
-    id: DEFAULT_MERCHANT_VOICE_ID,
+    provider: 'azure',
+    voiceId: 'bn-BD-PradeepNeural',
+    id: 'azure:bn-BD-PradeepNeural',
   };
 }

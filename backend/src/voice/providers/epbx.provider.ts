@@ -132,16 +132,32 @@ export class EpbxProvider implements VoiceProvider {
     };
 
     if (voice.provider === 'azure') {
+      // Hard-lock Azure — ePBX portal default is Nabanita unless these are set
+      payload.provider = 'azure';
+      payload.ai_tts_provider = 'azure';
+      payload.tts_provider = 'azure';
+      payload.tts_engine = 'azure';
+      payload.speech_provider = 'azure';
       payload.azure_tts_voice_id = voice.voiceId;
       payload.azure_voice = voice.voiceId;
+      payload.azure_voice_name = voice.voiceId;
+      payload.voice_id = voice.voiceId;
+      payload.tts_voice = voice.voiceId;
+      payload.tts_voice_id = voice.voiceId;
+      payload.tts_voice_name = voice.voiceId;
+      payload.voice = voice.voiceId;
+      payload.voice_name = voice.voiceId;
       payload.speech_rate = '0.92';
+      payload.rate = '0.92';
+      // Do not leave google/elevenlabs keys that might confuse the router
+      delete payload.google_tts_voice_id;
+      delete payload.elevenlabs_voice_id;
     } else if (voice.provider === 'google') {
       payload.google_tts_voice_id = voice.voiceId;
       payload.google_voice = voice.voiceId;
       payload.ai_tts_provider = 'google';
       payload.provider = 'google';
       payload.tts_provider = 'google';
-      // Chirp3 short name — some ePBX builds expect this
       if (voice.voiceId.includes('Algieba')) {
         payload.voice_name = 'Algieba';
         payload.chirp_voice = 'Algieba';

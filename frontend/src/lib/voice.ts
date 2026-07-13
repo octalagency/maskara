@@ -1,12 +1,12 @@
-/** Voices for merchant settings — default matches ManyDial (Google Chirp3 Algieba). */
+/** Voices that actually work on Maskara's ePBX account (Azure Neural only). */
 export const VOICE_OPTIONS = [
   {
-    id: 'google:bn-IN-Chirp3-HD-Algieba',
-    label: 'Algieba',
-    short: 'Algieba',
+    id: 'azure:bn-BD-PradeepNeural',
+    label: 'প্রদীপ',
+    short: 'প্রদীপ',
     gender: 'male' as const,
-    provider: 'Google Chirp3',
-    description: 'ManyDial-এর মতো প্রাকৃতিক ভয়েস — রিয়েল কলে কাজ করে',
+    provider: 'Azure Neural',
+    description: 'বাংলাদেশি পুরুষ ভয়েস — রিয়েল কলে এটাই যায়',
     recommended: true,
   },
   {
@@ -15,51 +15,30 @@ export const VOICE_OPTIONS = [
     short: 'নবনীতা',
     gender: 'female' as const,
     provider: 'Azure Neural',
-    description: 'প্রাকৃতিক বাংলাদেশি নারী ভয়েস',
-    recommended: false,
-  },
-  {
-    id: 'azure:bn-BD-PradeepNeural',
-    label: 'প্রদীপ',
-    short: 'প্রদীপ',
-    gender: 'male' as const,
-    provider: 'Azure Neural',
-    description: 'প্রাকৃতিক বাংলাদেশি পুরুষ ভয়েস',
-    recommended: true,
-  },
-  {
-    id: 'google:bn-IN-Wavenet-A',
-    label: 'WaveNet নারী',
-    short: 'WaveNet A',
-    gender: 'female' as const,
-    provider: 'Google WaveNet',
-    description: 'নরম বাংলা নারী ভয়েস',
-    recommended: false,
-  },
-  {
-    id: 'google:bn-IN-Wavenet-B',
-    label: 'WaveNet পুরুষ',
-    short: 'WaveNet B',
-    gender: 'male' as const,
-    provider: 'Google WaveNet',
-    description: 'স্পষ্ট বাংলা পুরুষ ভয়েস',
+    description: 'বাংলাদেশি নারী ভয়েস',
     recommended: false,
   },
 ] as const;
 
 export type VoiceOption = (typeof VOICE_OPTIONS)[number];
 
-/** Normalize legacy google_wavenet / elevenlabs Algieba ids saved in DB */
+const DEFAULT_VOICE = 'azure:bn-BD-PradeepNeural';
+
+/** Map legacy Google/ElevenLabs picks → Azure (ePBX ignores non-Azure). */
 export function normalizeVoiceId(voiceId?: string | null): string {
-  if (!voiceId) return VOICE_OPTIONS[0].id;
-  // Old ElevenLabs pick → Chirp3 Algieba (ePBX actually uses Google)
-  if (voiceId === 'elevenlabs:Algieba' || voiceId === 'eleven_labs:Algieba') {
-    return 'google:bn-IN-Chirp3-HD-Algieba';
+  if (!voiceId) return DEFAULT_VOICE;
+  if (voiceId === 'azure:bn-BD-NabanitaNeural') return voiceId;
+  if (voiceId === 'azure:bn-BD-PradeepNeural') return voiceId;
+  // Old Algieba / Chirp3 / WaveNet / ElevenLabs → male Pradeep
+  if (
+    /nabanita|wavenet-a/i.test(voiceId) &&
+    !/pradeep|algieba|wavenet-b/i.test(voiceId)
+  ) {
+    // only map clear female ids
+    if (/nabanita|wavenet-a/i.test(voiceId)) return 'azure:bn-BD-NabanitaNeural';
   }
-  const fixed = voiceId.replace(/^google_wavenet:/, 'google:');
-  return VOICE_OPTIONS.some((v) => v.id === fixed)
-    ? fixed
-    : voiceId.replace(/^google_wavenet:/, 'google:');
+  if (/nabanita/i.test(voiceId)) return 'azure:bn-BD-NabanitaNeural';
+  return DEFAULT_VOICE;
 }
 
 export function voiceLabel(voiceId?: string | null) {
@@ -130,7 +109,7 @@ export function pickBrowserVoice(gender: 'male' | 'female') {
     else if (lang.startsWith('bn')) s += 80;
     else if (name.includes('bengali') || name.includes('bangla') || name.includes('বাংলা')) s += 70;
     if (gender === 'female' && /female|woman|nabanita|zira|samantha|veena|heera/i.test(name)) s += 30;
-    if (gender === 'male' && /male|man|pradeep|david|ravi|rishi|algieba/i.test(name)) s += 30;
+    if (gender === 'male' && /male|man|pradeep|david|ravi|rishi/i.test(name)) s += 30;
     return s;
   };
 
@@ -140,7 +119,6 @@ export function pickBrowserVoice(gender: 'male' | 'female') {
     : ranked.find((v) => score(v) > 0) || ranked[0] || null;
 }
 
-/** Legacy browser TTS fallback (often silent for Bangla) */
 export function speakBangla(
   text: string,
   voiceId?: string | null,

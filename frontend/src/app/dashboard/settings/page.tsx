@@ -15,7 +15,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Pause, Play, Volume2, Check, User } from 'lucide-react';
 
-const DEFAULT_VOICE = 'google:bn-IN-Chirp3-HD-Algieba';
+const DEFAULT_VOICE = 'azure:bn-BD-PradeepNeural';
 const DEFAULT_SCRIPT =
   'হ্যালো {{customerName}}, আপনি {{storeName}}-এ অর্ডার করেছিলেন। যার মূল্য {{amount}} টাকা। অর্ডার নম্বর {{orderNumber}}। অর্ডারটি নিশ্চিত করতে এক চাপুন। বাতিল করতে দুই চাপুন।';
 
@@ -39,15 +39,15 @@ export default function SettingsPage() {
             : DEFAULT_SCRIPT,
           voiceId,
         });
-        // Migrate legacy ElevenLabs id so real calls stop using Azure female fallback
-        if (m.voiceId === 'elevenlabs:Algieba' || m.voiceId === 'eleven_labs:Algieba') {
+        // Migrate legacy Google/ElevenLabs → Azure Pradeep so real calls change
+        if (voiceId !== m.voiceId) {
           void api
             .updateMerchant({
               name: m.name,
               storeNameBangla: m.storeNameBangla,
               phone: m.phone,
               customGreeting: m.customGreeting?.trim() || DEFAULT_SCRIPT,
-              voiceId: DEFAULT_VOICE,
+              voiceId,
               maxCallRetries: m.maxCallRetries ?? 9,
               retryIntervalMin: m.retryIntervalMin ?? 90,
             })
@@ -271,7 +271,7 @@ export default function SettingsPage() {
             <div>
               <h3 className="section-title">AI ভয়েস বাছুন</h3>
               <p className="page-subtitle">
-                কার্ডে ক্লিক করলেই ভয়েস সেভ হয় ও প্রিভিউ শোনায়। রিয়েল কলে Algieba (Google Chirp3) যাবে।
+                প্রদীপ = পুরুষ, নবনীতা = নারী। ePBX-এ শুধু Azure ভয়েস কাজ করে — কার্ডে ক্লিক করলেই সেভ হয়।
               </p>
             </div>
 
