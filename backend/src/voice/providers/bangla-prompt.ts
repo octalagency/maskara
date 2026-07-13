@@ -35,33 +35,33 @@ export function buildOrderVerificationPrompt(params: {
 export const MERCHANT_VOICE_OPTIONS = [
   {
     id: 'azure:bn-BD-NabanitaNeural',
-    label: 'Azure Neural — নবনীতা (বাংলাদেশি নারী)',
+    label: 'নবনীতা — সবচেয়ে প্রাকৃতিক বাংলাদেশি নারী',
     provider: 'azure',
     voiceId: 'bn-BD-NabanitaNeural',
   },
   {
     id: 'azure:bn-BD-PradeepNeural',
-    label: 'Azure Neural — প্রদীপ (বাংলাদেশি পুরুষ)',
+    label: 'প্রদীপ — সবচেয়ে প্রাকৃতিক বাংলাদেশি পুরুষ',
     provider: 'azure',
     voiceId: 'bn-BD-PradeepNeural',
+  },
+  {
+    id: 'google_wavenet:bn-IN-Wavenet-A',
+    label: 'Google WaveNet — নারী',
+    provider: 'google_wavenet',
+    voiceId: 'bn-IN-Wavenet-A',
+  },
+  {
+    id: 'google_wavenet:bn-IN-Wavenet-B',
+    label: 'Google WaveNet — পুরুষ',
+    provider: 'google_wavenet',
+    voiceId: 'bn-IN-Wavenet-B',
   },
   {
     id: 'google_wavenet:bn-IN-Chirp3-HD-Zubenelgenubi',
     label: 'Google Chirp3 HD — পুরুষ',
     provider: 'google_wavenet',
     voiceId: 'bn-IN-Chirp3-HD-Zubenelgenubi',
-  },
-  {
-    id: 'google_wavenet:bn-IN-Wavenet-A',
-    label: 'Google WaveNet — নারী (বাংলা)',
-    provider: 'google_wavenet',
-    voiceId: 'bn-IN-Wavenet-A',
-  },
-  {
-    id: 'google_wavenet:bn-IN-Wavenet-B',
-    label: 'Google WaveNet — পুরুষ (বাংলা)',
-    provider: 'google_wavenet',
-    voiceId: 'bn-IN-Wavenet-B',
   },
 ] as const;
 

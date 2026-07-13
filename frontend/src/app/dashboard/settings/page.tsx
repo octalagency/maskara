@@ -3,20 +3,17 @@
 import { useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { api, Merchant } from '@/lib/api';
-import { VOICE_OPTIONS, speakBangla } from '@/lib/voice';
-import { Pause, Play, Volume2 } from 'lucide-react';
+import {
+  VOICE_OPTIONS,
+  speakBangla,
+  fillVoiceScript,
+  getVoiceOption,
+} from '@/lib/voice';
+import { cn } from '@/lib/utils';
+import { Pause, Play, Volume2, Check, User } from 'lucide-react';
 
 const DEFAULT_SCRIPT =
   'আসসালামু আলাইকুম, {{customerName}}। {{storeName}}-এর পক্ষ থেকে জানাচ্ছি—আপনার {{amount}} টাকার অর্ডারটি আমরা পেয়েছি, অর্ডার নম্বর {{orderNumber}}। অর্ডারটি নিশ্চিত করতে এক চাপুন। বাতিল করতে দুই চাপুন। আমাদের সাথে কেনাকাটার জন্য ধন্যবাদ।';
-
-function fillPreviewScript(script: string, merchant: Partial<Merchant>) {
-  const store = merchant.storeNameBangla || merchant.name || 'আমাদের স্টোর';
-  return script
-    .replace(/\{\{\s*storeName\s*\}\}/gi, store)
-    .replace(/\{\{\s*customerName\s*\}\}/gi, 'রহিম')
-    .replace(/\{\{\s*amount\s*\}\}/gi, '১২০০')
-    .replace(/\{\{\s*orderNumber\s*\}\}/gi, '#11380');
-}
 
 export default function SettingsPage() {
   const [merchant, setMerchant] = useState<Partial<Merchant>>({});
@@ -24,6 +21,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [previewing, setPreviewing] = useState(false);
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -32,7 +30,8 @@ export default function SettingsPage() {
         setMerchant({
           ...m,
           customGreeting: m.customGreeting?.trim() ? m.customGreeting : DEFAULT_SCRIPT,
-          voiceId: m.voiceId || VOICE_OPTIONS[0].id,
+          // Default to most natural BD female voice
+          voiceId: m.voiceId || 'azure:bn-BD-NabanitaNeural',
         });
       })
       .catch(() => {
@@ -42,32 +41,60 @@ export default function SettingsPage() {
           email: '',
           phone: '',
           customGreeting: DEFAULT_SCRIPT,
-          voiceId: VOICE_OPTIONS[0].id,
+          voiceId: 'azure:bn-BD-NabanitaNeural',
         });
       });
 
+    // Warm browser voices
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.getVoices();
+      window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+    }
+
     return () => {
-      if (typeof window !== 'undefined') window.speechSynthesis?.cancel();
+      if (typeof window !== 'undefined') {
+        window.speechSynthesis?.cancel();
+        window.speechSynthesis.onvoiceschanged = null;
+      }
     };
   }, []);
 
   function stopPreview() {
     if (typeof window !== 'undefined') window.speechSynthesis.cancel();
     setPreviewing(false);
+    setPreviewingId(null);
   }
 
-  function playPreview(override?: Partial<Merchant>) {
-    const m = { ...merchant, ...override };
+  /** Reads whatever is currently written in the script box */
+  function playScript(voiceId?: string | null) {
+    const m = { ...merchant, voiceId: voiceId || merchant.voiceId };
     const script = (m.customGreeting || DEFAULT_SCRIPT).trim() || DEFAULT_SCRIPT;
-    const text = fillPreviewScript(script, m);
+    const text = fillVoiceScript(script, {
+      storeName: m.storeNameBangla || m.name || 'আমাদের স্টোর',
+      customerName: 'রহিম',
+      amount: '১২০০',
+      orderNumber: '#11380',
+    });
+
     stopPreview();
     setPreviewing(true);
+    setPreviewingId(m.voiceId || null);
     setError('');
-    const ok = speakBangla(text, m.voiceId, () => setPreviewing(false));
+
+    const ok = speakBangla(text, m.voiceId, () => {
+      setPreviewing(false);
+      setPreviewingId(null);
+    });
     if (!ok) {
       setPreviewing(false);
+      setPreviewingId(null);
       setError('এই ব্রাউজারে ভয়েস প্রিভিউ সাপোর্ট করে না। Chrome ব্যবহার করুন।');
     }
+  }
+
+  function selectVoice(voiceId: string) {
+    setMerchant({ ...merchant, voiceId });
+    window.setTimeout(() => playScript(voiceId), 50);
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -80,14 +107,14 @@ export default function SettingsPage() {
         storeNameBangla: merchant.storeNameBangla,
         phone: merchant.phone,
         customGreeting: merchant.customGreeting?.trim() || DEFAULT_SCRIPT,
-        voiceId: merchant.voiceId || VOICE_OPTIONS[0].id,
+        voiceId: merchant.voiceId || 'azure:bn-BD-NabanitaNeural',
         maxCallRetries: merchant.maxCallRetries ?? 9,
         retryIntervalMin: merchant.retryIntervalMin ?? 90,
       });
       setMerchant({
         ...updated,
         customGreeting: updated.customGreeting || DEFAULT_SCRIPT,
-        voiceId: updated.voiceId || VOICE_OPTIONS[0].id,
+        voiceId: updated.voiceId || 'azure:bn-BD-NabanitaNeural',
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -98,141 +125,216 @@ export default function SettingsPage() {
     }
   }
 
+  const selected = getVoiceOption(merchant.voiceId);
+  const previewText = fillVoiceScript(
+    (merchant.customGreeting || DEFAULT_SCRIPT).trim() || DEFAULT_SCRIPT,
+    {
+      storeName: merchant.storeNameBangla || merchant.name || 'আমাদের স্টোর',
+      customerName: 'রহিম',
+      amount: '১২০০',
+      orderNumber: '#11380',
+    },
+  );
+
   return (
     <DashboardLayout>
-      <div className="mx-auto max-w-2xl space-y-6">
+      <div className="mx-auto max-w-3xl space-y-6">
         <div>
           <h2 className="page-title">সেটিংস</h2>
-          <p className="page-subtitle">স্টোর ও AI কল ভয়েস — কাস্টমার যা শুনবে</p>
+          <p className="page-subtitle">স্টোর, কল স্ক্রিপ্ট ও রিয়েল হিউম্যান ভয়েস</p>
         </div>
 
-        <form onSubmit={handleSave} className="card space-y-5">
+        <form onSubmit={handleSave} className="space-y-5">
           {saved && (
-            <div className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">সেভ হয়েছে!</div>
+            <div className="rounded-xl bg-emerald-50 px-4 py-3 text-[14px] text-emerald-700">সেভ হয়েছে!</div>
           )}
-          {error && <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+          {error && (
+            <div className="rounded-xl bg-rose-50 px-4 py-3 text-[14px] text-rose-700">{error}</div>
+          )}
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Store Name</label>
-            <input
-              className="input mt-1"
-              value={merchant.name || ''}
-              onChange={(e) => setMerchant({ ...merchant, name: e.target.value })}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Store Name (Bangla)</label>
-            <input
-              className="input mt-1"
-              value={merchant.storeNameBangla || ''}
-              onChange={(e) => setMerchant({ ...merchant, storeNameBangla: e.target.value })}
-            />
-            <p className="mt-1 text-xs text-slate-400">AI কলের নাম হিসেবে ব্যবহার হয়</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Phone</label>
-            <input
-              className="input mt-1"
-              value={merchant.phone || ''}
-              onChange={(e) => setMerchant({ ...merchant, phone: e.target.value })}
-            />
-          </div>
+          <section className="card space-y-4">
+            <h3 className="section-title">স্টোর তথ্য</h3>
+            <div>
+              <label className="label-muted">Store Name (English)</label>
+              <input
+                className="input mt-1"
+                value={merchant.name || ''}
+                onChange={(e) => setMerchant({ ...merchant, name: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="label-muted">স্টোর নাম (বাংলা)</label>
+              <input
+                className="input mt-1"
+                value={merchant.storeNameBangla || ''}
+                onChange={(e) => setMerchant({ ...merchant, storeNameBangla: e.target.value })}
+              />
+              <p className="mt-1 text-[12px] text-slate-400">AI কলে এই নাম বলবে</p>
+            </div>
+            <div>
+              <label className="label-muted">ফোন</label>
+              <input
+                className="input mt-1"
+                value={merchant.phone || ''}
+                onChange={(e) => setMerchant({ ...merchant, phone: e.target.value })}
+              />
+            </div>
+          </section>
 
-          <hr className="border-slate-100" />
-          <h3 className="font-display font-bold text-slate-900">AI Call Script</h3>
-          <p className="text-sm text-slate-500">
-            Placeholder:{' '}
-            <code className="rounded bg-slate-100 px-1">{'{{storeName}}'}</code>{' '}
-            <code className="rounded bg-slate-100 px-1">{'{{customerName}}'}</code>{' '}
-            <code className="rounded bg-slate-100 px-1">{'{{amount}}'}</code>{' '}
-            <code className="rounded bg-slate-100 px-1">{'{{orderNumber}}'}</code>
-          </p>
-          <div>
+          <section className="card space-y-4">
+            <div>
+              <h3 className="section-title">কল স্ক্রিপ্ট</h3>
+              <p className="page-subtitle">
+                যা লিখবেন, প্রিভিউতে সেটাই পড়ে শোনাবে। Placeholder:{' '}
+                <code className="rounded bg-slate-100 px-1 text-[12px]">{'{{storeName}}'}</code>{' '}
+                <code className="rounded bg-slate-100 px-1 text-[12px]">{'{{customerName}}'}</code>{' '}
+                <code className="rounded bg-slate-100 px-1 text-[12px]">{'{{amount}}'}</code>{' '}
+                <code className="rounded bg-slate-100 px-1 text-[12px]">{'{{orderNumber}}'}</code>
+              </p>
+            </div>
             <textarea
-              className="input mt-1 min-h-[160px]"
+              className="input min-h-[150px] leading-relaxed"
               value={merchant.customGreeting ?? ''}
               onChange={(e) => setMerchant({ ...merchant, customGreeting: e.target.value })}
             />
-            <button
-              type="button"
-              className="mt-2 text-sm font-medium text-brand-600 hover:text-brand-700"
-              onClick={() => setMerchant({ ...merchant, customGreeting: DEFAULT_SCRIPT })}
-            >
-              সুন্দর ডিফল্ট স্ক্রিপ্ট বসান
-            </button>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700">AI Voice (রিয়েল কলে যা যাবে)</label>
-            <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <select
-                className="input flex-1"
-                value={merchant.voiceId || VOICE_OPTIONS[0].id}
-                onChange={(e) => {
-                  const voiceId = e.target.value;
-                  setMerchant({ ...merchant, voiceId });
-                  window.setTimeout(() => playPreview({ voiceId }), 40);
-                }}
-              >
-                {VOICE_OPTIONS.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.label}
-                  </option>
-                ))}
-              </select>
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => (previewing ? stopPreview() : playPreview())}
-                className="btn-secondary gap-2"
+                className="text-[13px] font-semibold text-brand-600 hover:text-brand-700"
+                onClick={() => setMerchant({ ...merchant, customGreeting: DEFAULT_SCRIPT })}
+              >
+                ডিফল্ট স্ক্রিপ্ট বসান
+              </button>
+              <button
+                type="button"
+                onClick={() => (previewing ? stopPreview() : playScript())}
+                className="btn-primary gap-2"
               >
                 {previewing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                {previewing ? 'থামান' : 'প্রিভিউ শুনুন'}
+                {previewing ? 'থামান' : 'স্ক্রিপ্ট পড়ে শুনুন'}
               </button>
             </div>
-            <p className="mt-2 flex items-start gap-1.5 text-xs text-slate-400">
-              <Volume2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              প্রিভিউ ব্রাউজার ভয়েস (আনুমানিক)। আসল কল ePBX-এ Azure/Google TTS ব্যবহার করে।
-            </p>
-          </div>
-
-          <hr className="border-slate-100" />
-          <h3 className="font-display font-bold text-slate-900">Call Retry</h3>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Max calls / day</label>
-              <input
-                type="number"
-                min={1}
-                max={9}
-                className="input mt-1"
-                value={merchant.maxCallRetries ?? 9}
-                onChange={(e) =>
-                  setMerchant({
-                    ...merchant,
-                    maxCallRetries: Math.min(9, Math.max(1, +e.target.value)),
-                  })
-                }
-              />
+            <div className="rounded-xl bg-slate-50 p-3 text-[13px] leading-relaxed text-slate-600 ring-1 ring-slate-100">
+              <p className="mb-1 text-[12px] font-semibold text-slate-400">প্রিভিউতে যা শোনাবে</p>
+              {previewText}
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Retry interval (min)</label>
-              <input
-                type="number"
-                min={5}
-                className="input mt-1"
-                value={merchant.retryIntervalMin ?? 90}
-                onChange={(e) =>
-                  setMerchant({
-                    ...merchant,
-                    retryIntervalMin: Math.max(5, +e.target.value),
-                  })
-                }
-              />
-            </div>
-          </div>
+          </section>
 
-          <button type="submit" className="btn-primary" disabled={saving}>
-            {saving ? 'Saving…' : 'Save Settings'}
+          <section className="card space-y-4">
+            <div>
+              <h3 className="section-title">AI ভয়েস বাছুন</h3>
+              <p className="page-subtitle">
+                রিয়েল কলে ePBX Azure/Google TTS ব্যবহার হয়। নিচে ক্লিক করলে স্ক্রিপ্ট পড়ে শোনাবে।
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {VOICE_OPTIONS.map((v) => {
+                const active = (merchant.voiceId || VOICE_OPTIONS[0].id) === v.id;
+                const playing = previewingId === v.id;
+                return (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => selectVoice(v.id)}
+                    className={cn(
+                      'rounded-2xl border p-4 text-left transition',
+                      active
+                        ? 'border-brand-500 bg-brand-50/60 ring-2 ring-brand-200'
+                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50',
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <div
+                          className={cn(
+                            'flex h-10 w-10 items-center justify-center rounded-full',
+                            v.gender === 'female' ? 'bg-rose-50 text-rose-600' : 'bg-sky-50 text-sky-700',
+                          )}
+                        >
+                          <User className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <p className="text-[15px] font-bold text-slate-900">{v.label}</p>
+                          <p className="text-[12px] text-slate-500">{v.provider}</p>
+                        </div>
+                      </div>
+                      {active && (
+                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-brand-600 text-white">
+                          <Check className="h-3.5 w-3.5" />
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-3 text-[13px] leading-snug text-slate-600">{v.description}</p>
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                      {v.recommended ? (
+                        <span className="badge bg-emerald-50 text-emerald-700">সবচেয়ে প্রাকৃতিক</span>
+                      ) : (
+                        <span className="badge bg-slate-100 text-slate-500">
+                          {v.gender === 'female' ? 'নারী' : 'পুরুষ'}
+                        </span>
+                      )}
+                      <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-brand-600">
+                        {playing ? (
+                          <>
+                            <Pause className="h-3.5 w-3.5" /> চলছে…
+                          </>
+                        ) : (
+                          <>
+                            <Volume2 className="h-3.5 w-3.5" /> শুনুন
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="rounded-xl border border-brand-100 bg-brand-50/50 px-4 py-3 text-[13px] text-slate-700">
+              নির্বাচিত: <strong>{selected.label}</strong> ({selected.provider}) — রিয়েল কলে এই ভয়েস যাবে।
+            </div>
+          </section>
+
+          <section className="card space-y-4">
+            <h3 className="section-title">কল রিট্রাই</h3>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="label-muted">দিনে সর্বোচ্চ কল</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={9}
+                  className="input mt-1"
+                  value={merchant.maxCallRetries ?? 9}
+                  onChange={(e) =>
+                    setMerchant({
+                      ...merchant,
+                      maxCallRetries: Math.min(9, Math.max(1, +e.target.value)),
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label className="label-muted">রিট্রাই ইন্টারভাল (মিনিট)</label>
+                <input
+                  type="number"
+                  min={5}
+                  className="input mt-1"
+                  value={merchant.retryIntervalMin ?? 90}
+                  onChange={(e) =>
+                    setMerchant({
+                      ...merchant,
+                      retryIntervalMin: Math.max(5, +e.target.value),
+                    })
+                  }
+                />
+              </div>
+            </div>
+          </section>
+
+          <button type="submit" className="btn-primary w-full sm:w-auto" disabled={saving}>
+            {saving ? 'সেভ হচ্ছে…' : 'সেটিংস সেভ করুন'}
           </button>
         </form>
       </div>
