@@ -1,3 +1,28 @@
+/** Convert ASCII digits to Bangla digits for natural TTS. */
+export function toBanglaDigits(value: string | number | null | undefined): string {
+  if (value == null || value === '') return '';
+  return String(value).replace(/\d/g, (d) => '০১২৩৪৫৬৭৮৯'[Number(d)] ?? d);
+}
+
+/** Strip Latin words / # that TTS often reads in English. */
+export function sanitizeBanglaSpeech(text: string): string {
+  return text
+    .replace(/#/g, '')
+    .replace(/\border\b/gi, 'অর্ডার')
+    .replace(/\bpress\s*one\b/gi, 'এক চাপুন')
+    .replace(/\bpress\s*1\b/gi, 'এক চাপুন')
+    .replace(/\bpress\s*two\b/gi, 'দুই চাপুন')
+    .replace(/\bpress\s*2\b/gi, 'দুই চাপুন')
+    .replace(/\bconfirm\b/gi, 'নিশ্চিত')
+    .replace(/\bcancel(?:led)?\b/gi, 'বাতিল')
+    .replace(/\bthank you\b/gi, 'ধন্যবাদ')
+    .replace(/\bhello\b/gi, '')
+    .replace(/\bhi\b/gi, '')
+    .replace(/\bwelcome\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function buildOrderVerificationPrompt(params: {
   storeName: string;
   customerName?: string;
@@ -8,26 +33,30 @@ export function buildOrderVerificationPrompt(params: {
 }): string {
   const store = params.storeName || 'স্টোর';
   const name = params.customerName || '';
-  const orderNumber = params.orderNumber || '';
-  const amount =
-    params.totalAmount != null ? String(params.totalAmount) : '';
+  const orderNumber = toBanglaDigits(
+    String(params.orderNumber || '').replace(/^#/, ''),
+  );
+  const amount = toBanglaDigits(
+    params.totalAmount != null ? String(Math.round(Number(params.totalAmount))) : '',
+  );
 
   if (params.customGreeting?.trim()) {
-    return params.customGreeting
+    const filled = params.customGreeting
       .trim()
       .replace(/\{\{\s*storeName\s*\}\}/gi, store)
-      .replace(/\{\{\s*customerName\s*\}\}/gi, name)
+      .replace(/\{\{\s*customerName\s*\}\}/gi, name || 'মাননীয় গ্রাহক')
       .replace(/\{\{\s*orderNumber\s*\}\}/gi, orderNumber)
       .replace(/\{\{\s*amount\s*\}\}/gi, amount);
+    return sanitizeBanglaSpeech(filled);
   }
 
-  const namePart = name ? `${name}` : 'মাননীয় গ্রাহক';
+  const namePart = name ? name : 'মাননীয় গ্রাহক';
   const amountPart = amount ? `${amount} টাকার` : 'একটি';
   const orderPart = orderNumber ? `, অর্ডার নম্বর ${orderNumber}` : '';
 
-  return (
-    `আসসালামু আলাইকুম, ${namePart}। ${store}-এর পক্ষ থেকে জানাচ্ছি—আপনার ${amountPart} অর্ডারটি আমরা পেয়েছি${orderPart}। ` +
-    `অর্ডারটি নিশ্চিত করতে এক চাপুন। বাতিল করতে দুই চাপুন। আমাদের সাথে কেনাকাটার জন্য ধন্যবাদ।`
+  return sanitizeBanglaSpeech(
+    `আসসালামু আলাইকুম ${namePart}। ${store} থেকে বলছি। আপনার ${amountPart} অর্ডারটি আমরা পেয়েছি${orderPart}। ` +
+      `অর্ডার নিশ্চিত করতে এক চাপুন। বাতিল করতে দুই চাপুন। ধন্যবাদ।`,
   );
 }
 
@@ -57,13 +86,9 @@ export const MERCHANT_VOICE_OPTIONS = [
     provider: 'google_wavenet',
     voiceId: 'bn-IN-Wavenet-B',
   },
-  {
-    id: 'google_wavenet:bn-IN-Chirp3-HD-Zubenelgenubi',
-    label: 'Google Chirp3 HD — পুরুষ',
-    provider: 'google_wavenet',
-    voiceId: 'bn-IN-Chirp3-HD-Zubenelgenubi',
-  },
 ] as const;
+
+export const DEFAULT_MERCHANT_VOICE_ID = 'azure:bn-BD-NabanitaNeural';
 
 export function parseMerchantVoice(voiceId?: string | null): {
   provider?: string;
@@ -74,4 +99,26 @@ export function parseMerchantVoice(voiceId?: string | null): {
   const id = rest.join(':');
   if (!provider || !id) return {};
   return { provider, voiceId: id };
+}
+
+/** Always returns a usable Azure/Google voice (never empty object). */
+export function resolveMerchantVoice(voiceId?: string | null): {
+  provider: string;
+  voiceId: string;
+  id: string;
+} {
+  const parsed = parseMerchantVoice(voiceId);
+  if (parsed.provider && parsed.voiceId) {
+    return {
+      provider: parsed.provider,
+      voiceId: parsed.voiceId,
+      id: `${parsed.provider}:${parsed.voiceId}`,
+    };
+  }
+  const fallback = parseMerchantVoice(DEFAULT_MERCHANT_VOICE_ID);
+  return {
+    provider: fallback.provider!,
+    voiceId: fallback.voiceId!,
+    id: DEFAULT_MERCHANT_VOICE_ID,
+  };
 }

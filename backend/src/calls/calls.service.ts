@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   buildOrderVerificationPrompt,
   MERCHANT_VOICE_OPTIONS,
+  DEFAULT_MERCHANT_VOICE_ID,
 } from '../voice/providers/bangla-prompt';
 
 @Injectable()
@@ -58,7 +59,7 @@ export class CallsService {
       this.prisma.call.count({ where }),
     ]);
 
-    const voiceId = merchant?.voiceId || MERCHANT_VOICE_OPTIONS[0].id;
+    const voiceId = merchant?.voiceId || DEFAULT_MERCHANT_VOICE_ID;
     const voiceMeta =
       MERCHANT_VOICE_OPTIONS.find((v) => v.id === voiceId) || MERCHANT_VOICE_OPTIONS[0];
     const storeName = merchant?.storeNameBangla || merchant?.name || 'স্টোর';

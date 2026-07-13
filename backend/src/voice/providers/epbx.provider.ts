@@ -7,12 +7,15 @@ import {
 } from './voice-provider.interface';
 import {
   buildOrderVerificationPrompt,
-  parseMerchantVoice,
+  resolveMerchantVoice,
 } from './bangla-prompt';
 
 /**
  * ePBX.bd — Bangladesh Cloud PBX
  * Portal docs (Developer API): POST /api/v1/calls/verify
+ *
+ * Important: send Bangla-only TTS text and force Azure bn-BD voice.
+ * Do NOT rely on ePBX default English verify template.
  */
 @Injectable()
 export class EpbxProvider implements VoiceProvider {
@@ -64,51 +67,61 @@ export class EpbxProvider implements VoiceProvider {
       customGreeting: params.customGreeting,
     });
 
-    const voice =
-      parseMerchantVoice(params.voiceId) ||
-      parseMerchantVoice('azure:bn-BD-NabanitaNeural');
+    const voice = resolveMerchantVoice(params.voiceId);
 
-    const hasCustomScript = Boolean(params.customGreeting?.trim());
-
+    // Bangla-only payload — avoid fields that trigger ePBX English default IVR template
     const payload: Record<string, unknown> = {
       phone_number: dialPhone,
       caller_id: callerId,
-      customer_name: params.customerName,
-      amount: String(params.totalAmount ?? ''),
-      order_id: params.orderNumber,
-      store_name: params.storeName,
+      // Full script only (no English template merge)
       custom_text: ttsText,
+      tts_text: ttsText,
+      message: ttsText,
+      prompt: ttsText,
+      language: 'bn-BD',
+      tts_language: 'bn-BD',
+      locale: 'bn-BD',
+      skip_default_prompt: true,
+      use_custom_text_only: true,
+      disable_default_greeting: true,
       reference_id: params.callId,
       external_id: params.callId,
       webhook_url: this.webhookUrl('/voice/webhook/epbx'),
       status_callback: this.webhookUrl('/voice/webhook/epbx/status'),
       dtmf_webhook: this.webhookUrl('/voice/webhook/epbx/dtmf'),
       callback_url: this.webhookUrl('/voice/webhook/epbx'),
+      confirm_text: 'আপনার অর্ডার নিশ্চিত করা হয়েছে। ধন্যবাদ।',
+      cancel_text: 'আপনার অর্ডার বাতিল করা হয়েছে। ধন্যবাদ।',
+      // Force realistic BD Azure Neural voice
+      provider: voice.provider,
+      ai_tts_provider: voice.provider,
+      voice_id: voice.voiceId,
+      tts_voice: voice.voiceId,
+      voice: voice.voiceId,
     };
 
-    // Only add post-keypress messages when merchant uses the default script
-    if (!hasCustomScript) {
-      payload.confirm_text = 'আপনার অর্ডার নিশ্চিত করা হয়েছে। ধন্যবাদ।';
-      payload.cancel_text = 'আপনার অর্ডার বাতিল করা হয়েছে।';
+    if (voice.provider === 'azure') {
+      payload.azure_tts_voice_id = voice.voiceId;
+      payload.azure_voice = voice.voiceId;
+      payload.speech_rate = '0.92';
+      payload.prosody_rate = '0.92';
+    }
+    if (voice.provider?.startsWith('google')) {
+      payload.google_tts_voice_id = voice.voiceId;
+      payload.google_voice = voice.voiceId;
     }
 
-    if (voice.provider) {
-      payload.provider = voice.provider;
-      payload.ai_tts_provider = voice.provider;
-    }
-    if (voice.voiceId) {
-      payload.voice_id = voice.voiceId;
-      payload.tts_voice = voice.voiceId;
-      if (voice.provider === 'azure') {
-        payload.azure_tts_voice_id = voice.voiceId;
-      }
-      if (voice.provider?.startsWith('google')) {
-        payload.google_tts_voice_id = voice.voiceId;
-      }
-    }
-
+    // Do NOT attach portal IVR by default — IVR menus often speak English first.
+    // Only if explicitly forced via EPBX_FORCE_IVR=1
+    const forceIvr = this.settings.get('EPBX_FORCE_IVR') === '1';
     const ivrId = this.settings.get('EPBX_IVR_ID');
-    if (ivrId) payload.ivr_id = ivrId;
+    if (forceIvr && ivrId) {
+      payload.ivr_id = ivrId;
+    }
+
+    this.logger.log(
+      `ePBX TTS voice=${voice.id} lang=bn-BD chars=${ttsText.length} ivr=${forceIvr && ivrId ? ivrId : 'off'}`,
+    );
 
     const customerId = this.settings.get('EPBX_CUSTOMER_ID');
     const paths = customerId

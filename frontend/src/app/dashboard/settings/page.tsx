@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 import { Pause, Play, Volume2, Check, User } from 'lucide-react';
 
 const DEFAULT_SCRIPT =
-  'আসসালামু আলাইকুম, {{customerName}}। {{storeName}}-এর পক্ষ থেকে জানাচ্ছি—আপনার {{amount}} টাকার অর্ডারটি আমরা পেয়েছি, অর্ডার নম্বর {{orderNumber}}। অর্ডারটি নিশ্চিত করতে এক চাপুন। বাতিল করতে দুই চাপুন। আমাদের সাথে কেনাকাটার জন্য ধন্যবাদ।';
+  'আসসালামু আলাইকুম {{customerName}}। {{storeName}} থেকে বলছি। আপনার {{amount}} টাকার অর্ডারটি আমরা পেয়েছি, অর্ডার নম্বর {{orderNumber}}। অর্ডার নিশ্চিত করতে এক চাপুন। বাতিল করতে দুই চাপুন। ধন্যবাদ।';
 
 export default function SettingsPage() {
   const [merchant, setMerchant] = useState<Partial<Merchant>>({});
@@ -224,7 +224,7 @@ export default function SettingsPage() {
             <div>
               <h3 className="section-title">AI ভয়েস বাছুন</h3>
               <p className="page-subtitle">
-                রিয়েল কলে ePBX Azure/Google TTS ব্যবহার হয়। নিচে ক্লিক করলে স্ক্রিপ্ট পড়ে শোনাবে।
+                রিয়েল কলে Azure Neural বাংলাদেশি ভয়েস যাবে (নবনীতা/প্রদীপ)। কার্ডে ক্লিক করে শুনুন ও সেভ করুন — ইংরেজি প্রম্পট বন্ধ করা হয়েছে।
               </p>
             </div>
 

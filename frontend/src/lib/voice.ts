@@ -36,15 +36,6 @@ export const VOICE_OPTIONS = [
     description: 'স্পষ্ট বাংলা পুরুষ ভয়েস (ভারতীয় উচ্চারণ)',
     recommended: false,
   },
-  {
-    id: 'google_wavenet:bn-IN-Chirp3-HD-Zubenelgenubi',
-    label: 'Chirp3 HD',
-    short: 'Chirp3 HD',
-    gender: 'male' as const,
-    provider: 'Google Chirp3',
-    description: 'উচ্চমানের HD পুরুষ ভয়েস',
-    recommended: false,
-  },
 ] as const;
 
 export type VoiceOption = (typeof VOICE_OPTIONS)[number];
@@ -134,11 +125,16 @@ export function fillVoiceScript(
   script: string,
   vars: { storeName?: string; customerName?: string; amount?: string; orderNumber?: string },
 ) {
+  const bn = (v?: string) =>
+    String(v || '')
+      .replace(/#/g, '')
+      .replace(/\d/g, (d) => '০১২৩৪৫৬৭৮৯'[Number(d)] ?? d);
+
   return script
     .replace(/\{\{\s*storeName\s*\}\}/gi, vars.storeName || 'আমাদের স্টোর')
     .replace(/\{\{\s*customerName\s*\}\}/gi, vars.customerName || 'রহিম')
-    .replace(/\{\{\s*amount\s*\}\}/gi, vars.amount || '১২০০')
-    .replace(/\{\{\s*orderNumber\s*\}\}/gi, vars.orderNumber || '#11380');
+    .replace(/\{\{\s*amount\s*\}\}/gi, bn(vars.amount) || '১২০০')
+    .replace(/\{\{\s*orderNumber\s*\}\}/gi, bn(vars.orderNumber) || '১১৩৮০');
 }
 
 export function dateRangeForPeriod(
