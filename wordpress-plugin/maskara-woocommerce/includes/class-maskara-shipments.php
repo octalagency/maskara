@@ -185,6 +185,8 @@ class Maskara_Shipments {
         $raw_status = $pathao_data['order_status'] ?? 'pickup_requested';
         $normalized = self::normalize_pathao_status($raw_status);
 
+        $fields = class_exists('Maskara_Pathao') ? Maskara_Pathao::delivery_fields($order) : null;
+
         $wpdb->insert(
             $this->table,
             array(
@@ -194,10 +196,23 @@ class Maskara_Shipments {
                 'tracking_code'     => $consignment,
                 'status'            => $raw_status,
                 'status_normalized' => $normalized,
-                'recipient_name'    => $order->get_formatted_billing_full_name(),
-                'recipient_phone'   => $order->get_billing_phone(),
-                'recipient_address' => $order->get_billing_address_1(),
-                'recipient_city'    => $order->get_billing_city(),
+                'recipient_name'    => $fields
+                    ? ($fields['name'] !== '' ? $fields['name'] : $order->get_formatted_billing_full_name())
+                    : $order->get_formatted_billing_full_name(),
+                'recipient_phone'   => $fields
+                    ? ($fields['phone'] !== '' ? $fields['phone'] : $order->get_billing_phone())
+                    : $order->get_billing_phone(),
+                'recipient_address' => $fields
+                    ? Maskara_Pathao::format_recipient_address(
+                        $fields['line1'],
+                        $fields['line2'],
+                        $fields['city'],
+                        $fields['state']
+                    )
+                    : $order->get_billing_address_1(),
+                'recipient_city'    => $fields
+                    ? ($fields['city'] !== '' ? $fields['city'] : $order->get_billing_city())
+                    : $order->get_billing_city(),
                 'cod_amount'        => (float) $order->get_total(),
                 'delivery_charge'   => (float) ($pathao_data['delivery_fee'] ?? 0),
                 'raw_response'      => wp_json_encode($pathao_data['raw'] ?? $pathao_data),

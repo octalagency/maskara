@@ -21,39 +21,259 @@ class Maskara_Pathao {
     }
 
     /**
+     * Canonical BD city => Bangla/English aliases (matched in free-text address lines).
+     * Names align with common Pathao / WooCommerce labels.
+     *
+     * @return array<string, string[]>
+     */
+    public static function bd_city_map() {
+        return array(
+            'Dhaka'        => array('Dhaka', 'Dacca', 'ঢাকা', 'DHK'),
+            'Chattogram'   => array(
+                'Chattogram', 'Chittagong', 'Chittagong City', 'CTG', 'Ctg',
+                'চট্টগ্রাম', 'চট্রগ্রাম', 'চট্টগ্রামের',
+            ),
+            'Gazipur'      => array('Gazipur', 'গাজীপুর', 'গাজিপুর'),
+            'Narayanganj'  => array('Narayanganj', 'Narayangonj', 'নারায়ণগঞ্জ', 'নারায়ণগঞ্জ', 'নারায়নগঞ্জ'),
+            'Sylhet'       => array('Sylhet', 'সিলেট'),
+            'Khulna'       => array('Khulna', 'খুলনা'),
+            'Rajshahi'     => array('Rajshahi', 'রাজশাহী', 'রাজশাহি'),
+            'Rangpur'      => array('Rangpur', 'রংপুর'),
+            'Barishal'     => array('Barishal', 'Barisal', 'বরিশাল'),
+            'Mymensingh'   => array('Mymensingh', 'ময়মনসিংহ', 'ময়মনসিংহ'),
+            'Cumilla'      => array('Cumilla', 'Comilla', 'কুমিল্লা', 'কুমিলা'),
+            'Bogura'       => array('Bogura', 'Bogra', 'বগুড়া', 'বগুড়া'),
+            'Jashore'      => array('Jashore', 'Jessore', 'যশোর'),
+            "Cox's Bazar"  => array("Cox's Bazar", 'Coxs Bazar', 'Cox Bazar', 'কক্সবাজার', 'কক্স বাজার'),
+            'Tangail'      => array('Tangail', 'টাঙ্গাইল'),
+            'Narsingdi'    => array('Narsingdi', 'নরসিংদী', 'নরসিংদি'),
+            'Savar'        => array('Savar', 'সাভার'),
+            'Tongi'        => array('Tongi', 'টঙ্গী', 'টঙ্গি'),
+            'Feni'         => array('Feni', 'ফেনী', 'ফেনি'),
+            'Noakhali'     => array('Noakhali', 'নোয়াখালী', 'নোয়াখালী'),
+            'Chandpur'     => array('Chandpur', 'চাঁদপুর'),
+            'Brahmanbaria' => array('Brahmanbaria', 'B. Baria', 'ব্রাহ্মণবাড়িয়া', 'ব্রাহ্মণবাড়িয়া'),
+            'Pabna'        => array('Pabna', 'পাবনা'),
+            'Dinajpur'     => array('Dinajpur', 'দিনাজপুর'),
+            'Faridpur'     => array('Faridpur', 'ফরিদপুর'),
+            'Kushtia'      => array('Kushtia', 'কুষ্টিয়া', 'কুষ্টিয়া'),
+            'Habiganj'     => array('Habiganj', 'হবিগঞ্জ'),
+            'Sunamganj'    => array('Sunamganj', 'সুনামগঞ্জ'),
+            'Maulvibazar'  => array('Maulvibazar', 'Moulvibazar', 'মৌলভীবাজার'),
+            'Patuakhali'   => array('Patuakhali', 'পটুয়াখালী', 'পটুয়াখালী'),
+            'Bagerhat'     => array('Bagerhat', 'বাগেরহাট'),
+            'Satkhira'     => array('Satkhira', 'সাতক্ষীরা'),
+            'Saidpur'      => array('Saidpur', 'সৈয়দপুর', 'সৈয়দপুর'),
+        );
+    }
+
+    /**
+     * Map a Woo city/state value (or alias) to a canonical Pathao-friendly city name.
+     *
+     * @param string $raw
+     * @return string Empty if unrecognized.
+     */
+    public static function normalize_city_name($raw) {
+        $raw = trim((string) $raw);
+        if ($raw === '') {
+            return '';
+        }
+
+        $compact = self::city_compact($raw);
+        if ($compact === '') {
+            return '';
+        }
+
+        foreach (self::bd_city_map() as $canonical => $aliases) {
+            foreach (array_merge(array($canonical), $aliases) as $alias) {
+                if (self::city_compact($alias) === $compact) {
+                    return $canonical;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Find a known BD city anywhere in free-text address (Bangla or English).
+     *
+     * @param string $text
+     * @return string Canonical city or empty.
+     */
+    public static function extract_city_from_text($text) {
+        $text = trim((string) $text);
+        if ($text === '') {
+            return '';
+        }
+
+        // Skip micro-areas that often appear inside road/shop names (আবদুর সাভার রোড).
+        $skip_extract = array('Savar' => true, 'Tongi' => true);
+
+        // Prefer longer aliases so "Cox's Bazar" wins over shorter fragments.
+        $candidates = array();
+        foreach (self::bd_city_map() as $canonical => $aliases) {
+            if (isset($skip_extract[$canonical])) {
+                continue;
+            }
+            foreach (array_merge(array($canonical), $aliases) as $alias) {
+                $alias = trim((string) $alias);
+                if ($alias === '') {
+                    continue;
+                }
+                $candidates[] = array(
+                    'canonical' => $canonical,
+                    'alias'     => $alias,
+                    'len'       => mb_strlen($alias),
+                );
+            }
+        }
+        usort($candidates, function ($a, $b) {
+            return $b['len'] - $a['len'];
+        });
+
+        foreach ($candidates as $row) {
+            if (self::text_contains_alias($text, $row['alias'])) {
+                return $row['canonical'];
+            }
+        }
+
+        return '';
+    }
+
+    /** Compact for equality checks (lowercase, no spaces/punctuation). */
+    private static function city_compact($s) {
+        $s = mb_strtolower(trim((string) $s), 'UTF-8');
+        $s = preg_replace('/[\s\.\-\'’_,،]+/u', '', $s);
+        return $s !== null ? $s : '';
+    }
+
+    /**
+     * True if haystack names city alias as its own address segment / last token.
+     * Avoids false hits like সাভার inside "আবদুর সাভার রোড".
+     *
+     * @param string $haystack
+     * @param string $alias
+     */
+    private static function text_contains_alias($haystack, $alias) {
+        $haystack = trim((string) $haystack);
+        $alias    = trim((string) $alias);
+        if ($haystack === '' || $alias === '') {
+            return false;
+        }
+
+        $alias_key = self::city_compact($alias);
+        if ($alias_key === '') {
+            return false;
+        }
+
+        $segments = preg_split('/[,،\|\n]+/u', $haystack);
+        if (!is_array($segments) || !$segments) {
+            $segments = array($haystack);
+        }
+
+        foreach ($segments as $seg) {
+            $seg = trim((string) $seg);
+            if ($seg === '') {
+                continue;
+            }
+            // Exact segment: "চট্টগ্রাম" or "Chittagong"
+            if (self::city_compact($seg) === $alias_key) {
+                return true;
+            }
+            // Last whitespace token of the segment (e.g. "House 12, Savar")
+            $tokens = preg_split('/\s+/u', $seg);
+            if (is_array($tokens) && $tokens) {
+                $last = trim((string) end($tokens));
+                if ($last !== '' && self::city_compact($last) === $alias_key) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Resolve city for Pathao: Woo city fields → normalize → parse from address lines.
+     *
+     * @param string $line1
+     * @param string $line2
+     * @param string $city
+     * @param string $state
+     * @return string
+     */
+    public static function resolve_delivery_city($line1, $line2, $city, $state) {
+        $city  = trim((string) $city);
+        $state = trim((string) $state);
+
+        if ($city !== '') {
+            $norm = self::normalize_city_name($city);
+            if ($norm !== '') {
+                return $norm;
+            }
+            // Keep merchant-typed city even if not in our map (still satisfies Pathao check).
+            return $city;
+        }
+
+        if ($state !== '') {
+            $norm = self::normalize_city_name($state);
+            if ($norm !== '') {
+                return $norm;
+            }
+        }
+
+        $haystack = trim(implode(', ', array_filter(array($line1, $line2, $state))));
+        $from_text = self::extract_city_from_text($haystack);
+        if ($from_text !== '') {
+            return $from_text;
+        }
+
+        return '';
+    }
+
+    /**
      * Resolve delivery fields — prefer shipping when present, fall back to billing.
-     * (Many COD stores leave billing city empty while shipping has Dhaka.)
+     * City may live only in free-text address_1 (common COD checkout) — extract/normalize it.
      *
      * @param WC_Order $order
      * @return array{line1:string,line2:string,city:string,state:string,name:string,phone:string}
      */
     public static function delivery_fields(WC_Order $order) {
         $ship_line1 = trim((string) $order->get_shipping_address_1());
+        $ship_line2 = trim((string) $order->get_shipping_address_2());
         $ship_city  = trim((string) $order->get_shipping_city());
+        $bill_line1 = trim((string) $order->get_billing_address_1());
+        $bill_line2 = trim((string) $order->get_billing_address_2());
+        $bill_city  = trim((string) $order->get_billing_city());
         $use_ship   = $ship_line1 !== '' || $ship_city !== '';
 
-        $line1 = $use_ship ? $ship_line1 : trim((string) $order->get_billing_address_1());
-        $line2 = $use_ship
-            ? trim((string) $order->get_shipping_address_2())
-            : trim((string) $order->get_billing_address_2());
-        $city = $use_ship ? $ship_city : trim((string) $order->get_billing_city());
+        $line1 = $use_ship ? $ship_line1 : $bill_line1;
+        $line2 = $use_ship ? $ship_line2 : $bill_line2;
+        $city = $use_ship ? $ship_city : $bill_city;
         $state = $use_ship
             ? trim((string) $order->get_shipping_state())
             : trim((string) $order->get_billing_state());
 
         // Fill gaps from the other address block
         if ($line1 === '') {
-            $line1 = trim((string) $order->get_billing_address_1()) ?: trim((string) $order->get_shipping_address_1());
+            $line1 = $bill_line1 !== '' ? $bill_line1 : $ship_line1;
         }
         if ($line2 === '') {
-            $line2 = trim((string) $order->get_billing_address_2()) ?: trim((string) $order->get_shipping_address_2());
+            $line2 = $bill_line2 !== '' ? $bill_line2 : $ship_line2;
         }
         if ($city === '') {
-            $city = trim((string) $order->get_billing_city()) ?: trim((string) $order->get_shipping_city());
+            $city = $bill_city !== '' ? $bill_city : $ship_city;
         }
         if ($state === '') {
-            $state = trim((string) $order->get_billing_state()) ?: trim((string) $order->get_shipping_state());
+            $state = trim((string) $order->get_billing_state())
+                ?: trim((string) $order->get_shipping_state());
         }
+
+        // Parse city from either shipping or billing free-text (COD often fills only one).
+        $hay1 = trim(implode(', ', array_filter(array($line1, $ship_line1, $bill_line1))));
+        $hay2 = trim(implode(', ', array_filter(array($line2, $ship_line2, $bill_line2))));
+        $city = self::resolve_delivery_city($hay1, $hay2, $city, $state);
 
         $name = trim((string) $order->get_formatted_shipping_full_name());
         if ($name === '') {
@@ -91,7 +311,8 @@ class Maskara_Pathao {
         $name  = $f['name'];
         $phone = $f['phone'];
 
-        $address = trim(implode(', ', array_filter(array($line1, $line2, $city, $state))));
+        // Build Pathao address: keep customer lines; append city/state only if not already present.
+        $address = self::format_recipient_address($line1, $line2, $city, $state);
 
         $invalid = function ($reason) {
             return new WP_Error(
@@ -122,8 +343,8 @@ class Maskara_Pathao {
             return $invalid('ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি — বিস্তারিত রোড/বাড়ির ঠিকানা নেই (কমপক্ষে ১২ অক্ষর)।');
         }
 
-        // City or area/zone required — Pathao often shows Area N/A otherwise
-        if ($city === '' && $state === '') {
+        // City required — Woo city/state fields, else parsed from free-text (চট্টগ্রাম / Chittagong / …)
+        if ($city === '') {
             return $invalid('ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি — শহর/এলাকা (City) নেই।');
         }
 
@@ -168,6 +389,73 @@ class Maskara_Pathao {
         }
 
         return $address;
+    }
+
+    /**
+     * Compose Pathao recipient_address without duplicating city already in street lines.
+     *
+     * @param string $line1
+     * @param string $line2
+     * @param string $city
+     * @param string $state
+     * @return string
+     */
+    public static function format_recipient_address($line1, $line2, $city, $state) {
+        $parts = array();
+        foreach (array($line1, $line2) as $p) {
+            $p = trim((string) $p);
+            if ($p !== '') {
+                $parts[] = $p;
+            }
+        }
+        $joined = implode(', ', $parts);
+
+        $city  = trim((string) $city);
+        $state = trim((string) $state);
+
+        if ($city !== '' && !self::address_mentions_city($joined, $city)) {
+            $parts[] = $city;
+            $joined  = implode(', ', $parts);
+        }
+
+        if ($state !== '') {
+            $state_norm = self::normalize_city_name($state);
+            $city_norm  = self::normalize_city_name($city);
+            $same_as_city = ($city_norm !== '' && $state_norm !== '' && $city_norm === $state_norm)
+                || ($city !== '' && self::city_compact($state) === self::city_compact($city));
+            if (!$same_as_city && mb_stripos($joined, $state, 0, 'UTF-8') === false) {
+                $parts[] = $state;
+                $joined  = implode(', ', $parts);
+            }
+        }
+
+        return trim($joined);
+    }
+
+    /**
+     * Whether street text already names this city (any known alias).
+     *
+     * @param string $text
+     * @param string $city
+     */
+    private static function address_mentions_city($text, $city) {
+        $text = trim((string) $text);
+        $city = trim((string) $city);
+        if ($text === '' || $city === '') {
+            return false;
+        }
+
+        $norm = self::normalize_city_name($city);
+        if ($norm !== '' && isset(self::bd_city_map()[$norm])) {
+            foreach (array_merge(array($norm), self::bd_city_map()[$norm]) as $alias) {
+                if (self::text_contains_alias($text, $alias)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        return mb_stripos($text, $city, 0, 'UTF-8') !== false;
     }
 
     /**

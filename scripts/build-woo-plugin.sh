@@ -52,7 +52,7 @@ manifest = {
     "tested": "6.7",
     "requires_php": "7.4",
     "description": "AI voice order verification for WooCommerce. Confirm sets Completed + Pathao auto-deploy. Miss/cancel sets Cancelled.",
-    "changelog": f"<h4>{version}</h4><ul><li>Sync cancelled/refunded/failed Woo orders to Maskara (stops calls, dashboard CANCELLED)</li></ul><h4>1.5.8</h4><ul><li>ঠিকানা ঠিক হলে Pathao তে অটো-ডিপ্লয়</li><li>Orders লিস্টে ম্যানুয়াল «Pathao তে পাঠান» বাটন</li><li>Shipping+Billing ঠিকানা একসাথে যাচাই (City মিস হওয়া ফিক্স)</li></ul>",
+    "changelog": f"<h4>{version}</h4><ul><li>ঠিকানার টেক্সট থেকে শহর ধরে Pathao অটো-ডিপ্লয় (চট্টগ্রাম/Chittagong ইত্যাদি — Woo City ফিল্ড খালি থাকলেও)</li><li>BD city alias map + shipping/billing merge</li></ul><h4>1.5.9</h4><ul><li>Sync cancelled/refunded/failed Woo orders to Maskara (stops calls, dashboard CANCELLED)</li></ul><h4>1.5.8</h4><ul><li>ঠিকানা ঠিক হলে Pathao তে অটো-ডিপ্লয়</li><li>Orders লিস্টে ম্যানুয়াল «Pathao তে পাঠান» বাটন</li><li>Shipping+Billing ঠিকানা একসাথে যাচাই (City মিস হওয়া ফিক্স)</li></ul>",
 }
 update_json.parent.mkdir(parents=True, exist_ok=True)
 update_json.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
@@ -88,7 +88,7 @@ cp -f "$DOWNLOADS_DIR/maskara-woocommerce.zip" "$PUBLIC_DIR/maskara-woocommerce.
 cp -f "$DOWNLOADS_DIR/maskara-woocommerce.zip" "$PUBLIC_DIR/maskara-woocommerce-$VERSION.zip"
 
 # Keep legacy URLs serving the latest full package.
-for legacy in 1.1.0 1.2.0 1.4.0 1.5.0 1.5.1 1.5.2 1.5.3 1.5.4 1.5.5 1.5.6 1.5.7 1.5.8; do
+for legacy in 1.1.0 1.2.0 1.4.0 1.5.0 1.5.1 1.5.2 1.5.3 1.5.4 1.5.5 1.5.6 1.5.7 1.5.8 1.5.9; do
   cp -f "$DOWNLOADS_DIR/maskara-woocommerce.zip" "$PUBLIC_DIR/maskara-woocommerce-$legacy.zip"
 done
 
