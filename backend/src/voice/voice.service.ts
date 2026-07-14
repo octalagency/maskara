@@ -213,10 +213,7 @@ export class VoiceService {
         data: { dtmfInput: '0' },
       });
       this.logger.log(`Twilio DTMF 0 → replay for call ${callId}`);
-      return `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Redirect>${this.apiUrl}/voice/twiml/${callId}</Redirect>
-</Response>`;
+      return this.generateReplayTwiml(callId);
     }
 
     let outcome: 'CONFIRMED' | 'CANCELLED' | 'INVALID_INPUT';

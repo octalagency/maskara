@@ -156,6 +156,8 @@ export class EpbxProvider implements VoiceProvider {
       dtmf_0: 'replay',
       confirm_digit: '1',
       cancel_digit: '2',
+      repeat_text: ttsText,
+      replay_text: ttsText,
 
       // Explicitly clear English template slots
       customer_name: '',
