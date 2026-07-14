@@ -1,7 +1,17 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateMerchantDto } from './dto/update-merchant.dto';
-import { clampSpeechRate } from '../voice/providers/bangla-prompt';
+import {
+  clampSpeechRate,
+  DEFAULT_MERCHANT_VOICE_ID,
+} from '../voice/providers/bangla-prompt';
+
+/** Auto-migrate legacy Azure নবনীতা → Chirp3 Algieba. */
+function normalizeStoredVoiceId(voiceId?: string | null): string | null {
+  if (voiceId == null) return null;
+  if (/nabanita/i.test(voiceId)) return DEFAULT_MERCHANT_VOICE_ID;
+  return voiceId;
+}
 
 @Injectable()
 export class MerchantsService {
@@ -35,6 +45,18 @@ export class MerchantsService {
       // columns may be missing until migrate
     }
 
+    const normalized = normalizeStoredVoiceId(voiceId) ?? voiceId;
+    if (normalized && normalized !== voiceId) {
+      try {
+        await this.prisma.$executeRaw`
+          UPDATE "Merchant" SET "voiceId" = ${normalized} WHERE id = ${merchantId}
+        `;
+        voiceId = normalized;
+      } catch {
+        voiceId = normalized;
+      }
+    }
+
     return {
       ...merchant,
       voiceId,
@@ -54,21 +76,22 @@ export class MerchantsService {
       (merchant as { speechRate?: number | null }).speechRate ?? null;
 
     if (voiceId !== undefined) {
+      const locked = normalizeStoredVoiceId(voiceId) || voiceId;
       try {
         await this.prisma.$executeRaw`
-          UPDATE "Merchant" SET "voiceId" = ${voiceId} WHERE id = ${merchantId}
+          UPDATE "Merchant" SET "voiceId" = ${locked} WHERE id = ${merchantId}
         `;
-        savedVoiceId = voiceId;
+        savedVoiceId = locked;
       } catch {
         try {
           const updated = await this.prisma.merchant.update({
             where: { id: merchantId },
-            data: { voiceId } as never,
+            data: { voiceId: locked } as never,
           });
           savedVoiceId =
-            (updated as { voiceId?: string | null }).voiceId ?? voiceId;
+            (updated as { voiceId?: string | null }).voiceId ?? locked;
         } catch {
-          savedVoiceId = voiceId;
+          savedVoiceId = locked;
         }
       }
     }

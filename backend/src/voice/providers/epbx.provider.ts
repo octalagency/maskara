@@ -10,15 +10,18 @@ import {
   AZURE_FALLBACK_VOICE_ID,
   DEFAULT_SPEECH_RATE,
   buildOrderVerificationPrompt,
+  hasBanglaScript,
+  resolveLiveEpbxVoice,
   resolveMerchantVoice,
 } from './bangla-prompt';
 
 /**
  * ePBX.bd — Bangla outbound dial/telephony only.
  *
- * When GOOGLE_TTS_API_KEY is set: Maskara synthesizes Chirp3 MP3, hosts via
- * Redis/S3, and sends audio_url only. Bangla text + Azure voice fields are
- * omitted so ePBX cannot fall back to portal নবনীতা.
+ * When GOOGLE_TTS_API_KEY is set: Maskara synthesizes Chirp3 MP3 (bn-IN male),
+ * hosts via Redis/S3, and sends audio_url. Bangla tts_text stays as a hard
+ * fallback so ePBX never falls through to English portal defaults.
+ * Merchant Azure নবনীতা is ignored on this live path.
  */
 @Injectable()
 export class EpbxProvider implements VoiceProvider {
@@ -73,43 +76,65 @@ export class EpbxProvider implements VoiceProvider {
       customGreeting: params.customGreeting,
     });
 
-    let voice = resolveMerchantVoice(params.voiceId);
+    const googleReady = this.googleTts.isConfigured();
+    let voice = resolveLiveEpbxVoice(params.voiceId, googleReady);
     const speechRate = params.speechRate ?? DEFAULT_SPEECH_RATE;
     let audioUrl: string | null = null;
     let confirmAudioUrl: string | null = null;
     let cancelAudioUrl: string | null = null;
     let invalidAudioUrl: string | null = null;
+    let redisCached = false;
 
     const confirmBn = 'আপনার অর্ডার নিশ্চিত করা হয়েছে। ধন্যবাদ।';
     const cancelBn = 'আপনার অর্ডার বাতিল করা হয়েছে। ধন্যবাদ।';
     const invalidBn =
       'দয়া করে ১ চাপুন নিশ্চিত করতে, ২ চাপুন বাতিল করতে, পুনরায় শুনতে ০ চাপুন।';
 
-    if (voice.provider === 'google' && this.googleTts.isConfigured()) {
+    const banglaOk = hasBanglaScript(ttsText);
+    if (!banglaOk) {
+      this.logger.error(
+        `[voice] TTS text missing Bangla script callId=${params.callId} chars=${ttsText.length} preview=${ttsText.slice(0, 80)}`,
+      );
+    }
+
+    if (googleReady) {
+      // Force Google Chirp3 synth even if merchant DB still has Azure নবনীতা
+      if (voice.provider !== 'google') {
+        voice = resolveLiveEpbxVoice(params.voiceId, true);
+      }
       try {
+        this.logger.log(
+          `[voice] Google synth start callId=${params.callId} language=bn-IN voiceId=${voice.id} googleVoice=${voice.voiceId} bangla_script=${banglaOk} chars=${ttsText.length}`,
+        );
         const synth = await this.googleTts.synthesize(
           ttsText,
           voice.voiceId,
           speechRate,
         );
-        audioUrl = await this.googleTts.hostAudio(
+        const hosted = await this.googleTts.hostAudio(
           synth.buffer,
           synth.mimeType,
           `call-${params.callId}`,
         );
+        audioUrl = hosted.url;
+        redisCached = hosted.redisCached;
 
-        // Same Chirp3 voice for DTMF confirm/cancel/invalid (never ePBX Azure)
+        // Same Chirp3 male for DTMF confirm/cancel/invalid (never ePBX Azure female)
         try {
           const [c, x, i] = await Promise.all([
             this.googleTts.synthesize(confirmBn, voice.voiceId, speechRate),
             this.googleTts.synthesize(cancelBn, voice.voiceId, speechRate),
             this.googleTts.synthesize(invalidBn, voice.voiceId, speechRate),
           ]);
-          [confirmAudioUrl, cancelAudioUrl, invalidAudioUrl] = await Promise.all([
+          const [okH, cxH, badH] = await Promise.all([
             this.googleTts.hostAudio(c.buffer, c.mimeType, `ok-${params.callId}`),
             this.googleTts.hostAudio(x.buffer, x.mimeType, `cx-${params.callId}`),
             this.googleTts.hostAudio(i.buffer, i.mimeType, `bad-${params.callId}`),
           ]);
+          confirmAudioUrl = okH.url;
+          cancelAudioUrl = cxH.url;
+          invalidAudioUrl = badH.url;
+          redisCached = redisCached && okH.redisCached && cxH.redisCached && badH.redisCached;
         } catch (dtmfErr) {
           this.logger.warn(
             `DTMF phrase TTS failed (prompt audio still used): ${dtmfErr instanceof Error ? dtmfErr.message : dtmfErr}`,
@@ -117,7 +142,7 @@ export class EpbxProvider implements VoiceProvider {
         }
 
         this.logger.log(
-          `[voice] Google TTS ready callId=${params.callId} voiceId=${voice.id} googleVoice=${voice.voiceId} audio_url=${audioUrl}`,
+          `[voice] Google TTS ready callId=${params.callId} language=bn-IN voiceId=${voice.id} googleVoice=${voice.voiceId} audio_url=${audioUrl} redis_cached=${redisCached}`,
         );
       } catch (err) {
         this.logger.warn(
@@ -126,7 +151,7 @@ export class EpbxProvider implements VoiceProvider {
         voice = resolveMerchantVoice(AZURE_FALLBACK_VOICE_ID);
         audioUrl = null;
       }
-    } else if (voice.provider === 'google') {
+    } else if (params.voiceId && /google|chirp3|algieba/i.test(params.voiceId)) {
       this.logger.warn(
         'Google voice selected but GOOGLE_TTS_API_KEY missing — using Azure Pradeep',
       );
@@ -141,7 +166,7 @@ export class EpbxProvider implements VoiceProvider {
 
       language: 'bn',
       lang: 'bn',
-      tts_language: voice.provider === 'google' ? 'bn-IN' : 'bn-BD',
+      tts_language: 'bn-IN',
       locale: 'bn-BD',
       speech_language: 'bn-BD',
       speak_english: false,
@@ -162,6 +187,7 @@ export class EpbxProvider implements VoiceProvider {
       confirm_digit: '1',
       cancel_digit: '2',
 
+      // Never send COD slots — those trigger ePBX English template
       customer_name: '',
       amount: '',
       order_id: '',
@@ -178,8 +204,23 @@ export class EpbxProvider implements VoiceProvider {
       callback_url: this.webhookUrl('/voice/webhook/epbx'),
     };
 
+    // Hard fallback: ALWAYS attach Bangla script so empty text never becomes
+    // ePBX English portal female. Prefer hosted Google audio when present.
+    payload.custom_text = ttsText;
+    payload.tts_text = ttsText;
+    payload.message = ttsText;
+    payload.text = ttsText;
+    payload.prompt = ttsText;
+    payload.greeting = ttsText;
+    payload.repeat_text = ttsText;
+    payload.replay_text = ttsText;
+    payload.confirm_text = confirmBn;
+    payload.cancel_text = cancelBn;
+    payload.success_text = confirmBn;
+    payload.failure_text = cancelBn;
+    payload.invalid_text = invalidBn;
+
     if (audioUrl) {
-      // Hosted Google audio ONLY — no Bangla text, no Azure voice fields
       payload.audio_url = audioUrl;
       payload.media_url = audioUrl;
       payload.play_url = audioUrl;
@@ -208,77 +249,63 @@ export class EpbxProvider implements VoiceProvider {
       payload.tts_engine = 'audio';
       payload.mode = 'audio_url';
 
-      // Critical: empty greeting text so ePBX cannot synthesize portal Nabanita
-      payload.custom_text = '';
-      payload.tts_text = '';
-      payload.message = '';
-      payload.text = '';
-      payload.prompt = '';
-      payload.greeting = '';
-      payload.repeat_text = '';
-      payload.replay_text = '';
-
       if (confirmAudioUrl) {
         payload.confirm_audio_url = confirmAudioUrl;
         payload.success_audio_url = confirmAudioUrl;
-        payload.confirm_text = '';
-        payload.success_text = '';
-      } else {
-        payload.confirm_text = confirmBn;
-        payload.success_text = confirmBn;
       }
       if (cancelAudioUrl) {
         payload.cancel_audio_url = cancelAudioUrl;
         payload.failure_audio_url = cancelAudioUrl;
-        payload.cancel_text = '';
-        payload.failure_text = '';
-      } else {
-        payload.cancel_text = cancelBn;
-        payload.failure_text = cancelBn;
       }
       if (invalidAudioUrl) {
         payload.invalid_audio_url = invalidAudioUrl;
-        payload.invalid_text = '';
-      } else {
-        payload.invalid_text = invalidBn;
       }
 
-      // If any short DTMF text remains, force male Azure — never portal নবনীতা
+      // If ePBX ignores audio_url and speaks tts_text, force male Azure — never নবনীতা
       payload.azure_tts_voice_id = 'bn-BD-PradeepNeural';
       payload.azure_voice = 'bn-BD-PradeepNeural';
+      payload.voice_id = 'bn-BD-PradeepNeural';
+      payload.tts_voice = 'bn-BD-PradeepNeural';
+
+      // When audio is durably hosted: OMIT greeting text keys (never empty string —
+      // empty '' makes ePBX play English portal female). Keep Bangla DTMF texts.
+      if (redisCached) {
+        for (const key of [
+          'custom_text',
+          'tts_text',
+          'message',
+          'text',
+          'prompt',
+          'greeting',
+          'repeat_text',
+          'replay_text',
+        ]) {
+          delete payload[key];
+        }
+      }
     } else {
-      // Text-TTS fallback — hard-lock Azure Pradeep (never leave voice unset)
       const azureVoice =
         voice.provider === 'azure' ? voice.voiceId : 'bn-BD-PradeepNeural';
-      payload.custom_text = ttsText;
-      payload.tts_text = ttsText;
-      payload.message = ttsText;
-      payload.text = ttsText;
-      payload.prompt = ttsText;
-      payload.greeting = ttsText;
-      payload.repeat_text = ttsText;
-      payload.replay_text = ttsText;
-      payload.confirm_text = confirmBn;
-      payload.cancel_text = cancelBn;
-      payload.success_text = confirmBn;
-      payload.failure_text = cancelBn;
-      payload.invalid_text = invalidBn;
+      // Never ship নবনীতা
+      const locked =
+        /nabanita/i.test(azureVoice) ? 'bn-BD-PradeepNeural' : azureVoice;
       payload.provider = 'azure';
       payload.ai_tts_provider = 'azure';
       payload.tts_provider = 'azure';
       payload.tts_engine = 'azure';
       payload.speech_provider = 'azure';
-      payload.azure_tts_voice_id = azureVoice;
-      payload.azure_voice = azureVoice;
-      payload.azure_voice_name = azureVoice;
-      payload.voice_id = azureVoice;
-      payload.tts_voice = azureVoice;
-      payload.tts_voice_id = azureVoice;
-      payload.tts_voice_name = azureVoice;
-      payload.voice = azureVoice;
-      payload.voice_name = azureVoice;
+      payload.azure_tts_voice_id = locked;
+      payload.azure_voice = locked;
+      payload.azure_voice_name = locked;
+      payload.voice_id = locked;
+      payload.tts_voice = locked;
+      payload.tts_voice_id = locked;
+      payload.tts_voice_name = locked;
+      payload.voice = locked;
+      payload.voice_name = locked;
       payload.speech_rate = '0.92';
       payload.rate = '0.92';
+      payload.tts_language = 'bn-BD';
     }
 
     const forceIvr = this.settings.get('EPBX_FORCE_IVR') === '1';
@@ -287,8 +314,13 @@ export class EpbxProvider implements VoiceProvider {
       payload.ivr_id = ivrId;
     }
 
+    const ttsPresent = Boolean(
+      typeof payload.tts_text === 'string' &&
+        (payload.tts_text as string).trim().length > 0,
+    );
+
     this.logger.log(
-      `[voice] ePBX initiate callId=${params.callId} merchantVoiceId=${params.voiceId || 'null'} resolved=${voice.id} audio_url_sent=${Boolean(audioUrl)} audio_url=${audioUrl || 'none'} mode=${payload.mode} chars=${ttsText.length}`,
+      `[voice] ePBX initiate callId=${params.callId} merchantVoiceId=${params.voiceId || 'null'} resolved=${voice.id} language=${payload.tts_language} audio_url_sent=${Boolean(audioUrl)} redis_cached=${redisCached} tts_text_present=${ttsPresent} bangla_script=${banglaOk} mode=${payload.mode} chars=${ttsText.length}`,
     );
 
     const customerId = this.settings.get('EPBX_CUSTOMER_ID');
@@ -321,7 +353,7 @@ export class EpbxProvider implements VoiceProvider {
           params.callId;
 
         this.logger.log(
-          `[voice] ePBX OK ${path} callId=${params.callId} voiceId=${voice.id} audio_url_sent=${Boolean(audioUrl)} → ${dialPhone} providerId=${providerCallId}`,
+          `[voice] ePBX OK ${path} callId=${params.callId} voiceId=${voice.id} language=${payload.tts_language} audio_url_sent=${Boolean(audioUrl)} redis_cached=${redisCached} tts_text_present=${ttsPresent} → ${dialPhone} providerId=${providerCallId}`,
         );
         return { providerCallId: String(providerCallId), status: 'RINGING' };
       }

@@ -106,7 +106,7 @@ export const VOICE_OPTIONS = [
     short: 'নবনীতা',
     gender: 'female' as const,
     provider: 'Azure Neural',
-    description: 'বাংলাদেশি নারী — ePBX ফলব্যাক',
+    description: 'লিগ্যাসি — লাইভ কলে আর ব্যবহার হয় না (Algieba-তে মাইগ্রেট)',
     recommended: false,
     requiresGoogleTts: false,
   },
@@ -138,8 +138,9 @@ export function speechRateLabel(rate?: number | null): string {
 
 export function normalizeVoiceId(voiceId?: string | null): string {
   if (!voiceId) return DEFAULT_VOICE;
+  // Live product default is Chirp3 Algieba — auto-migrate Azure নবনীতা away
+  if (/nabanita/i.test(voiceId)) return GOOGLE_VOICE;
   if (KNOWN_IDS.has(voiceId as VoiceOption['id'])) return voiceId;
-  if (/nabanita/i.test(voiceId)) return 'azure:bn-BD-NabanitaNeural';
   if (/pradeep/i.test(voiceId)) return 'azure:bn-BD-PradeepNeural';
   if (/algieba|elevenlabs/i.test(voiceId)) return 'google:bn-IN-Chirp3-HD-Algieba';
   if (/achird/i.test(voiceId)) return 'google:bn-IN-Chirp3-HD-Achird';

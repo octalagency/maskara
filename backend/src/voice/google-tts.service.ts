@@ -107,15 +107,24 @@ export class GoogleTtsService implements OnModuleDestroy {
     const clean = text.replace(/\s+/g, ' ').trim().slice(0, 4500);
     if (!clean) throw new Error('Empty TTS text');
 
-    const languageCode = voiceName.startsWith('bn-')
-      ? voiceName.slice(0, 5)
-      : 'bn-IN';
+    // Chirp3 Bangla voices require bn-IN (not en-US / bn-BD).
+    const languageCode = /Chirp3-HD-/i.test(voiceName)
+      ? 'bn-IN'
+      : voiceName.startsWith('bn-')
+        ? voiceName.slice(0, 5)
+        : 'bn-IN';
 
     const rate = Math.min(
       1.35,
       Math.max(0.75, Number(speakingRate) || DEFAULT_SPEECH_RATE),
     );
     const isChirp3 = /Chirp3-HD-/i.test(voiceName);
+    const banglaScript = /[\u0980-\u09FF]/.test(clean);
+    if (!banglaScript) {
+      this.logger.warn(
+        `Google TTS input has no Bangla script voice=${voiceName} language=${languageCode} preview=${clean.slice(0, 60)}`,
+      );
+    }
 
     // Chirp3: markup + pause tags for call-center pacing.
     // Non-Chirp: plain text; pitch can warm delivery slightly.
@@ -161,7 +170,7 @@ export class GoogleTtsService implements OnModuleDestroy {
 
     const buffer = Buffer.from(body.audioContent, 'base64');
     this.logger.log(
-      `Google TTS ok voice=${voiceName} rate=${rate} markup=${isChirp3} bytes=${buffer.length} chars=${clean.length}`,
+      `Google TTS ok language=${languageCode} voice=${voiceName} rate=${rate} markup=${isChirp3} bangla_script=${banglaScript} bytes=${buffer.length} chars=${clean.length}`,
     );
     return { buffer, mimeType: 'audio/mpeg', voice: voiceName };
   }
@@ -216,7 +225,7 @@ export class GoogleTtsService implements OnModuleDestroy {
     buffer: Buffer,
     mimeTypeOrMerchant?: string,
     label?: string,
-  ): Promise<string> {
+  ): Promise<{ url: string; redisCached: boolean; via: 's3' | 'redis' }> {
     const mime =
       mimeTypeOrMerchant?.startsWith('audio/')
         ? mimeTypeOrMerchant
@@ -231,17 +240,17 @@ export class GoogleTtsService implements OnModuleDestroy {
       const url = await this.s3.uploadBuffer(buffer, key, mime);
       if (url) {
         this.logger.log(`TTS hosted on S3 label=${merchantId} bytes=${buffer.length}`);
-        return url;
+        return { url, redisCached: true, via: 's3' };
       }
       this.logger.warn('S3 upload failed — falling back to Redis TTS host');
     }
 
-    const id = await this.storeSharedAudio(buffer, mime);
+    const { id, redisCached } = await this.storeSharedAudio(buffer, mime);
     const url = `${this.publicApiBase()}/voice/tts-audio/${id}`;
     this.logger.log(
-      `TTS hosted via Redis/API label=${merchantId} id=${id} bytes=${buffer.length} url=${url.slice(0, 96)}`,
+      `TTS hosted via Redis/API label=${merchantId} id=${id} redis_cached=${redisCached} bytes=${buffer.length} url=${url.slice(0, 96)}`,
     );
-    return url;
+    return { url, redisCached, via: 'redis' };
   }
 
   /** Write to L1 + Redis so worker-generated audio is fetchable by API. */
@@ -249,7 +258,7 @@ export class GoogleTtsService implements OnModuleDestroy {
     buffer: Buffer,
     mimeType = 'audio/mpeg',
     ttlMs = REDIS_TTS_TTL_SEC * 1000,
-  ): Promise<string> {
+  ): Promise<{ id: string; redisCached: boolean }> {
     this.prune();
     const id = randomUUID();
     this.cache.set(id, {
@@ -258,6 +267,7 @@ export class GoogleTtsService implements OnModuleDestroy {
       expires: Date.now() + ttlMs,
     });
 
+    let redisCached = false;
     if (this.redis) {
       try {
         // Pack mime + mp3 so API can restore content-type
@@ -270,6 +280,7 @@ export class GoogleTtsService implements OnModuleDestroy {
           REDIS_TTS_TTL_SEC,
           packed,
         );
+        redisCached = true;
       } catch (err) {
         this.logger.error(
           `Failed to store TTS in Redis — ePBX may 404 audio: ${err instanceof Error ? err.message : err}`,
@@ -281,7 +292,7 @@ export class GoogleTtsService implements OnModuleDestroy {
       );
     }
 
-    return id;
+    return { id, redisCached };
   }
 
   /** @deprecated use storeSharedAudio — kept for callers that only need local id */

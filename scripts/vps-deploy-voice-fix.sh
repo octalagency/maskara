@@ -22,10 +22,11 @@ echo "=== backend voice / Google / Redis ==="
 docker logs maskara-backend --tail 40 2>&1 | grep -iE 'voice|google|tts|redis|Nest|error' || true
 echo ""
 echo "=== worker voice / Google / Redis ==="
-docker logs maskara-worker --tail 40 2>&1 | grep -iE 'voice|google|tts|redis|error' || true
+docker logs maskara-worker --tail 80 2>&1 | grep -iE 'voice|google|tts|redis|audio_url|error' || true
 
 echo ""
 echo "✓ Backend+worker+frontend rebuilt"
-echo "  Settings → Algieba (or your Chirp3) select → new test call"
-echo "  Logs should show: audio_url_sent=true  (NOT Azure নবনীতা)"
-echo "  Optional: docker logs -f maskara-worker | grep '\\[voice\\]'"
+echo "  Merchants on নবনীতা are auto-migrated to Algieba (migration + live lock)."
+echo "  Logs should show: audio_url_sent=true language=bn-IN redis_cached=true tts_text_present=true"
+echo "  Optional:"
+echo "  docker logs maskara-worker 2>&1 | grep -E 'audio_url_sent|language=bn-IN|redis_cached'"

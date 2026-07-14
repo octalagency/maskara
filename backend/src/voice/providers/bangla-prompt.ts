@@ -45,6 +45,14 @@ export function sanitizeBanglaSpeech(text: string): string {
 export const DEFAULT_CALL_SCRIPT =
   'হ্যালো {{customerName}}... আপনি {{storeName}}-এ অর্ডার করেছেন। আপনার মোট বিল {{amount}} টাকা। অর্ডারটি নিশ্চিত করার জন্য ১ চাপুন, অথবা বাতিল করার জন্য ২ চাপুন। আমরা ঢাকার বাইরে ২ থেকে ৩ দিনের ডেলিভারি দিয়ে থাকি, এবং ঢাকার মধ্যে ১ থেকে ২ দিনের মধ্যে ডেলিভারি দেওয়া হয়। আমাদের সাথে থাকার জন্য ধন্যবাদ। পুনরায় শুনতে ০ চাপুন।';
 
+/** True when Latin letters dominate over Bangla — would make Chirp3/ePBX speak English. */
+export function isMostlyLatinScript(text: string): boolean {
+  const letters = text.replace(/[^A-Za-z\u0980-\u09FF]/g, '');
+  if (letters.length < 8) return false;
+  const latin = (letters.match(/[A-Za-z]/g) || []).length;
+  return latin / letters.length > 0.45;
+}
+
 export function buildOrderVerificationPrompt(params: {
   storeName: string;
   customerName?: string;
@@ -61,13 +69,23 @@ export function buildOrderVerificationPrompt(params: {
     params.totalAmount != null ? String(Math.round(Number(params.totalAmount))) : '',
   );
 
-  const template = params.customGreeting?.trim() || DEFAULT_CALL_SCRIPT;
-  const filled = template
-    .replace(/\{\{\s*storeName\s*\}\}/gi, store)
-    .replace(/\{\{\s*customerName\s*\}\}/gi, name || 'মাননীয় গ্রাহক')
-    .replace(/\{\{\s*orderNumber\s*\}\}/gi, orderNumber)
-    .replace(/\{\{\s*amount\s*\}\}/gi, amount);
-  return sanitizeBanglaSpeech(filled);
+  const fill = (template: string) =>
+    template
+      .replace(/\{\{\s*storeName\s*\}\}/gi, store)
+      .replace(/\{\{\s*customerName\s*\}\}/gi, name || 'মাননীয় গ্রাহক')
+      .replace(/\{\{\s*orderNumber\s*\}\}/gi, orderNumber)
+      .replace(/\{\{\s*amount\s*\}\}/gi, amount);
+
+  let template = params.customGreeting?.trim() || DEFAULT_CALL_SCRIPT;
+  // Custom English/Banglish scripts → force default Bangla (never synth English)
+  if (isMostlyLatinScript(template)) {
+    template = DEFAULT_CALL_SCRIPT;
+  }
+  let filled = sanitizeBanglaSpeech(fill(template));
+  if (!filled || isMostlyLatinScript(filled)) {
+    filled = sanitizeBanglaSpeech(fill(DEFAULT_CALL_SCRIPT));
+  }
+  return filled;
 }
 
 /** Curated Google Chirp3 HD voices (bn-IN) + Azure fallbacks. */
@@ -231,6 +249,13 @@ export function parseMerchantVoice(voiceId?: string | null): {
   return { provider, voiceId: id };
 }
 
+/** True when text contains Bangla (Bengali) script characters. */
+export function hasBanglaScript(text: string): boolean {
+  return /[\u0980-\u09FF]/.test(text || '');
+}
+
+const CHIRP3_FEMALE = /Achernar|Aoede|Kore|Leda/i;
+
 export function resolveMerchantVoice(voiceId?: string | null): {
   provider: string;
   voiceId: string;
@@ -299,32 +324,62 @@ export function resolveMerchantVoice(voiceId?: string | null): {
   };
 }
 
-export function azureFallbackFor(voiceId?: string | null): {
+/**
+ * Live ePBX path only — telephony remains ePBX; TTS is Maskara Google Chirp3.
+ * When Google TTS is configured: ignore Azure নবনীতা and force male Algieba
+ * (or keep merchant's male Chirp3). Never leave Azure female on the wire.
+ */
+export function resolveLiveEpbxVoice(
+  voiceId?: string | null,
+  googleTtsConfigured = false,
+): {
+  provider: string;
+  voiceId: string;
+  id: string;
+  languageCode?: string;
+  useGoogleDirect?: boolean;
+} {
+  if (googleTtsConfigured) {
+    const resolved = resolveMerchantVoice(voiceId);
+    if (
+      resolved.provider === 'google' &&
+      /Chirp3-HD-/i.test(resolved.voiceId) &&
+      !CHIRP3_FEMALE.test(resolved.voiceId)
+    ) {
+      return { ...resolved, languageCode: 'bn-IN', useGoogleDirect: true };
+    }
+    // Azure নবনীতা / Pradeep / female Chirp3 / unknown → Algieba
+    return {
+      ...resolveMerchantVoice(DEFAULT_MERCHANT_VOICE_ID),
+      languageCode: 'bn-IN',
+      useGoogleDirect: true,
+    };
+  }
+
+  // No Google key: Bangla male Azure only (never portal নবনীতা / English)
+  const resolved = resolveMerchantVoice(voiceId);
+  if (/nabanita/i.test(resolved.voiceId) || /nabanita/i.test(voiceId || '')) {
+    return resolveMerchantVoice(AZURE_FALLBACK_VOICE_ID);
+  }
+  if (resolved.provider === 'azure') return resolved;
+  return resolveMerchantVoice(AZURE_FALLBACK_VOICE_ID);
+}
+
+/** Always male Azure Pradeep — never নবনীতা (portal English/female default). */
+export function azureFallbackFor(_voiceId?: string | null): {
   provider: string;
   voiceId: string;
   id: string;
 } {
-  const resolved = resolveMerchantVoice(voiceId);
-  if (resolved.provider === 'azure') {
-    return {
-      provider: resolved.provider,
-      voiceId: resolved.voiceId,
-      id: resolved.id,
-    };
-  }
-  if (
-    /nabanita|wavenet-a|achernar|aoede|kore|leda|female/i.test(voiceId || '') &&
-    !/pradeep|algieba|achird|fenrir|orus|puck/i.test(voiceId || '')
-  ) {
-    return {
-      provider: 'azure',
-      voiceId: 'bn-BD-NabanitaNeural',
-      id: 'azure:bn-BD-NabanitaNeural',
-    };
-  }
   return {
     provider: 'azure',
     voiceId: 'bn-BD-PradeepNeural',
     id: AZURE_FALLBACK_VOICE_ID,
   };
+}
+
+/** Merchants on Azure female / null should be migrated to Chirp3 Algieba. */
+export function shouldMigrateMerchantVoiceId(voiceId?: string | null): boolean {
+  if (!voiceId) return true;
+  return /nabanita/i.test(voiceId);
 }
