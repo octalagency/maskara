@@ -67,7 +67,7 @@ export default function SettingsPage() {
               customGreeting: m.customGreeting?.trim() || DEFAULT_SCRIPT,
               voiceId,
               speechRate,
-              maxCallRetries: m.maxCallRetries ?? 9,
+              maxCallRetries: m.maxCallRetries ?? 10,
               retryIntervalMin: m.retryIntervalMin ?? 90,
             })
             .catch(() => undefined);
@@ -151,7 +151,7 @@ export default function SettingsPage() {
         customGreeting: next.customGreeting?.trim() || DEFAULT_SCRIPT,
         voiceId: normalizeVoiceId(next.voiceId) || DEFAULT_VOICE,
         speechRate: clampSpeechRate(next.speechRate),
-        maxCallRetries: next.maxCallRetries ?? 9,
+        maxCallRetries: next.maxCallRetries ?? 10,
         retryIntervalMin: next.retryIntervalMin ?? 90,
       });
       setMerchant({
@@ -407,13 +407,13 @@ export default function SettingsPage() {
                 <input
                   type="number"
                   min={1}
-                  max={9}
+                  max={10}
                   className="input mt-1"
-                  value={merchant.maxCallRetries ?? 9}
+                  value={merchant.maxCallRetries ?? 10}
                   onChange={(e) =>
                     setMerchant({
                       ...merchant,
-                      maxCallRetries: Math.min(9, Math.max(1, +e.target.value)),
+                      maxCallRetries: Math.min(10, Math.max(1, +e.target.value)),
                     })
                   }
                 />

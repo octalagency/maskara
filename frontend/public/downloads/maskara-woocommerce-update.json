@@ -1,12 +1,12 @@
 {
   "name": "Maskara Order Verification",
   "slug": "maskara-woocommerce",
-  "version": "1.5.8",
+  "version": "1.5.9",
   "download_url": "https://app.maskara.bd/downloads/maskara-woocommerce.zip",
   "homepage": "https://maskara.bd",
   "requires": "5.8",
   "tested": "6.7",
   "requires_php": "7.4",
   "description": "AI voice order verification for WooCommerce. Confirm sets Completed + Pathao auto-deploy. Miss/cancel sets Cancelled.",
-  "changelog": "<h4>1.5.8</h4><ul><li>\u09a0\u09bf\u0995\u09be\u09a8\u09be \u09a0\u09bf\u0995 \u09b9\u09b2\u09c7 Pathao \u09a4\u09c7 \u0985\u099f\u09cb-\u09a1\u09bf\u09aa\u09cd\u09b2\u09df</li><li>Orders \u09b2\u09bf\u09b8\u09cd\u099f\u09c7 \u09ae\u09cd\u09af\u09be\u09a8\u09c1\u09df\u09be\u09b2 \u00abPathao \u09a4\u09c7 \u09aa\u09be\u09a0\u09be\u09a8\u00bb \u09ac\u09be\u099f\u09a8</li><li>Shipping+Billing \u09a0\u09bf\u0995\u09be\u09a8\u09be \u098f\u0995\u09b8\u09be\u09a5\u09c7 \u09af\u09be\u099a\u09be\u0987 (City \u09ae\u09bf\u09b8 \u09b9\u0993\u09df\u09be \u09ab\u09bf\u0995\u09cd\u09b8)</li></ul>"
+  "changelog": "<h4>1.5.9</h4><ul><li>Sync cancelled/refunded/failed Woo orders to Maskara (stops calls, dashboard CANCELLED)</li></ul><h4>1.5.8</h4><ul><li>\u09a0\u09bf\u0995\u09be\u09a8\u09be \u09a0\u09bf\u0995 \u09b9\u09b2\u09c7 Pathao \u09a4\u09c7 \u0985\u099f\u09cb-\u09a1\u09bf\u09aa\u09cd\u09b2\u09df</li><li>Orders \u09b2\u09bf\u09b8\u09cd\u099f\u09c7 \u09ae\u09cd\u09af\u09be\u09a8\u09c1\u09df\u09be\u09b2 \u00abPathao \u09a4\u09c7 \u09aa\u09be\u09a0\u09be\u09a8\u00bb \u09ac\u09be\u099f\u09a8</li><li>Shipping+Billing \u09a0\u09bf\u0995\u09be\u09a8\u09be \u098f\u0995\u09b8\u09be\u09a5\u09c7 \u09af\u09be\u099a\u09be\u0987 (City \u09ae\u09bf\u09b8 \u09b9\u0993\u09df\u09be \u09ab\u09bf\u0995\u09cd\u09b8)</li></ul>"
 }

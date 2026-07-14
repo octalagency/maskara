@@ -78,6 +78,17 @@ class Maskara_API {
         return $this->request('POST', '/webhooks/woocommerce', $this->order_to_payload($order));
     }
 
+    /**
+     * Push current Woo status to Maskara (cancel/refund/fail or metadata sync).
+     * Backend detects existing order + cancelled statuses and marks CANCELLED.
+     */
+    public function sync_order_status($order) {
+        if (!$order instanceof WC_Order) {
+            return new WP_Error('invalid_order', 'Invalid order');
+        }
+        return $this->request('POST', '/webhooks/woocommerce', $this->order_to_payload($order));
+    }
+
     public function order_to_payload($order) {
         $billing  = $order->get_address('billing');
         $shipping = $order->get_address('shipping');

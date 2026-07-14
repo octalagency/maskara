@@ -6,6 +6,7 @@ import { VoiceProviderFactory } from './providers/voice-provider.factory';
 import { buildOrderVerificationPrompt } from './providers/bangla-prompt';
 import { S3StorageService } from '../common/services/s3-storage.service';
 import { isWithinCallWindow } from '../common/utils/call-window.util';
+import { computeNextCallAt } from '../common/utils/call-schedule.util';
 
 @Injectable()
 export class VoiceService {
@@ -46,6 +47,11 @@ export class VoiceService {
       return;
     }
 
+    if (['VERIFIED', 'CANCELLED'].includes(order.status)) {
+      this.logger.warn(`Skipping call for finalized order ${order.orderNumber}`);
+      return;
+    }
+
     if (!isWithinCallWindow(merchant.timezone || 'Asia/Dhaka')) {
       this.logger.log(`Outside call window — skipping call for ${order.orderNumber}`);
       return;
@@ -72,14 +78,11 @@ export class VoiceService {
       },
     });
 
-    await this.prisma.order.update({
+    const updatedOrder = await this.prisma.order.update({
       where: { id: orderId },
       data: { status: 'CALLING', callAttempts: { increment: 1 } },
     });
-
-    const updatedOrder = await this.prisma.order.findUniqueOrThrow({
-      where: { id: orderId },
-    });
+    await this.setNextCallAt(updatedOrder.id, updatedOrder.callAttempts, merchant);
     await this.notifications.pushOrderUpdate(merchant, updatedOrder, {
       verifyStatus: 'calling',
     });
@@ -138,12 +141,32 @@ export class VoiceService {
         where: { id: call.id },
         data: { status: 'FAILED', errorMessage: String(error) },
       });
-      await this.prisma.order.update({
+      const failedOrder = await this.prisma.order.update({
         where: { id: orderId },
         data: { status: 'FAILED' },
       });
+      await this.setNextCallAt(failedOrder.id, failedOrder.callAttempts, merchant);
       throw error;
     }
+  }
+
+  /** Schedule the next staggered follow-up (or clear when exhausted). */
+  private async setNextCallAt(
+    orderId: string,
+    completedAttempts: number,
+    merchant: { maxCallRetries: number; retryIntervalMin: number; timezone?: string | null },
+  ) {
+    const nextCallAt = computeNextCallAt({
+      orderId,
+      completedAttempts,
+      maxAttempts: merchant.maxCallRetries,
+      minSpacingMin: merchant.retryIntervalMin,
+      timezone: merchant.timezone || 'Asia/Dhaka',
+    });
+    await this.prisma.order.update({
+      where: { id: orderId },
+      data: { nextCallAt },
+    });
   }
 
   generateTwiml(callId: string, storeName: string): string {
@@ -207,6 +230,7 @@ export class VoiceService {
         where: { id: call.orderId },
         data: {
           status: orderStatus,
+          nextCallAt: null,
           ...(orderStatus === 'VERIFIED' && { verifiedAt: new Date() }),
           ...(orderStatus === 'CANCELLED' && { cancelledAt: new Date() }),
         },
@@ -329,7 +353,12 @@ export class VoiceService {
 
     await this.prisma.order.update({
       where: { id: order.id },
-      data: { status: 'VERIFIED', verifiedAt: new Date() },
+      data: {
+        status: 'VERIFIED',
+        verifiedAt: new Date(),
+        callAttempts: { increment: 1 },
+        nextCallAt: null,
+      },
     });
 
     this.logger.log(`Simulated call completed for order ${order.orderNumber}`);

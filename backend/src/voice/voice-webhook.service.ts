@@ -233,6 +233,7 @@ export class VoiceWebhookService {
         where: { id: call.orderId },
         data: {
           status: orderStatus,
+          nextCallAt: null,
           ...(orderStatus === 'VERIFIED' && { verifiedAt: new Date() }),
           ...(orderStatus === 'CANCELLED' && { cancelledAt: new Date() }),
         },
@@ -306,7 +307,7 @@ export class VoiceWebhookService {
       } else {
         const failed = await this.prisma.order.update({
           where: { id: call.orderId },
-          data: { status: 'FAILED' },
+          data: { status: 'FAILED', nextCallAt: null },
         });
         // Max retries exhausted → WooCommerce cancels the order
         await this.notifications.pushOrderUpdate(call.merchant, failed, {

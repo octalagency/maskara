@@ -43,7 +43,7 @@ export class OrdersService {
 
     await this.updateDailyUsage(merchantId, 'ordersReceived');
 
-    // First verification call ASAP (target: within 20 seconds)
+    // First verification call ASAP (≤20s; backup cron covers misses)
     await this.callsQueue.add(
       'initiate-call',
       { orderId: order.id, merchantId, isRetry: false },
@@ -51,6 +51,7 @@ export class OrdersService {
         attempts: 2,
         backoff: { type: 'fixed', delay: 3000 },
         removeOnComplete: true,
+        removeOnFail: true,
         jobId: `call-first-${order.id}`,
       },
     );
@@ -131,8 +132,8 @@ export class OrdersService {
 
     const updateData: Prisma.OrderUpdateInput = {
       status: dto.status,
-      ...(dto.status === 'VERIFIED' && { verifiedAt: new Date() }),
-      ...(dto.status === 'CANCELLED' && { cancelledAt: new Date() }),
+      ...(dto.status === 'VERIFIED' && { verifiedAt: new Date(), nextCallAt: null }),
+      ...(dto.status === 'CANCELLED' && { cancelledAt: new Date(), nextCallAt: null }),
     };
 
     const updated = await this.prisma.order.update({

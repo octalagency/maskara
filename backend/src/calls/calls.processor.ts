@@ -24,7 +24,7 @@ export class CallsProcessor {
 
   @Process('initiate-call')
   async handleInitiateCall(job: Job<CallJobData>) {
-    const { orderId, merchantId, isRetry } = job.data;
+    const { orderId, merchantId } = job.data;
     this.logger.log(`Processing call job for order ${orderId}`);
 
     const order = await this.prisma.order.findUnique({
@@ -55,7 +55,7 @@ export class CallsProcessor {
       return;
     }
 
-    const attemptNumber = isRetry ? order.callAttempts + 1 : 1;
+    const attemptNumber = order.callAttempts + 1;
     await this.voiceService.initiateCall(orderId, merchantId, attemptNumber);
     await this.subscriptions.incrementCallUsage(merchantId);
   }

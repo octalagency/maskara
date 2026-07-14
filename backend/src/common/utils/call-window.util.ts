@@ -1,7 +1,7 @@
-/** Bangladesh call window: 10:00–22:00 local time. */
+/** Bangladesh call window: 08:00–22:00 local time. */
 export function isWithinCallWindow(
   timezone = 'Asia/Dhaka',
-  startHour = 10,
+  startHour = 8,
   endHour = 22,
   now = new Date(),
 ): boolean {
@@ -16,5 +16,5 @@ export function isWithinCallWindow(
 }
 
 export function callWindowLabel(timezone = 'Asia/Dhaka'): string {
-  return `সকাল ${10}টা – রাত ${10}টা (${timezone})`;
+  return `সকাল ${8}টা – রাত ${10}টা (${timezone})`;
 }

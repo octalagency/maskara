@@ -26,6 +26,14 @@ export default function OrdersPage() {
   const [period, setPeriod] = useState<Period>('today');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [maxCallRetries, setMaxCallRetries] = useState(10);
+
+  useEffect(() => {
+    api
+      .getMerchant()
+      .then((m) => setMaxCallRetries(m.maxCallRetries ?? 10))
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     loadOrders();
@@ -158,7 +166,7 @@ export default function OrdersPage() {
                         <div className="flex items-center gap-1.5">
                           <PhoneCall className="h-3.5 w-3.5 text-slate-400" />
                           {order.callAttempts ?? 0}
-                          <span className="text-slate-400">/9</span>
+                          <span className="text-slate-400">/{maxCallRetries}</span>
                           {lastCall?.outcome && (
                             <span className="ml-1 text-xs text-slate-400">({lastCall.outcome})</span>
                           )}

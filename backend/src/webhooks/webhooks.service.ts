@@ -3,6 +3,15 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OrdersService } from '../orders/orders.service';
 import { CreateOrderDto } from '../orders/dto/create-order.dto';
 
+const WOO_CANCEL_STATUSES = new Set(['cancelled', 'refunded', 'failed']);
+
+function normalizeWooStatus(status: unknown): string {
+  return String(status || '')
+    .toLowerCase()
+    .replace(/^wc-/, '')
+    .trim();
+}
+
 @Injectable()
 export class WebhooksService {
   constructor(
@@ -35,11 +44,51 @@ export class WebhooksService {
 
   async handleWooCommerceWebhook(merchantId: string, payload: Record<string, unknown>) {
     const externalId = String(payload.id);
+    const wooStatus = normalizeWooStatus(payload.status);
     const existing = await this.prisma.order.findFirst({
       where: { merchantId, externalId, source: 'WOOCOMMERCE' },
     });
+
     if (existing) {
+      // Website cancel/refund/fail → Maskara CANCELLED + stop further calls
+      if (WOO_CANCEL_STATUSES.has(wooStatus) && existing.status !== 'CANCELLED') {
+        const cancelled = await this.prisma.order.update({
+          where: { id: existing.id },
+          data: {
+            status: 'CANCELLED',
+            cancelledAt: new Date(),
+            nextCallAt: null,
+            metadata: {
+              ...((existing.metadata as Record<string, unknown>) || {}),
+              wooOrderId: payload.id,
+              status: payload.status,
+              cancelledVia: 'woocommerce_webhook',
+            },
+          },
+        });
+        return { received: true, cancelled: true, order: cancelled };
+      }
+
+      // Status sync for existing orders (no duplicate create)
+      if (wooStatus && existing.metadata) {
+        await this.prisma.order.update({
+          where: { id: existing.id },
+          data: {
+            metadata: {
+              ...((existing.metadata as Record<string, unknown>) || {}),
+              wooOrderId: payload.id,
+              status: payload.status,
+            },
+          },
+        });
+      }
+
       return { received: true, duplicate: true, order: existing };
+    }
+
+    // Don't create a new Maskara order for an already-cancelled Woo order
+    if (WOO_CANCEL_STATUSES.has(wooStatus)) {
+      return { received: true, skipped: true, reason: 'woo_order_already_cancelled' };
     }
 
     await this.prisma.integration.updateMany({

@@ -16,7 +16,13 @@ class Maskara_Order_Sync {
         add_action('woocommerce_order_status_pending', array($this, 'queue_send'), 10, 1);
         add_action('woocommerce_payment_complete', array($this, 'queue_send'), 20, 1);
 
+        // Cancel / refund / fail on website → notify Maskara to stop calls
+        add_action('woocommerce_order_status_cancelled', array($this, 'queue_status_sync'), 10, 1);
+        add_action('woocommerce_order_status_refunded', array($this, 'queue_status_sync'), 10, 1);
+        add_action('woocommerce_order_status_failed', array($this, 'queue_status_sync'), 10, 1);
+
         add_action('maskara_send_order_event', array($this, 'maybe_send_order'), 10, 1);
+        add_action('maskara_sync_order_status_event', array($this, 'sync_order_status'), 10, 1);
         add_action('woocommerce_order_actions', array($this, 'add_order_action'));
         add_action('woocommerce_order_action_maskara_send', array($this, 'manual_send_order'));
     }
@@ -42,6 +48,48 @@ class Maskara_Order_Sync {
         }
         // Also try immediately (checkout may allow)
         $this->maybe_send_order($order_id);
+    }
+
+    /** Queue a status sync (cancel/refund/fail) to Maskara. */
+    public function queue_status_sync($order_id) {
+        $order_id = absint($order_id);
+        if (!$order_id) return;
+
+        if (function_exists('as_enqueue_async_action')) {
+            as_enqueue_async_action('maskara_sync_order_status_event', array($order_id), 'maskara');
+            return;
+        }
+        if (!wp_next_scheduled('maskara_sync_order_status_event', array($order_id))) {
+            wp_schedule_single_event(time() + 2, 'maskara_sync_order_status_event', array($order_id));
+        }
+        $this->sync_order_status($order_id);
+    }
+
+    /**
+     * Notify Maskara of Woo cancel/refund/fail so dashboard shows CANCELLED and calls stop.
+     */
+    public function sync_order_status($order_id) {
+        $api = new Maskara_API();
+        if (!$api->is_configured()) {
+            return;
+        }
+
+        $order = wc_get_order(absint($order_id));
+        if (!$order) return;
+
+        // Only sync if Maskara already knows about this order (or force via webhook)
+        $response = $api->parse_response($api->sync_order_status($order));
+        if (is_wp_error($response)) {
+            $order->add_order_note('Maskara status sync failed: ' . $response->get_error_message());
+            return;
+        }
+
+        $status = $order->get_status();
+        if (in_array($status, array('cancelled', 'refunded', 'failed'), true)) {
+            $order->update_meta_data('_maskara_verify_status', 'cancelled');
+            $order->save();
+            $order->add_order_note('Maskara: order marked CANCELLED (website ' . $status . ').');
+        }
     }
 
     public function add_order_action($actions) {

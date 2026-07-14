@@ -5,6 +5,9 @@ import { Queue } from 'bull';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { isWithinCallWindow } from '../common/utils/call-window.util';
+import { SECOND_CALL_DELAY_MS } from '../common/utils/call-schedule.util';
+
+const RETRYABLE_CALL_STATUSES = ['NO_ANSWER', 'BUSY', 'FAILED', 'RINGING', 'QUEUED'];
 
 @Injectable()
 export class CallsRetryScheduler {
@@ -16,7 +19,7 @@ export class CallsRetryScheduler {
     private notifications: NotificationsService,
   ) {}
 
-  /** First call within ~20s of order if queue job was missed. */
+  /** First call within ~20s of order if the create-queue job was missed. */
   @Cron('*/20 * * * * *')
   async enqueueFirstCalls() {
     if (!isWithinCallWindow()) return;
@@ -39,18 +42,24 @@ export class CallsRetryScheduler {
       if (order.calls.length > 0) continue;
       if (!isWithinCallWindow(order.merchant.timezone || 'Asia/Dhaka')) continue;
 
-      this.logger.log(`First-call enqueue (≤20s) for ${order.orderNumber}`);
-      await this.queueCall(order.id, order.merchantId, false);
+      this.logger.log(`First-call enqueue (≤20s backup) for ${order.orderNumber}`);
+      await this.queueCall(order.id, order.merchantId, false, `call-first-${order.id}`);
     }
   }
 
   @Cron(CronExpression.EVERY_MINUTE)
   async retryFailedCalls() {
+    const now = new Date();
+
     const pendingOrders = await this.prisma.order.findMany({
       where: {
         status: { in: ['PENDING', 'FAILED', 'CALLING'] },
+        OR: [{ nextCallAt: { lte: now } }, { nextCallAt: null }],
       },
-      include: { merchant: true, calls: { orderBy: { createdAt: 'desc' }, take: 1 } },
+      include: {
+        merchant: true,
+        calls: { orderBy: { createdAt: 'desc' }, take: 1 },
+      },
       take: 80,
     });
 
@@ -59,7 +68,7 @@ export class CallsRetryScheduler {
         if (order.status !== 'FAILED') {
           const failed = await this.prisma.order.update({
             where: { id: order.id },
-            data: { status: 'FAILED' },
+            data: { status: 'FAILED', nextCallAt: null },
           });
           await this.notifications.pushOrderUpdate(order.merchant, failed, {
             verifyStatus: 'failed',
@@ -68,49 +77,86 @@ export class CallsRetryScheduler {
         continue;
       }
 
-      if (!isWithinCallWindow(order.merchant.timezone || 'Asia/Dhaka')) {
-        continue;
-      }
+      const tz = order.merchant.timezone || 'Asia/Dhaka';
+      if (!isWithinCallWindow(tz)) continue;
 
       const lastCall = order.calls[0];
-      const retryAfter = order.merchant.retryIntervalMin * 60 * 1000;
+      const minSpacingMs = Math.max(order.merchant.retryIntervalMin, 30) * 60 * 1000;
 
-      // First call handled by enqueueFirstCalls + order create queue
-      if (!lastCall && order.status === 'PENDING' && order.callAttempts === 0) {
-        await this.queueCall(order.id, order.merchantId, false);
+      // First call: create queue + 20s cron
+      if (order.callAttempts === 0) {
+        if (!lastCall && order.status === 'PENDING') {
+          await this.queueCall(order.id, order.merchantId, false, `call-first-${order.id}`);
+        }
         continue;
       }
 
       if (!lastCall) continue;
 
       const timeSinceLastCall = Date.now() - lastCall.createdAt.getTime();
-      const shouldRetry =
-        timeSinceLastCall >= retryAfter &&
-        ['NO_ANSWER', 'BUSY', 'FAILED', 'RINGING'].includes(lastCall.status);
 
-      // RINGING only if stuck > retry interval (provider never callbacked)
-      if (lastCall.status === 'RINGING' && timeSinceLastCall < retryAfter) {
+      if (
+        ['RINGING', 'QUEUED', 'IN_PROGRESS'].includes(lastCall.status) &&
+        timeSinceLastCall < (order.callAttempts === 1 ? SECOND_CALL_DELAY_MS : minSpacingMs)
+      ) {
         continue;
       }
 
-      if (shouldRetry) {
-        this.logger.log(
-          `Retry ${order.callAttempts + 1}/${order.merchant.maxCallRetries} for ${order.orderNumber}`,
-        );
-        await this.queueCall(order.id, order.merchantId, true);
-      }
+      const retryable = RETRYABLE_CALL_STATUSES.includes(lastCall.status);
+      if (!retryable) continue;
+
+      const dueBySchedule =
+        order.nextCallAt != null && order.nextCallAt.getTime() <= now.getTime();
+
+      // Attempt 2: 2 minutes after first if nextCallAt missing (legacy / missed set)
+      const dueSecondCall =
+        order.callAttempts === 1 &&
+        order.nextCallAt == null &&
+        timeSinceLastCall >= SECOND_CALL_DELAY_MS;
+
+      // Day follow-ups (3+): min spacing fallback when nextCallAt unset
+      const dueBySpacing =
+        order.callAttempts >= 2 &&
+        order.nextCallAt == null &&
+        timeSinceLastCall >= minSpacingMs;
+
+      if (!dueBySchedule && !dueSecondCall && !dueBySpacing) continue;
+
+      const nextAttempt = order.callAttempts + 1;
+      this.logger.log(
+        `Retry ${nextAttempt}/${order.merchant.maxCallRetries} for ${order.orderNumber}`,
+      );
+      await this.queueCall(
+        order.id,
+        order.merchantId,
+        true,
+        `call-fu-${order.id}-a${nextAttempt}`,
+      );
     }
   }
 
-  private async queueCall(orderId: string, merchantId: string, isRetry: boolean) {
-    await this.callsQueue.add(
-      'initiate-call',
-      { orderId, merchantId, isRetry },
-      {
-        attempts: 1,
-        removeOnComplete: true,
-        jobId: `call-${orderId}-${isRetry ? 'r' : 'f'}-${Math.floor(Date.now() / 15000)}`,
-      },
-    );
+  private async queueCall(
+    orderId: string,
+    merchantId: string,
+    isRetry: boolean,
+    jobId: string,
+  ) {
+    try {
+      await this.callsQueue.add(
+        'initiate-call',
+        { orderId, merchantId, isRetry },
+        {
+          attempts: 1,
+          removeOnComplete: true,
+          removeOnFail: true,
+          jobId,
+        },
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!/job.*exist|duplicate/i.test(msg)) {
+        this.logger.warn(`queueCall failed (${jobId}): ${msg}`);
+      }
+    }
   }
 }

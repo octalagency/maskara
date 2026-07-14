@@ -4,7 +4,7 @@ Tags: woocommerce, cod, order verification, bangla, maskara, pathao, courier
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.5.8
+Stable tag: 1.5.9
 License: GPLv2 or later
 
 WooCommerce COD order verification via Maskara AI voice. Confirm = Completed + Pathao; miss/cancel = Cancelled.
@@ -27,6 +27,9 @@ WooCommerce COD order verification via Maskara AI voice. Confirm = Completed + P
 5. Test Connection - Connect to Maskara
 
 == Changelog ==
+
+= 1.5.9 =
+* Sync cancelled/refunded/failed Woo orders to Maskara (stops calls, dashboard CANCELLED)
 
 = 1.5.2 =
 * WordPress-safe zip packaging (fixes upload / incompatible archive)
