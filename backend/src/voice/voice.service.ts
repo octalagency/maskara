@@ -3,7 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { VoiceProviderFactory } from './providers/voice-provider.factory';
-import { buildOrderVerificationPrompt } from './providers/bangla-prompt';
+import {
+  DEFAULT_MERCHANT_VOICE_ID,
+  buildOrderVerificationPrompt,
+  shouldMigrateMerchantVoiceId,
+} from './providers/bangla-prompt';
 import { S3StorageService } from '../common/services/s3-storage.service';
 import { isWithinCallWindow } from '../common/utils/call-window.util';
 import { computeNextCallAt } from '../common/utils/call-schedule.util';
@@ -105,6 +109,26 @@ export class VoiceService {
       }
     } catch {
       // ignore
+    }
+
+    // Soft-migrate Azure নবনীতা / null → Chirp3 Algieba (no merchant re-select needed)
+    if (shouldMigrateMerchantVoiceId(merchantVoiceId)) {
+      const from = merchantVoiceId || 'null';
+      merchantVoiceId = DEFAULT_MERCHANT_VOICE_ID;
+      try {
+        await this.prisma.$executeRaw`
+          UPDATE "Merchant" SET "voiceId" = ${DEFAULT_MERCHANT_VOICE_ID}
+          WHERE id = ${merchantId}
+            AND ("voiceId" IS NULL OR "voiceId" ILIKE '%nabanita%')
+        `;
+        this.logger.log(
+          `[voice] migrated merchant ${merchantId} voiceId ${from} → ${DEFAULT_MERCHANT_VOICE_ID}`,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `voiceId migration skipped: ${err instanceof Error ? err.message : err}`,
+        );
+      }
     }
 
     try {
