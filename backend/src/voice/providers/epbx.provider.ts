@@ -8,6 +8,7 @@ import {
 } from './voice-provider.interface';
 import {
   AZURE_FALLBACK_VOICE_ID,
+  DEFAULT_SPEECH_RATE,
   buildOrderVerificationPrompt,
   resolveMerchantVoice,
 } from './bangla-prompt';
@@ -83,7 +84,7 @@ export class EpbxProvider implements VoiceProvider {
         const synth = await this.googleTts.synthesize(
           ttsText,
           voice.voiceId,
-          params.speechRate ?? 1.05,
+          params.speechRate ?? DEFAULT_SPEECH_RATE,
         );
         audioUrl = await this.googleTts.hostAudio(
           synth.buffer,

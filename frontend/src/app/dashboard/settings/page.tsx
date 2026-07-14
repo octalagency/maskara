@@ -20,7 +20,7 @@ import { Pause, Play, Volume2, Check, User } from 'lucide-react';
 
 const DEFAULT_VOICE = 'google:bn-IN-Chirp3-HD-Algieba';
 const DEFAULT_SCRIPT =
-  'হ্যালো {{customerName}}, আপনি {{storeName}}-এ অর্ডার করেছেন। আপনার মোট বিল {{amount}} টাকা। অর্ডারটি নিশ্চিত করার জন্য ১ চাপুন অথবা বাতিল করার জন্য ২ চাপুন। আমরা ঢাকার বাইরে ২ থেকে ৩ দিনের ডেলিভারি দিয়ে থাকি এবং ঢাকার মধ্যে ১ থেকে ২ দিনের মধ্যে ডেলিভারি দেওয়া হয়। আমাদের সাথে থাকার জন্য ধন্যবাদ। পুনরায় শুনতে ০ চাপুন।';
+  'হ্যালো {{customerName}}... আপনি {{storeName}}-এ অর্ডার করেছেন। আপনার মোট বিল {{amount}} টাকা। অর্ডারটি নিশ্চিত করার জন্য ১ চাপুন, অথবা বাতিল করার জন্য ২ চাপুন। আমরা ঢাকার বাইরে ২ থেকে ৩ দিনের ডেলিভারি দিয়ে থাকি, এবং ঢাকার মধ্যে ১ থেকে ২ দিনের মধ্যে ডেলিভারি দেওয়া হয়। আমাদের সাথে থাকার জন্য ধন্যবাদ। পুনরায় শুনতে ০ চাপুন।';
 
 export default function SettingsPage() {
   const [merchant, setMerchant] = useState<Partial<Merchant>>({});
@@ -368,7 +368,7 @@ export default function SettingsPage() {
                 <div>
                   <p className="text-[14px] font-semibold text-slate-900">কথার গতি</p>
                   <p className="text-[12px] text-slate-500">
-                    Google TTS speaking rate — একটু দ্রুত করতে ১.১০–১.২০ বাড়ান
+                    কল সেন্টারের মতো স্বাভাবিক শোনাতে ০.৯০–১.০০ রাখুন; দ্রুত করতে ১.১০+ বাড়ান
                   </p>
                 </div>
                 <span className="rounded-full bg-slate-100 px-3 py-1 text-[12px] font-semibold text-slate-700">
@@ -393,7 +393,7 @@ export default function SettingsPage() {
               />
               <div className="flex justify-between text-[11px] text-slate-400">
                 <span>ধীরে (০.৭৫)</span>
-                <span>স্বাভাবিক (১.০৫)</span>
+                <span>স্বাভাবিক (০.৯৫)</span>
                 <span>দ্রুত (১.৩৫)</span>
               </div>
             </div>

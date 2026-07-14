@@ -2,6 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { VoiceSettingsService } from './voice-settings.service';
 import { S3StorageService } from '../common/services/s3-storage.service';
+import {
+  DEFAULT_SPEECH_RATE,
+  DEFAULT_TTS_PITCH,
+  DEFAULT_TTS_VOLUME_GAIN_DB,
+  toChirpExpressiveMarkup,
+} from './providers/bangla-prompt';
 
 @Injectable()
 export class GoogleTtsService {
@@ -53,7 +59,7 @@ export class GoogleTtsService {
   async synthesize(
     text: string,
     voiceName = 'bn-IN-Chirp3-HD-Algieba',
-    speakingRate = 1.05,
+    speakingRate: number = DEFAULT_SPEECH_RATE,
   ): Promise<{ buffer: Buffer; mimeType: string; voice: string }> {
     const apiKey = this.getApiKey();
     if (!apiKey) {
@@ -67,8 +73,68 @@ export class GoogleTtsService {
       ? voiceName.slice(0, 5)
       : 'bn-IN';
 
-    const rate = Math.min(1.35, Math.max(0.75, Number(speakingRate) || 1.05));
+    const rate = Math.min(
+      1.35,
+      Math.max(0.75, Number(speakingRate) || DEFAULT_SPEECH_RATE),
+    );
+    const isChirp3 = /Chirp3-HD-/i.test(voiceName);
 
+    // Chirp3: markup + pause tags for call-center pacing.
+    // Non-Chirp: plain text; pitch can warm delivery slightly.
+    const input = isChirp3
+      ? { markup: toChirpExpressiveMarkup(clean) }
+      : { text: clean };
+
+    const audioConfig: Record<string, unknown> = {
+      audioEncoding: 'MP3',
+      speakingRate: rate,
+      volumeGainDb: DEFAULT_TTS_VOLUME_GAIN_DB,
+    };
+    if (!isChirp3) {
+      audioConfig.pitch = DEFAULT_TTS_PITCH;
+    }
+
+    const url = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(apiKey)}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        input,
+        voice: { languageCode, name: voiceName },
+        audioConfig,
+      }),
+    });
+
+    const body = (await res.json().catch(() => ({}))) as {
+      audioContent?: string;
+      error?: { message?: string };
+    };
+
+    if (!res.ok || !body.audioContent) {
+      const msg = body.error?.message || `Google TTS failed (${res.status})`;
+      this.logger.error(msg);
+      // Markup can fail on older API keys / regions — retry as plain text once.
+      if (isChirp3 && 'markup' in input) {
+        this.logger.warn('Chirp3 markup synthesize failed — retrying plain text');
+        return this.synthesizePlain(clean, voiceName, rate, languageCode, apiKey);
+      }
+      throw new Error(msg);
+    }
+
+    const buffer = Buffer.from(body.audioContent, 'base64');
+    this.logger.log(
+      `Google TTS ok voice=${voiceName} rate=${rate} markup=${isChirp3} bytes=${buffer.length} chars=${clean.length}`,
+    );
+    return { buffer, mimeType: 'audio/mpeg', voice: voiceName };
+  }
+
+  private async synthesizePlain(
+    clean: string,
+    voiceName: string,
+    rate: number,
+    languageCode: string,
+    apiKey: string,
+  ): Promise<{ buffer: Buffer; mimeType: string; voice: string }> {
     const url = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(apiKey)}`;
     const res = await fetch(url, {
       method: 'POST',
@@ -79,7 +145,7 @@ export class GoogleTtsService {
         audioConfig: {
           audioEncoding: 'MP3',
           speakingRate: rate,
-          pitch: 0,
+          volumeGainDb: DEFAULT_TTS_VOLUME_GAIN_DB,
         },
       }),
     });
@@ -97,7 +163,7 @@ export class GoogleTtsService {
 
     const buffer = Buffer.from(body.audioContent, 'base64');
     this.logger.log(
-      `Google TTS ok voice=${voiceName} rate=${rate} bytes=${buffer.length} chars=${clean.length}`,
+      `Google TTS plain ok voice=${voiceName} rate=${rate} bytes=${buffer.length}`,
     );
     return { buffer, mimeType: 'audio/mpeg', voice: voiceName };
   }

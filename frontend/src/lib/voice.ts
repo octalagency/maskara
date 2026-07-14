@@ -116,7 +116,8 @@ export type VoiceOption = (typeof VOICE_OPTIONS)[number];
 
 export const GOOGLE_VOICE = 'google:bn-IN-Chirp3-HD-Algieba';
 export const AZURE_MALE_VOICE = 'azure:bn-BD-PradeepNeural';
-export const DEFAULT_SPEECH_RATE = 1.05;
+/** Slightly under 1.0 for clearer, warmer call-center pacing. */
+export const DEFAULT_SPEECH_RATE = 0.95;
 
 const DEFAULT_VOICE = GOOGLE_VOICE;
 
@@ -130,8 +131,8 @@ export function clampSpeechRate(rate?: number | null): number {
 
 export function speechRateLabel(rate?: number | null): string {
   const r = clampSpeechRate(rate);
-  if (r <= 0.9) return 'ধীরে';
-  if (r >= 1.15) return 'দ্রুত';
+  if (r <= 0.85) return 'ধীরে';
+  if (r >= 1.1) return 'দ্রুত';
   return 'স্বাভাবিক';
 }
 

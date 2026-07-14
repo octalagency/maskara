@@ -40,9 +40,10 @@ export function sanitizeBanglaSpeech(text: string): string {
  * Placeholders: {{customerName}}, {{storeName}}, {{amount}}, {{orderNumber}}.
  * No {{items}}/{{productName}} support yet — wording uses store + amount.
  * Ends with “০ চাপুন” so DTMF 0 can replay the prompt.
+ * Punctuation is tuned for Chirp3 call-center warmth (ellipsis, light commas).
  */
 export const DEFAULT_CALL_SCRIPT =
-  'হ্যালো {{customerName}}, আপনি {{storeName}}-এ অর্ডার করেছেন। আপনার মোট বিল {{amount}} টাকা। অর্ডারটি নিশ্চিত করার জন্য ১ চাপুন অথবা বাতিল করার জন্য ২ চাপুন। আমরা ঢাকার বাইরে ২ থেকে ৩ দিনের ডেলিভারি দিয়ে থাকি এবং ঢাকার মধ্যে ১ থেকে ২ দিনের মধ্যে ডেলিভারি দেওয়া হয়। আমাদের সাথে থাকার জন্য ধন্যবাদ। পুনরায় শুনতে ০ চাপুন।';
+  'হ্যালো {{customerName}}... আপনি {{storeName}}-এ অর্ডার করেছেন। আপনার মোট বিল {{amount}} টাকা। অর্ডারটি নিশ্চিত করার জন্য ১ চাপুন, অথবা বাতিল করার জন্য ২ চাপুন। আমরা ঢাকার বাইরে ২ থেকে ৩ দিনের ডেলিভারি দিয়ে থাকি, এবং ঢাকার মধ্যে ১ থেকে ২ দিনের মধ্যে ডেলিভারি দেওয়া হয়। আমাদের সাথে থাকার জন্য ধন্যবাদ। পুনরায় শুনতে ০ চাপুন।';
 
 export function buildOrderVerificationPrompt(params: {
   storeName: string;
@@ -161,12 +162,44 @@ export const MERCHANT_VOICE_OPTIONS = [
 
 export const DEFAULT_MERCHANT_VOICE_ID = 'google:bn-IN-Chirp3-HD-Algieba';
 export const AZURE_FALLBACK_VOICE_ID = 'azure:bn-BD-PradeepNeural';
-export const DEFAULT_SPEECH_RATE = 1.05;
+/** Slightly under 1.0 for clearer, warmer call-center pacing. */
+export const DEFAULT_SPEECH_RATE = 0.95;
+/** Phone-friendly clarity without sounding loud. */
+export const DEFAULT_TTS_VOLUME_GAIN_DB = 1.0;
+/**
+ * Soft positive pitch for non-Chirp voices only.
+ * Chirp3 HD ignores AudioConfig.pitch — expressiveness uses markup pauses.
+ */
+export const DEFAULT_TTS_PITCH = 0.5;
 
 export function clampSpeechRate(rate?: number | null): number {
   const n = Number(rate);
   if (!Number.isFinite(n)) return DEFAULT_SPEECH_RATE;
   return Math.min(1.35, Math.max(0.75, Math.round(n * 100) / 100));
+}
+
+/**
+ * Chirp3 HD markup: natural pauses for friendly agent delivery.
+ * Pause tags only work in the API `markup` field (not plain `text`).
+ */
+export function toChirpExpressiveMarkup(text: string): string {
+  let out = text.replace(/\s+/g, ' ').trim();
+  if (!out) return out;
+
+  // Ellipsis / sentence end → short natural pause
+  out = out.replace(/\.{2,}\s*/g, '... [pause short] ');
+  out = out.replace(/([।!?])\s*/g, '$1 [pause short] ');
+
+  // Brief breath before DTMF instructions
+  out = out.replace(
+    /(অর্ডারটি\s*নিশ্চিত\s*করার\s*জন্য)/g,
+    '[pause] $1',
+  );
+  out = out.replace(/(পুনরায়\s*শুনতে)/g, '[pause short] $1');
+
+  // Collapse stacked pauses / whitespace
+  out = out.replace(/(\[pause(?: short| long)?\]\s*){2,}/g, '[pause short] ');
+  return out.replace(/\s+/g, ' ').trim();
 }
 
 export function parseMerchantVoice(voiceId?: string | null): {

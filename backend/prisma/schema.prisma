@@ -157,7 +157,7 @@ model Merchant {
   storeNameBangla  String?
   customGreeting   String?  // Call script / custom_text for AI verification
   voiceId          String?  // e.g. "azure:bn-BD-NabanitaNeural" or "google:bn-IN-Chirp3-HD-Algieba"
-  speechRate       Float?   @default(1.05) // Google TTS speakingRate (0.75–1.35)
+  speechRate       Float?   @default(0.95) // Google TTS speakingRate — call-center default ~0.95
 
   // Notification settings
   smsEnabled       Boolean @default(true)

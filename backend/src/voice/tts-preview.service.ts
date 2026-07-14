@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { VoiceSettingsService } from './voice-settings.service';
 import { GoogleTtsService } from './google-tts.service';
-import { resolveMerchantVoice } from './providers/bangla-prompt';
+import {
+  DEFAULT_SPEECH_RATE,
+  resolveMerchantVoice,
+} from './providers/bangla-prompt';
 
 @Injectable()
 export class TtsPreviewService {
@@ -38,7 +41,7 @@ export class TtsPreviewService {
         const result = await this.googleTts.synthesize(
           clipped,
           voice.voiceId,
-          speechRate ?? 1.05,
+          speechRate ?? DEFAULT_SPEECH_RATE,
         );
         return {
           mimeType: result.mimeType,

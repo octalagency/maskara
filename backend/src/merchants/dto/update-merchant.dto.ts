@@ -40,7 +40,7 @@ export class UpdateMerchantDto {
 
   @ApiProperty({
     required: false,
-    description: 'Speech rate 0.75–1.35 (Google TTS speakingRate)',
+    description: 'Speech rate 0.75–1.35 (default 0.95 for call-center pacing)',
   })
   @IsOptional()
   @IsNumber()
