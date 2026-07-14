@@ -208,7 +208,7 @@ export class EpbxProvider implements VoiceProvider {
       payload.tts_engine = 'audio';
       payload.mode = 'audio_url';
 
-      // Critical: empty text so ePBX cannot synthesize portal Nabanita
+      // Critical: empty greeting text so ePBX cannot synthesize portal Nabanita
       payload.custom_text = '';
       payload.tts_text = '';
       payload.message = '';
@@ -217,23 +217,35 @@ export class EpbxProvider implements VoiceProvider {
       payload.greeting = '';
       payload.repeat_text = '';
       payload.replay_text = '';
-      payload.confirm_text = '';
-      payload.cancel_text = '';
-      payload.success_text = '';
-      payload.failure_text = '';
-      payload.invalid_text = '';
 
       if (confirmAudioUrl) {
         payload.confirm_audio_url = confirmAudioUrl;
         payload.success_audio_url = confirmAudioUrl;
+        payload.confirm_text = '';
+        payload.success_text = '';
+      } else {
+        payload.confirm_text = confirmBn;
+        payload.success_text = confirmBn;
       }
       if (cancelAudioUrl) {
         payload.cancel_audio_url = cancelAudioUrl;
         payload.failure_audio_url = cancelAudioUrl;
+        payload.cancel_text = '';
+        payload.failure_text = '';
+      } else {
+        payload.cancel_text = cancelBn;
+        payload.failure_text = cancelBn;
       }
       if (invalidAudioUrl) {
         payload.invalid_audio_url = invalidAudioUrl;
+        payload.invalid_text = '';
+      } else {
+        payload.invalid_text = invalidBn;
       }
+
+      // If any short DTMF text remains, force male Azure — never portal নবনীতা
+      payload.azure_tts_voice_id = 'bn-BD-PradeepNeural';
+      payload.azure_voice = 'bn-BD-PradeepNeural';
     } else {
       // Text-TTS fallback — hard-lock Azure Pradeep (never leave voice unset)
       const azureVoice =
