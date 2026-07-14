@@ -1,15 +1,17 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
+import { Prisma, OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrdersService } from '../orders/orders.service';
 import { CreateOrderDto } from '../orders/dto/create-order.dto';
 
 const WOO_CANCEL_STATUSES = new Set(['cancelled', 'refunded', 'failed']);
 
-function normalizeWooStatus(status: unknown): string {
-  return String(status || '')
+function normalizeWooStatus(raw: unknown): string {
+  const s = String(raw ?? '')
+    .trim()
     .toLowerCase()
-    .replace(/^wc-/, '')
-    .trim();
+    .replace(/^wc-/, '');
+  return s;
 }
 
 @Injectable()
@@ -32,7 +34,7 @@ export class WebhooksService {
       shippingAddress: payload.shipping_address as Record<string, unknown>,
       paymentMethod: this.extractShopifyPaymentMethod(payload),
       source: 'SHOPIFY',
-      metadata: { shopifyOrderId: payload.id, financialStatus: payload.financial_status },
+      metadata: { shopifyOrderId: String(payload.id), financialStatus: String(payload.financial_status ?? '') },
     };
 
     if (!orderData.customerPhone) {
@@ -45,50 +47,62 @@ export class WebhooksService {
   async handleWooCommerceWebhook(merchantId: string, payload: Record<string, unknown>) {
     const externalId = String(payload.id);
     const wooStatus = normalizeWooStatus(payload.status);
+
     const existing = await this.prisma.order.findFirst({
       where: { merchantId, externalId, source: 'WOOCOMMERCE' },
     });
 
     if (existing) {
-      // Website cancel/refund/fail → Maskara CANCELLED + stop further calls
+      // Website cancel/refund/fail → stop calls and mark CANCELLED
       if (WOO_CANCEL_STATUSES.has(wooStatus) && existing.status !== 'CANCELLED') {
+        const prevMeta =
+          existing.metadata && typeof existing.metadata === 'object' && !Array.isArray(existing.metadata)
+            ? (existing.metadata as Record<string, unknown>)
+            : {};
         const cancelled = await this.prisma.order.update({
           where: { id: existing.id },
           data: {
-            status: 'CANCELLED',
+            status: 'CANCELLED' as OrderStatus,
             cancelledAt: new Date(),
             nextCallAt: null,
             metadata: {
-              ...((existing.metadata as Record<string, unknown>) || {}),
-              wooOrderId: payload.id,
-              status: payload.status,
-              cancelledVia: 'woocommerce_webhook',
-            },
+              ...prevMeta,
+              wooOrderId: String(payload.id),
+              status: String(payload.status ?? ''),
+              wooStatus,
+              cancelledFromWebsite: true,
+            } as Prisma.InputJsonValue,
           },
         });
         return { received: true, cancelled: true, order: cancelled };
       }
 
-      // Status sync for existing orders (no duplicate create)
-      if (wooStatus && existing.metadata) {
-        await this.prisma.order.update({
+      // Non-cancel status update on existing order — refresh metadata, do not duplicate
+      if (payload.status != null) {
+        const prevMeta =
+          existing.metadata && typeof existing.metadata === 'object' && !Array.isArray(existing.metadata)
+            ? (existing.metadata as Record<string, unknown>)
+            : {};
+        const updated = await this.prisma.order.update({
           where: { id: existing.id },
           data: {
             metadata: {
-              ...((existing.metadata as Record<string, unknown>) || {}),
-              wooOrderId: payload.id,
-              status: payload.status,
-            },
+              ...prevMeta,
+              wooOrderId: String(payload.id),
+              status: String(payload.status ?? ''),
+              wooStatus,
+            } as Prisma.InputJsonValue,
           },
         });
+        return { received: true, duplicate: true, order: updated };
       }
 
       return { received: true, duplicate: true, order: existing };
     }
 
-    // Don't create a new Maskara order for an already-cancelled Woo order
+    // Do not create a new Maskara order for cancel/refund/fail if never synced
     if (WOO_CANCEL_STATUSES.has(wooStatus)) {
-      return { received: true, skipped: true, reason: 'woo_order_already_cancelled' };
+      return { received: true, ignored: true, reason: 'cancel_without_existing_order' };
     }
 
     await this.prisma.integration.updateMany({
@@ -109,7 +123,7 @@ export class WebhooksService {
       shippingAddress: payload.shipping as Record<string, unknown>,
       paymentMethod: (payload.payment_method_title as string) || 'COD',
       source: 'WOOCOMMERCE',
-      metadata: { wooOrderId: payload.id, status: payload.status },
+      metadata: { wooOrderId: String(payload.id), status: String(payload.status ?? '') },
     };
 
     if (!orderData.customerPhone) {
