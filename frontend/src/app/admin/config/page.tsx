@@ -182,7 +182,11 @@ export default function AdminConfigPage() {
   const status = (config.voice as { status?: { epbx: boolean; ippbx: boolean; twilio: boolean; googleTts?: boolean } })?.status
     || { epbx: false, ippbx: false, twilio: false, googleTts: false };
 
-  const webhooks = providerInfo?.epbx?.webhooks || probe?.webhooks;
+  const epbxInfo =
+    providerInfo?.epbx && typeof providerInfo.epbx === 'object'
+      ? providerInfo.epbx
+      : null;
+  const webhooks = epbxInfo?.webhooks || probe?.webhooks;
   const dashboard = probe?.dashboard || {
     login: 'https://maskara.epbx.bd/login',
     home: 'https://maskara.epbx.bd/dashboard',
