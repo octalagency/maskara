@@ -50,6 +50,13 @@ export default function AdminSettingsPage() {
   const [savingAccount, setSavingAccount] = useState(false);
   const [accountError, setAccountError] = useState('');
 
+  const [googleTtsKey, setGoogleTtsKey] = useState('');
+  const [googleTtsKeySet, setGoogleTtsKeySet] = useState(false);
+  const [googleTtsConfigured, setGoogleTtsConfigured] = useState(false);
+  const [savingGoogle, setSavingGoogle] = useState(false);
+  const [googleSaved, setGoogleSaved] = useState(false);
+  const [googleError, setGoogleError] = useState('');
+
   useEffect(() => {
     api.getSystemSettings().then((rows) => {
       const merged = { ...DEFAULT };
@@ -79,6 +86,28 @@ export default function AdminSettingsPage() {
         lastName: profile.lastName || '',
       }));
     }).catch(() => {});
+
+    api
+      .getPlatformConfig()
+      .then((c) => {
+        const v = c.voice as {
+          googleTts?: { apiKeySet?: boolean; configured?: boolean };
+          status?: { googleTts?: boolean };
+        };
+        setGoogleTtsKeySet(Boolean(v?.googleTts?.apiKeySet));
+        setGoogleTtsConfigured(
+          Boolean(v?.googleTts?.configured ?? v?.status?.googleTts),
+        );
+      })
+      .catch(() => {});
+
+    api
+      .getVoiceProvider()
+      .then((p) => {
+        const info = p as { googleTts?: boolean };
+        if (typeof info.googleTts === 'boolean') setGoogleTtsConfigured(info.googleTts);
+      })
+      .catch(() => {});
   }, []);
 
   async function handleSave(e: React.FormEvent) {
@@ -156,12 +185,103 @@ export default function AdminSettingsPage() {
     }
   }
 
+  async function handleGoogleTtsSave(e: React.FormEvent) {
+    e.preventDefault();
+    setGoogleError('');
+    setSavingGoogle(true);
+    try {
+      const key = googleTtsKey.trim();
+      if (!key && !googleTtsKeySet) {
+        setGoogleError('Google Cloud TTS API key দিন (AIza…)');
+        return;
+      }
+      await api.updatePlatformConfig({
+        voice_providers: {
+          googleTts: {
+            enabled: true,
+            apiKey: key || undefined,
+          },
+        },
+      });
+      setGoogleTtsKey('');
+      setGoogleTtsKeySet(true);
+      setGoogleTtsConfigured(true);
+      setGoogleSaved(true);
+      setTimeout(() => setGoogleSaved(false), 4000);
+
+      const provider = (await api.getVoiceProvider()) as { googleTts?: boolean };
+      if (typeof provider.googleTts === 'boolean') {
+        setGoogleTtsConfigured(provider.googleTts);
+      }
+    } catch (err) {
+      setGoogleError(err instanceof Error ? err.message : 'Google TTS সেভ ব্যর্থ');
+    } finally {
+      setSavingGoogle(false);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-slate-900">System Settings</h2>
         <p className="text-sm text-slate-500">পুরো প্ল্যাটফর্ম ও Super Admin একাউন্ট ম্যানেজ করুন</p>
       </div>
+
+      <form onSubmit={handleGoogleTtsSave} className="card space-y-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900">Google Cloud TTS</h3>
+            <p className="text-sm text-slate-500">
+              Chirp3 Algieba ভয়েস — Cloud Text-to-Speech API Key কানেক্ট করুন
+            </p>
+          </div>
+          <span
+            className={
+              googleTtsConfigured
+                ? 'badge-success shrink-0'
+                : 'badge-warning shrink-0'
+            }
+          >
+            {googleTtsConfigured ? 'Connected ✓' : 'Not connected'}
+          </span>
+        </div>
+
+        {googleSaved && (
+          <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">
+            Google TTS কানেক্ট সেভ হয়েছে। Merchant Settings → Algieba সিলেক্ট করুন।
+          </div>
+        )}
+        {googleError && (
+          <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{googleError}</div>
+        )}
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700">
+            API Key {googleTtsKeySet ? '(saved — নতুন key দিলে আপডেট হবে)' : ''}
+          </label>
+          <input
+            type="password"
+            className="input mt-1 font-mono text-sm"
+            value={googleTtsKey}
+            onChange={(e) => setGoogleTtsKey(e.target.value)}
+            placeholder={googleTtsKeySet ? '•••••••• (খালি রাখলে আগের key থাকবে)' : 'AIza…'}
+            autoComplete="off"
+          />
+          <p className="mt-2 text-xs text-slate-500">
+            Google Cloud → APIs & Services → Credentials → API key। অবশ্যই{' '}
+            <strong>Cloud Text-to-Speech API</strong> enable ও key restriction-এ allow থাকতে হবে।
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="submit" className="btn-primary" disabled={savingGoogle}>
+            {savingGoogle ? 'Connecting...' : 'Connect Google TTS'}
+          </button>
+          <a href="/admin/config" className="text-sm font-medium text-brand-600 hover:underline">
+            Voice / ePBX পেজেও আছে →
+          </a>
+        </div>
+      </form>
 
       <form onSubmit={handleAccountSave} className="card space-y-5">
         <div>
