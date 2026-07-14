@@ -149,8 +149,9 @@ class Maskara_Pathao {
     }
 
     /**
-     * True if haystack names city alias as its own address segment / last token.
-     * Avoids false hits like সাভার inside "আবদুর সাভার রোড".
+     * True if haystack names city alias as its own address segment / token.
+     * Avoids false hits like সাভার inside "আবদুর সাভার রোড" (not last token of that segment
+     * when longer road text follows — we still skip Savar in extract).
      *
      * @param string $haystack
      * @param string $alias
@@ -181,13 +182,25 @@ class Maskara_Pathao {
             if (self::city_compact($seg) === $alias_key) {
                 return true;
             }
-            // Last whitespace token of the segment (e.g. "House 12, Savar")
+            // Any whitespace token in the segment (not only last — "Dhaka Bangladesh")
             $tokens = preg_split('/\s+/u', $seg);
-            if (is_array($tokens) && $tokens) {
-                $last = trim((string) end($tokens));
-                if ($last !== '' && self::city_compact($last) === $alias_key) {
-                    return true;
+            if (is_array($tokens)) {
+                foreach ($tokens as $tok) {
+                    $tok = trim((string) $tok);
+                    // Strip trailing Bangla inflections like চট্টগ্রামের
+                    $tok = preg_replace('/[।\.]+$/u', '', $tok);
+                    if ($tok !== '' && self::city_compact($tok) === $alias_key) {
+                        return true;
+                    }
                 }
+            }
+        }
+
+        // Latin aliases: word-boundary match anywhere ("near Chittagong port")
+        if (preg_match('/^[\x00-\x7F]+$/', $alias)) {
+            $pattern = '/(?<![\p{L}\p{N}])' . preg_quote($alias, '/') . '(?![\p{L}\p{N}])/iu';
+            if (preg_match($pattern, $haystack)) {
+                return true;
             }
         }
 
