@@ -80,11 +80,22 @@ export class VoiceController {
   async getTwiml(@Param('callId') callId: string, @Res() res: Response) {
     const call = await this.prisma.call.findUnique({
       where: { id: callId },
-      include: { merchant: true },
+      include: { merchant: true, order: true },
     });
     const storeName =
       call?.merchant.storeNameBangla || call?.merchant.name || 'স্টোর';
-    res.send(this.voiceService.generateTwiml(callId, storeName));
+    res.send(
+      this.voiceService.generateTwiml(callId, {
+        storeName,
+        customerName: call?.order?.customerName,
+        orderNumber: call?.order?.orderNumber,
+        totalAmount:
+          call?.order?.totalAmount != null
+            ? Number(call.order.totalAmount)
+            : undefined,
+        customGreeting: call?.merchant.customGreeting,
+      }),
+    );
   }
 
   @Post('gather/:callId')

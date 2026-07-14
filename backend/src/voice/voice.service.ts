@@ -169,8 +169,23 @@ export class VoiceService {
     });
   }
 
-  generateTwiml(callId: string, storeName: string): string {
-    const greeting = buildOrderVerificationPrompt({ storeName });
+  generateTwiml(
+    callId: string,
+    params: {
+      storeName: string;
+      customerName?: string;
+      orderNumber?: string;
+      totalAmount?: number;
+      customGreeting?: string | null;
+    },
+  ): string {
+    const greeting = buildOrderVerificationPrompt({
+      storeName: params.storeName,
+      customerName: params.customerName,
+      orderNumber: params.orderNumber,
+      totalAmount: params.totalAmount,
+      customGreeting: params.customGreeting,
+    });
     const gatherUrl = `${this.apiUrl}/voice/gather/${callId}`;
 
     return `<?xml version="1.0" encoding="UTF-8"?>
@@ -191,8 +206,21 @@ export class VoiceService {
 
     if (!call) return this.generateResponseTwiml('কলটি খুঁজে পাওয়া যায়নি।');
 
-    let outcome: 'CONFIRMED' | 'CANCELLED' | 'ESCALATED' | 'INVALID_INPUT';
-    let orderStatus: 'VERIFIED' | 'CANCELLED' | 'ESCALATED';
+    // DTMF 0 = replay the same verification prompt
+    if (digits === '0') {
+      await this.prisma.call.update({
+        where: { id: callId },
+        data: { dtmfInput: '0' },
+      });
+      this.logger.log(`Twilio DTMF 0 → replay for call ${callId}`);
+      return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Redirect>${this.apiUrl}/voice/twiml/${callId}</Redirect>
+</Response>`;
+    }
+
+    let outcome: 'CONFIRMED' | 'CANCELLED' | 'INVALID_INPUT';
+    let orderStatus: 'VERIFIED' | 'CANCELLED';
     let message: string;
 
     switch (digits) {
@@ -206,13 +234,9 @@ export class VoiceService {
         orderStatus = 'CANCELLED';
         message = 'আপনার অর্ডার বাতিল করা হয়েছে। ধন্যবাদ।';
         break;
-      case '0':
-        outcome = 'ESCALATED';
-        orderStatus = 'ESCALATED';
-        message = 'একজন প্রতিনিধি শীঘ্রই আপনার সাথে যোগাযোগ করবেন। ধন্যবাদ।';
-        break;
       default:
-        message = 'অবৈধ ইনপুট। ১ চাপুন নিশ্চিত করতে, ২ বাতিল করতে, ০ প্রতিনিধির সাথে কথা বলতে।';
+        message =
+          'অবৈধ ইনপুট। ১ চাপুন নিশ্চিত করতে, ২ বাতিল করতে, পুনরায় শুনতে ০ চাপুন।';
         return this.generateGatherRetryTwiml(callId, message);
     }
 
@@ -318,6 +342,14 @@ export class VoiceService {
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="Polly.Aditi" language="bn-IN">${this.escapeXml(message)}</Say>
+  <Redirect>${this.apiUrl}/voice/twiml/${callId}</Redirect>
+</Response>`;
+  }
+
+  /** Re-enter Gather with the same verification prompt (DTMF 0). */
+  private generateReplayTwiml(callId: string): string {
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
   <Redirect>${this.apiUrl}/voice/twiml/${callId}</Redirect>
 </Response>`;
   }

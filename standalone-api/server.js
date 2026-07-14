@@ -970,7 +970,16 @@ code{background:#f1f5f9;padding:2px 6px;border-radius:4px}</style></head>
     const body = await readBody(req);
     const digit = body.digit || body.dtmf || body.key;
     callLogs.unshift({ type: 'dtmf', digit, body, at: new Date().toISOString() });
-    return json(res, 200, { received: true, outcome: digit === '1' ? 'CONFIRMED' : digit === '2' ? 'CANCELLED' : 'UNKNOWN' });
+    const d = String(digit ?? '').charAt(0);
+    let outcome = 'UNKNOWN';
+    const extra = {};
+    if (d === '1') outcome = 'CONFIRMED';
+    else if (d === '2') outcome = 'CANCELLED';
+    else if (d === '0') {
+      outcome = null;
+      Object.assign(extra, { action: 'replay', replay: true });
+    }
+    return json(res, 200, { received: true, outcome, ...extra });
   }
 
   if (path === '/voice/webhook/epbx/status' && method === 'POST') {

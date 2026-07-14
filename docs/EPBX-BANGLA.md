@@ -94,7 +94,7 @@ curl http://localhost:4000/voice/provider
 Customer phone-এ Bangla call আসবে:
 - **1** = Order confirm
 - **2** = Cancel  
-- **0** = Agent
+- **0** = Replay script (পুনরায় শুনুন)
 
 ---
 

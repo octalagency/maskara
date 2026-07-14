@@ -105,9 +105,9 @@ export default function LandingPage() {
                 <div className="rounded-lg bg-slate-50 p-3 text-slate-700">
                   <p className="font-medium text-brand-700">AI Agent:</p>
                   <p className="mt-1 leading-relaxed">
-                    আসসালামু আলাইকুম। আপনি <strong>ডেমো স্টোর</strong> থেকে একটি অর্ডার করেছেন।
-                    অর্ডারটি নিশ্চিত করতে <strong>১</strong> চাপুন। অর্ডার বাতিল করতে <strong>২</strong> চাপুন।
-                    একজন প্রতিনিধির সাথে কথা বলতে <strong>০</strong> চাপুন।
+                    হ্যালো। আপনি <strong>ডেমো স্টোর</strong>-এ অর্ডার করেছেন। আপনার মোট বিল ৫৬০ টাকা।
+                    অর্ডারটি নিশ্চিত করার জন্য <strong>১</strong> চাপুন অথবা বাতিল করার জন্য <strong>২</strong> চাপুন।
+                    পুনরায় শুনতে <strong>০</strong> চাপুন।
                   </p>
                 </div>
                 <div className="flex justify-center gap-4 py-2">

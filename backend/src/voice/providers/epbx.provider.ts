@@ -140,12 +140,22 @@ export class EpbxProvider implements VoiceProvider {
       template: 'custom',
       mode: audioUrl ? 'audio_url' : 'custom_tts',
 
-      // DTMF replies — Bangla only
+      // DTMF replies — Bangla only (1=confirm, 2=cancel, 0=replay)
       confirm_text: confirmBn,
       cancel_text: cancelBn,
       success_text: confirmBn,
       failure_text: cancelBn,
-      invalid_text: 'দয়া করে এক চাপুন নিশ্চিত করতে, দুই চাপুন বাতিল করতে।',
+      invalid_text:
+        'দয়া করে ১ চাপুন নিশ্চিত করতে, ২ চাপুন বাতিল করতে, পুনরায় শুনতে ০ চাপুন।',
+      replay_digit: '0',
+      repeat_digit: '0',
+      replay_on_zero: true,
+      repeat_on_digit: '0',
+      zero_digit_action: 'replay',
+      option_0: 'replay',
+      dtmf_0: 'replay',
+      confirm_digit: '1',
+      cancel_digit: '2',
 
       // Explicitly clear English template slots
       customer_name: '',

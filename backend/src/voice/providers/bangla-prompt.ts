@@ -35,6 +35,15 @@ export function sanitizeBanglaSpeech(text: string): string {
   return out;
 }
 
+/**
+ * Default merchant call script (কল স্ক্রিপ্ট).
+ * Placeholders: {{customerName}}, {{storeName}}, {{amount}}, {{orderNumber}}.
+ * No {{items}}/{{productName}} support yet — wording uses store + amount.
+ * Ends with “০ চাপুন” so DTMF 0 can replay the prompt.
+ */
+export const DEFAULT_CALL_SCRIPT =
+  'হ্যালো {{customerName}}, আপনি {{storeName}}-এ অর্ডার করেছেন। আপনার মোট বিল {{amount}} টাকা। অর্ডারটি নিশ্চিত করার জন্য ১ চাপুন অথবা বাতিল করার জন্য ২ চাপুন। আমরা ঢাকার বাইরে ২ থেকে ৩ দিনের ডেলিভারি দিয়ে থাকি এবং ঢাকার মধ্যে ১ থেকে ২ দিনের মধ্যে ডেলিভারি দেওয়া হয়। আমাদের সাথে থাকার জন্য ধন্যবাদ। পুনরায় শুনতে ০ চাপুন।';
+
 export function buildOrderVerificationPrompt(params: {
   storeName: string;
   customerName?: string;
@@ -51,24 +60,13 @@ export function buildOrderVerificationPrompt(params: {
     params.totalAmount != null ? String(Math.round(Number(params.totalAmount))) : '',
   );
 
-  if (params.customGreeting?.trim()) {
-    const filled = params.customGreeting
-      .trim()
-      .replace(/\{\{\s*storeName\s*\}\}/gi, store)
-      .replace(/\{\{\s*customerName\s*\}\}/gi, name || 'মাননীয় গ্রাহক')
-      .replace(/\{\{\s*orderNumber\s*\}\}/gi, orderNumber)
-      .replace(/\{\{\s*amount\s*\}\}/gi, amount);
-    return sanitizeBanglaSpeech(filled);
-  }
-
-  const namePart = name ? name : 'মাননীয় গ্রাহক';
-  const amountPart = amount ? `${amount} টাকা` : 'অর্ডার';
-  const orderPart = orderNumber ? ` অর্ডার নম্বর ${orderNumber}।` : '';
-
-  return sanitizeBanglaSpeech(
-    `হ্যালো ${namePart}, আপনি ${store}-এ অর্ডার করেছিলেন। যার মূল্য ${amountPart}।${orderPart} ` +
-      `অর্ডারটি নিশ্চিত করতে এক চাপুন। বাতিল করতে দুই চাপুন।`,
-  );
+  const template = params.customGreeting?.trim() || DEFAULT_CALL_SCRIPT;
+  const filled = template
+    .replace(/\{\{\s*storeName\s*\}\}/gi, store)
+    .replace(/\{\{\s*customerName\s*\}\}/gi, name || 'মাননীয় গ্রাহক')
+    .replace(/\{\{\s*orderNumber\s*\}\}/gi, orderNumber)
+    .replace(/\{\{\s*amount\s*\}\}/gi, amount);
+  return sanitizeBanglaSpeech(filled);
 }
 
 /** Curated Google Chirp3 HD voices (bn-IN) + Azure fallbacks. */

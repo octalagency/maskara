@@ -148,7 +148,7 @@ X-Webhook-Secret: your_secret
               <p>1. Order received via API/Webhook</p>
               <p>2. System initiates Twilio voice call to customer</p>
               <p>3. AI agent speaks in Bangla with store name</p>
-              <p>4. Customer presses DTMF key: <strong>1</strong> = Confirm, <strong>2</strong> = Cancel, <strong>0</strong> = Agent</p>
+              <p>4. Customer presses DTMF key: <strong>1</strong> = Confirm, <strong>2</strong> = Cancel, <strong>0</strong> = Replay script</p>
               <p>5. Order status updated and merchant notified</p>
             </div>
           </section>

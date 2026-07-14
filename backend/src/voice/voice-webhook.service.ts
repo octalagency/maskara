@@ -197,8 +197,27 @@ export class VoiceWebhookService {
       return { ok: true, outcome: call.outcome, idempotent: true };
     }
 
-    let outcome: 'CONFIRMED' | 'CANCELLED' | 'ESCALATED' | 'INVALID_INPUT';
-    let orderStatus: 'VERIFIED' | 'CANCELLED' | 'ESCALATED' | 'PENDING';
+    // DTMF 0 = replay verification script (do not finalize call)
+    if (digits === '0') {
+      await this.prisma.call.update({
+        where: { id: callId },
+        data: { dtmfInput: '0' },
+      });
+      this.logger.log(`Webhook DTMF 0 → replay for call ${callId}`);
+      return {
+        ok: true,
+        action: 'replay',
+        replay: true,
+        digit: '0',
+        // Common aliases for ePBX / IVR engines that honor webhook response
+        play: 'repeat',
+        repeat: true,
+        next_action: 'replay_prompt',
+      };
+    }
+
+    let outcome: 'CONFIRMED' | 'CANCELLED' | 'INVALID_INPUT';
+    let orderStatus: 'VERIFIED' | 'CANCELLED' | 'PENDING';
 
     switch (digits) {
       case '1':
@@ -208,10 +227,6 @@ export class VoiceWebhookService {
       case '2':
         outcome = 'CANCELLED';
         orderStatus = 'CANCELLED';
-        break;
-      case '0':
-        outcome = 'ESCALATED';
-        orderStatus = 'ESCALATED';
         break;
       default:
         outcome = 'INVALID_INPUT';
