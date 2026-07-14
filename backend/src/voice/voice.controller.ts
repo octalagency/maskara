@@ -49,8 +49,8 @@ export class VoiceController {
 
   @Get('tts-audio/:id')
   @ApiExcludeEndpoint()
-  serveTtsAudio(@Param('id') id: string, @Res() res: Response) {
-    const audio = this.googleTts.getCached(id);
+  async serveTtsAudio(@Param('id') id: string, @Res() res: Response) {
+    const audio = await this.googleTts.getCached(id);
     if (!audio) throw new NotFoundException('Audio expired or not found');
     res.setHeader('Content-Type', audio.mime);
     res.setHeader('Cache-Control', 'public, max-age=600');

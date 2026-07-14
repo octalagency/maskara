@@ -74,7 +74,7 @@ export function buildOrderVerificationPrompt(params: {
 export const MERCHANT_VOICE_OPTIONS = [
   {
     id: 'google:bn-IN-Chirp3-HD-Algieba',
-    label: 'Algieba — Chirp3 পুরুষ',
+    label: 'Algieba — Chirp3 পুরুষ (প্রস্তাবিত কল-সেন্টার)',
     provider: 'google',
     voiceId: 'bn-IN-Chirp3-HD-Algieba',
     languageCode: 'bn-IN',
@@ -98,7 +98,7 @@ export const MERCHANT_VOICE_OPTIONS = [
   },
   {
     id: 'google:bn-IN-Chirp3-HD-Orus',
-    label: 'Orus — Chirp3 পুরুষ',
+    label: 'Orus — Chirp3 পুরুষ (কল-সেন্টার)',
     provider: 'google',
     voiceId: 'bn-IN-Chirp3-HD-Orus',
     languageCode: 'bn-IN',
@@ -179,23 +179,33 @@ export function clampSpeechRate(rate?: number | null): number {
 }
 
 /**
- * Chirp3 HD markup: natural pauses for friendly agent delivery.
+ * Chirp3 HD markup: natural pauses for friendly call-center delivery.
  * Pause tags only work in the API `markup` field (not plain `text`).
+ * See: https://cloud.google.com/text-to-speech/docs/chirp3-markup
  */
 export function toChirpExpressiveMarkup(text: string): string {
   let out = text.replace(/\s+/g, ' ').trim();
   if (!out) return out;
 
+  // Soft open — agent greeting feel
+  if (!/^\[pause/.test(out)) {
+    out = `[pause short] ${out}`;
+  }
+
   // Ellipsis / sentence end → short natural pause
   out = out.replace(/\.{2,}\s*/g, '... [pause short] ');
   out = out.replace(/([।!?])\s*/g, '$1 [pause short] ');
+  // Commas as light breath (Bangla/English)
+  out = out.replace(/([,،])\s*/g, '$1 [pause short] ');
 
-  // Brief breath before DTMF instructions
+  // Brief breath before key action lines
   out = out.replace(
     /(অর্ডারটি\s*নিশ্চিত\s*করার\s*জন্য)/g,
     '[pause] $1',
   );
-  out = out.replace(/(পুনরায়\s*শুনতে)/g, '[pause short] $1');
+  out = out.replace(/(বাতিল\s*করার\s*জন্য)/g, '[pause short] $1');
+  out = out.replace(/(পুনরায়\s*শুনতে)/g, '[pause] $1');
+  out = out.replace(/(ধন্যবাদ)/g, '[pause short] $1');
 
   // Collapse stacked pauses / whitespace
   out = out.replace(/(\[pause(?: short| long)?\]\s*){2,}/g, '[pause short] ');

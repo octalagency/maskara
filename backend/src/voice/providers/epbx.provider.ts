@@ -14,13 +14,11 @@ import {
 } from './bangla-prompt';
 
 /**
- * ePBX.bd — Bangla outbound calls.
+ * ePBX.bd — Bangla outbound dial/telephony only.
  *
- * For Google Chirp3: Maskara synthesizes MP3 via Cloud TTS, hosts a public URL,
- * and asks ePBX to play that audio (audio_url / media_url / play_url).
- * ePBX's own Google/ElevenLabs TTS fields are unreliable on this account.
- *
- * Azure Neural remains the text-TTS fallback when Google TTS is unavailable.
+ * When GOOGLE_TTS_API_KEY is set: Maskara synthesizes Chirp3 MP3, hosts via
+ * Redis/S3, and sends audio_url only. Bangla text + Azure voice fields are
+ * omitted so ePBX cannot fall back to portal নবনীতা.
  */
 @Injectable()
 export class EpbxProvider implements VoiceProvider {
@@ -76,27 +74,54 @@ export class EpbxProvider implements VoiceProvider {
     });
 
     let voice = resolveMerchantVoice(params.voiceId);
+    const speechRate = params.speechRate ?? DEFAULT_SPEECH_RATE;
     let audioUrl: string | null = null;
+    let confirmAudioUrl: string | null = null;
+    let cancelAudioUrl: string | null = null;
+    let invalidAudioUrl: string | null = null;
 
-    // Direct Google Cloud TTS → host MP3 → ePBX plays URL (bypasses ePBX Google TTS)
+    const confirmBn = 'আপনার অর্ডার নিশ্চিত করা হয়েছে। ধন্যবাদ।';
+    const cancelBn = 'আপনার অর্ডার বাতিল করা হয়েছে। ধন্যবাদ।';
+    const invalidBn =
+      'দয়া করে ১ চাপুন নিশ্চিত করতে, ২ চাপুন বাতিল করতে, পুনরায় শুনতে ০ চাপুন।';
+
     if (voice.provider === 'google' && this.googleTts.isConfigured()) {
       try {
         const synth = await this.googleTts.synthesize(
           ttsText,
           voice.voiceId,
-          params.speechRate ?? DEFAULT_SPEECH_RATE,
+          speechRate,
         );
         audioUrl = await this.googleTts.hostAudio(
           synth.buffer,
           synth.mimeType,
           `call-${params.callId}`,
         );
+
+        // Same Chirp3 voice for DTMF confirm/cancel/invalid (never ePBX Azure)
+        try {
+          const [c, x, i] = await Promise.all([
+            this.googleTts.synthesize(confirmBn, voice.voiceId, speechRate),
+            this.googleTts.synthesize(cancelBn, voice.voiceId, speechRate),
+            this.googleTts.synthesize(invalidBn, voice.voiceId, speechRate),
+          ]);
+          [confirmAudioUrl, cancelAudioUrl, invalidAudioUrl] = await Promise.all([
+            this.googleTts.hostAudio(c.buffer, c.mimeType, `ok-${params.callId}`),
+            this.googleTts.hostAudio(x.buffer, x.mimeType, `cx-${params.callId}`),
+            this.googleTts.hostAudio(i.buffer, i.mimeType, `bad-${params.callId}`),
+          ]);
+        } catch (dtmfErr) {
+          this.logger.warn(
+            `DTMF phrase TTS failed (prompt audio still used): ${dtmfErr instanceof Error ? dtmfErr.message : dtmfErr}`,
+          );
+        }
+
         this.logger.log(
-          `Google TTS hosted for call ${params.callId}: ${audioUrl.slice(0, 80)}…`,
+          `[voice] Google TTS ready callId=${params.callId} voiceId=${voice.id} googleVoice=${voice.voiceId} audio_url=${audioUrl}`,
         );
       } catch (err) {
         this.logger.warn(
-          `Google TTS failed for call — falling back to Azure: ${err instanceof Error ? err.message : err}`,
+          `Google TTS failed for call — falling back to Azure Pradeep: ${err instanceof Error ? err.message : err}`,
         );
         voice = resolveMerchantVoice(AZURE_FALLBACK_VOICE_ID);
         audioUrl = null;
@@ -108,26 +133,12 @@ export class EpbxProvider implements VoiceProvider {
       voice = resolveMerchantVoice(AZURE_FALLBACK_VOICE_ID);
     }
 
-    const confirmBn = 'আপনার অর্ডার নিশ্চিত করা হয়েছে। ধন্যবাদ।';
-    const cancelBn = 'আপনার অর্ডার বাতিল করা হয়েছে। ধন্যবাদ।';
-
-    // Minimal Bangla-only payload — do NOT send customer_name/amount/order_id
-    // (those trigger ePBX English COD template after Bangla).
     const payload: Record<string, unknown> = {
       phone_number: dialPhone,
       caller_id: callerId,
       to: dialPhone,
       from: callerId,
 
-      // Single script source (kept even with audio_url — some ePBX builds need both)
-      custom_text: ttsText,
-      tts_text: ttsText,
-      message: ttsText,
-      text: ttsText,
-      prompt: ttsText,
-      greeting: ttsText,
-
-      // Language hard-lock
       language: 'bn',
       lang: 'bn',
       tts_language: voice.provider === 'google' ? 'bn-IN' : 'bn-BD',
@@ -141,13 +152,6 @@ export class EpbxProvider implements VoiceProvider {
       template: 'custom',
       mode: audioUrl ? 'audio_url' : 'custom_tts',
 
-      // DTMF replies — Bangla only (1=confirm, 2=cancel, 0=replay)
-      confirm_text: confirmBn,
-      cancel_text: cancelBn,
-      success_text: confirmBn,
-      failure_text: cancelBn,
-      invalid_text:
-        'দয়া করে ১ চাপুন নিশ্চিত করতে, ২ চাপুন বাতিল করতে, পুনরায় শুনতে ০ চাপুন।',
       replay_digit: '0',
       repeat_digit: '0',
       replay_on_zero: true,
@@ -157,10 +161,7 @@ export class EpbxProvider implements VoiceProvider {
       dtmf_0: 'replay',
       confirm_digit: '1',
       cancel_digit: '2',
-      repeat_text: ttsText,
-      replay_text: ttsText,
 
-      // Explicitly clear English template slots
       customer_name: '',
       amount: '',
       order_id: '',
@@ -175,19 +176,10 @@ export class EpbxProvider implements VoiceProvider {
       status_callback: this.webhookUrl('/voice/webhook/epbx/status'),
       dtmf_webhook: this.webhookUrl('/voice/webhook/epbx/dtmf'),
       callback_url: this.webhookUrl('/voice/webhook/epbx'),
-
-      provider: voice.provider,
-      ai_tts_provider: voice.provider,
-      tts_provider: voice.provider,
-      voice_id: voice.voiceId,
-      tts_voice: voice.voiceId,
-      voice: voice.voiceId,
     };
 
     if (audioUrl) {
-      // Best-effort: ePBX field names vary; send common aliases.
-      // Limitation: if ePBX ignores all of these, it will fall back to its own TTS
-      // (often Azure Nabanita). Maskara still uses real Chirp3 for /voice/preview.
+      // Hosted Google audio ONLY — no Bangla text, no Azure voice fields
       payload.audio_url = audioUrl;
       payload.media_url = audioUrl;
       payload.play_url = audioUrl;
@@ -200,45 +192,83 @@ export class EpbxProvider implements VoiceProvider {
       payload.voice_url = audioUrl;
       payload.play_audio = audioUrl;
       payload.audio_file = audioUrl;
+      payload.mp3_url = audioUrl;
+      payload.sound_url = audioUrl;
+      payload.announcement_url = audioUrl;
+      payload.replay_audio_url = audioUrl;
+      payload.repeat_audio_url = audioUrl;
       payload.use_audio_url = true;
       payload.skip_tts = true;
-      // Prefer our audio over ePBX Google/Azure engine for the greeting
+      payload.disable_tts = true;
+      payload.tts_enabled = false;
       payload.ai_tts_provider = 'audio';
       payload.tts_provider = 'audio';
       payload.provider = 'audio';
-    } else if (voice.provider === 'azure') {
-      // Hard-lock Azure — ePBX portal default is Nabanita unless these are set
+      payload.speech_provider = 'audio';
+      payload.tts_engine = 'audio';
+      payload.mode = 'audio_url';
+
+      // Critical: empty text so ePBX cannot synthesize portal Nabanita
+      payload.custom_text = '';
+      payload.tts_text = '';
+      payload.message = '';
+      payload.text = '';
+      payload.prompt = '';
+      payload.greeting = '';
+      payload.repeat_text = '';
+      payload.replay_text = '';
+      payload.confirm_text = '';
+      payload.cancel_text = '';
+      payload.success_text = '';
+      payload.failure_text = '';
+      payload.invalid_text = '';
+
+      if (confirmAudioUrl) {
+        payload.confirm_audio_url = confirmAudioUrl;
+        payload.success_audio_url = confirmAudioUrl;
+      }
+      if (cancelAudioUrl) {
+        payload.cancel_audio_url = cancelAudioUrl;
+        payload.failure_audio_url = cancelAudioUrl;
+      }
+      if (invalidAudioUrl) {
+        payload.invalid_audio_url = invalidAudioUrl;
+      }
+    } else {
+      // Text-TTS fallback — hard-lock Azure Pradeep (never leave voice unset)
+      const azureVoice =
+        voice.provider === 'azure' ? voice.voiceId : 'bn-BD-PradeepNeural';
+      payload.custom_text = ttsText;
+      payload.tts_text = ttsText;
+      payload.message = ttsText;
+      payload.text = ttsText;
+      payload.prompt = ttsText;
+      payload.greeting = ttsText;
+      payload.repeat_text = ttsText;
+      payload.replay_text = ttsText;
+      payload.confirm_text = confirmBn;
+      payload.cancel_text = cancelBn;
+      payload.success_text = confirmBn;
+      payload.failure_text = cancelBn;
+      payload.invalid_text = invalidBn;
       payload.provider = 'azure';
       payload.ai_tts_provider = 'azure';
       payload.tts_provider = 'azure';
       payload.tts_engine = 'azure';
       payload.speech_provider = 'azure';
-      payload.azure_tts_voice_id = voice.voiceId;
-      payload.azure_voice = voice.voiceId;
-      payload.azure_voice_name = voice.voiceId;
-      payload.voice_id = voice.voiceId;
-      payload.tts_voice = voice.voiceId;
-      payload.tts_voice_id = voice.voiceId;
-      payload.tts_voice_name = voice.voiceId;
-      payload.voice = voice.voiceId;
-      payload.voice_name = voice.voiceId;
+      payload.azure_tts_voice_id = azureVoice;
+      payload.azure_voice = azureVoice;
+      payload.azure_voice_name = azureVoice;
+      payload.voice_id = azureVoice;
+      payload.tts_voice = azureVoice;
+      payload.tts_voice_id = azureVoice;
+      payload.tts_voice_name = azureVoice;
+      payload.voice = azureVoice;
+      payload.voice_name = azureVoice;
       payload.speech_rate = '0.92';
       payload.rate = '0.92';
-    } else if (voice.provider === 'google') {
-      // Legacy path: ask ePBX Google (usually ignored → portal Nabanita)
-      payload.google_tts_voice_id = voice.voiceId;
-      payload.google_voice = voice.voiceId;
-      payload.ai_tts_provider = 'google';
-      payload.provider = 'google';
-      payload.tts_provider = 'google';
-      if (voice.voiceId.includes('Algieba')) {
-        payload.voice_name = 'Algieba';
-        payload.chirp_voice = 'Algieba';
-        payload.google_voice_name = 'Algieba';
-      }
     }
 
-    // Never attach portal IVR (English menus) unless forced
     const forceIvr = this.settings.get('EPBX_FORCE_IVR') === '1';
     const ivrId = this.settings.get('EPBX_IVR_ID');
     if (forceIvr && ivrId) {
@@ -246,11 +276,10 @@ export class EpbxProvider implements VoiceProvider {
     }
 
     this.logger.log(
-      `ePBX call voice=${voice.id} audio=${audioUrl ? 'yes' : 'no'} merchantVoice=${params.voiceId || 'default'} chars=${ttsText.length} preview="${ttsText.slice(0, 80)}…"`,
+      `[voice] ePBX initiate callId=${params.callId} merchantVoiceId=${params.voiceId || 'null'} resolved=${voice.id} audio_url_sent=${Boolean(audioUrl)} audio_url=${audioUrl || 'none'} mode=${payload.mode} chars=${ttsText.length}`,
     );
 
     const customerId = this.settings.get('EPBX_CUSTOMER_ID');
-    // Prefer initiate (pure TTS) over verify (COD template often adds English)
     const paths = customerId
       ? [
           `/customers/${customerId}/calls/originate`,
@@ -280,7 +309,7 @@ export class EpbxProvider implements VoiceProvider {
           params.callId;
 
         this.logger.log(
-          `ePBX OK ${path} voice=${voice.id} audio=${Boolean(audioUrl)} → ${dialPhone} id=${providerCallId}`,
+          `[voice] ePBX OK ${path} callId=${params.callId} voiceId=${voice.id} audio_url_sent=${Boolean(audioUrl)} → ${dialPhone} providerId=${providerCallId}`,
         );
         return { providerCallId: String(providerCallId), status: 'RINGING' };
       }

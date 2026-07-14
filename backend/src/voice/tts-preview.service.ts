@@ -38,6 +38,9 @@ export class TtsPreviewService {
 
     if (voice.provider === 'google' && this.googleTts.isConfigured()) {
       try {
+        this.logger.log(
+          `Preview Google TTS voiceId=${voice.id} rate=${speechRate ?? DEFAULT_SPEECH_RATE}`,
+        );
         const result = await this.googleTts.synthesize(
           clipped,
           voice.voiceId,
@@ -54,6 +57,10 @@ export class TtsPreviewService {
           `Google Cloud TTS preview failed, falling back: ${err instanceof Error ? err.message : err}`,
         );
       }
+    } else if (voice.provider === 'google') {
+      this.logger.warn(
+        `Preview: Google voice ${voice.id} but GOOGLE_TTS_API_KEY missing`,
+      );
     }
 
     const fromEpbx = await this.tryEpbxTts(clipped, voice);

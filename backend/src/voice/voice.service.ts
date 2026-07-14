@@ -108,6 +108,9 @@ export class VoiceService {
     }
 
     try {
+      this.logger.log(
+        `[voice] initiate start order=${order.orderNumber} callId=${call.id} merchantVoiceId=${merchantVoiceId || 'null'} speechRate=${speechRate ?? 'default'} provider=${provider.name}`,
+      );
       const result = await provider.initiateCall({
         callId: call.id,
         to: order.customerPhone,
@@ -132,7 +135,7 @@ export class VoiceService {
       });
 
       this.logger.log(
-        `${provider.name} call initiated for order ${order.orderNumber} voice=${merchantVoiceId || 'default'}`,
+        `[voice] initiate ok order=${order.orderNumber} callId=${call.id} merchantVoiceId=${merchantVoiceId || 'default'} provider=${provider.name} providerCallId=${result.providerCallId}`,
       );
       return call;
     } catch (error) {

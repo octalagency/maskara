@@ -287,7 +287,7 @@ export default function SettingsPage() {
             <div>
               <h3 className="section-title">AI ভয়েস বাছুন</h3>
               <p className="page-subtitle">
-                Google Chirp3 আরও অপশন + Azure ফলব্যাক। কার্ডে ক্লিক করলেই সেভ ও প্রিভিউ হয়।
+                লাইভ কলে যে ভয়েস বাছাই করবেন সেটাই শোনাবে (Google Cloud TTS)। Algieba প্রস্তাবিত পুরুষ কল-সেন্টার ভয়েস। কার্ডে ক্লিক করলেই সেভ ও প্রিভিউ হয়।
               </p>
             </div>
 

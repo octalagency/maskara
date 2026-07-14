@@ -1,20 +1,31 @@
 #!/bin/bash
-# Hostinger Browser Terminal — rebuild backend so Azure Pradeep voice goes live
+# Hostinger Browser Terminal — rebuild backend+worker so Google TTS audio
+# is Redis-shared (fixes female Azure নবনীতা fallback on live calls).
 set -euo pipefail
 cd /opt/maskara
 
 git fetch origin main
 git reset --hard origin/main
 
-docker compose -f docker-compose.hostinger.yml build --no-cache backend frontend
-docker compose -f docker-compose.hostinger.yml up -d backend frontend worker nginx
+docker compose -f docker-compose.hostinger.yml build --no-cache backend
+docker compose -f docker-compose.hostinger.yml up -d backend worker
 
-echo "Waiting 40s..."
-sleep 40
+# Frontend only if merchant voice UI also changed
+docker compose -f docker-compose.hostinger.yml build --no-cache frontend
+docker compose -f docker-compose.hostinger.yml up -d frontend nginx
+
+echo "Waiting 45s for health..."
+sleep 45
 docker compose -f docker-compose.hostinger.yml ps
-docker logs maskara-backend --tail 30 2>&1 | grep -iE 'voice|epbx|pradeep|error|Nest' || true
+echo ""
+echo "=== backend voice / Google / Redis ==="
+docker logs maskara-backend --tail 40 2>&1 | grep -iE 'voice|google|tts|redis|Nest|error' || true
+echo ""
+echo "=== worker voice / Google / Redis ==="
+docker logs maskara-worker --tail 40 2>&1 | grep -iE 'voice|google|tts|redis|error' || true
 
 echo ""
-echo "✓ Backend+frontend rebuilt"
-echo "  Settings → প্রদীপ select → new test call"
-echo "  Expect male Azure voice (not নবনীতা)"
+echo "✓ Backend+worker+frontend rebuilt"
+echo "  Settings → Algieba (or your Chirp3) select → new test call"
+echo "  Logs should show: audio_url_sent=true  (NOT Azure নবনীতা)"
+echo "  Optional: docker logs -f maskara-worker | grep '\\[voice\\]'"
