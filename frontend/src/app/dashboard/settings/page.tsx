@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { api, Merchant } from '@/lib/api';
 import {
+  azureTwinLabel,
   clampSpeechRate,
   DEFAULT_SPEECH_RATE,
   fillVoiceScript,
@@ -179,6 +180,7 @@ export default function SettingsPage() {
   }
 
   const selected = getVoiceOption(merchant.voiceId);
+  const azureTwin = azureTwinLabel(merchant.voiceId);
   const previewText = fillVoiceScript(
     (merchant.customGreeting || DEFAULT_SCRIPT).trim() || DEFAULT_SCRIPT,
     {
@@ -287,7 +289,8 @@ export default function SettingsPage() {
             <div>
               <h3 className="section-title">AI ভয়েস বাছুন</h3>
               <p className="page-subtitle">
-                লাইভ কলে যে ভয়েস বাছাই করবেন সেটাই শোনাবে (Google Cloud TTS)। Algieba প্রস্তাবিত পুরুষ কল-সেন্টার ভয়েস। কার্ডে ক্লিক করলেই সেভ ও প্রিভিউ হয়।
+                প্রিভিউতে Google Chirp3 শোনাবে। লাইভে ePBX Chirp3 অডিও না চালালেও একই লিঙ্গের Azure ভয়েস (
+                {azureTwin.label}) যাবে — পুরুষ বাছাই করলে কখনো নারী নবনীতা নয়।
               </p>
             </div>
 
@@ -359,9 +362,27 @@ export default function SettingsPage() {
             </div>
 
             <div className="rounded-xl border border-brand-100 bg-brand-50/50 px-4 py-3 text-[13px] text-slate-700">
-              নির্বাচিত: <strong>{selected.label}</strong> ({selected.provider}) — রিয়েল কলে এই
-              ভয়েস যাবে।
+              নির্বাচিত: <strong>{selected.label}</strong> ({selected.provider})
+              {selected.requiresGoogleTts ? (
+                <>
+                  {' '}
+                  — লাইভ ePBX ফলব্যাক:{' '}
+                  <strong>{azureTwin.label}</strong> (
+                  {azureTwin.gender === 'male' ? 'পুরুষ' : 'নারী'})
+                </>
+              ) : (
+                <> — রিয়েল কলে এই Azure ভয়েস যাবে।</>
+              )}
             </div>
+            {saved && selected.requiresGoogleTts && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
+                সেভ হয়েছে। প্রিভিউ Chirp3 (<strong>{selected.label}</strong>)। লাইভ কলে ePBX যদি
+                MP3 না চালায়, একই লিঙ্গের Azure <strong>{azureTwin.label}</strong> শোনাবে
+                {azureTwin.gender === 'male'
+                  ? ' — পুরুষ বাছাইয়ে নারী ভয়েস যাবে না।'
+                  : '।'}
+              </div>
+            )}
 
             <div className="space-y-3 rounded-xl border border-slate-200 p-4">
               <div className="flex items-center justify-between gap-3">

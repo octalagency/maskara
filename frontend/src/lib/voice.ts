@@ -180,6 +180,28 @@ export function getVoiceOption(voiceId?: string | null) {
   return VOICE_OPTIONS.find((v) => v.id === id) || VOICE_OPTIONS[0];
 }
 
+/** Azure Neural twin used on live ePBX when Chirp3 MP3 is ignored. */
+export function azureTwinLabel(voiceId?: string | null): {
+  id: string;
+  label: string;
+  gender: 'male' | 'female';
+} {
+  const selected = getVoiceOption(voiceId);
+  // Soft-migrated নবনীতা → Algieba (male) — same as backend azureTwinForMerchantVoice
+  if (/nabanita/i.test(voiceId || '') || selected.gender === 'male') {
+    return {
+      id: AZURE_MALE_VOICE,
+      label: 'প্রদীপ (Azure)',
+      gender: 'male',
+    };
+  }
+  return {
+    id: 'azure:bn-BD-NabanitaNeural',
+    label: 'নবনীতা (Azure)',
+    gender: 'female',
+  };
+}
+
 let previewAudio: HTMLAudioElement | null = null;
 
 export function stopBanglaPreview() {

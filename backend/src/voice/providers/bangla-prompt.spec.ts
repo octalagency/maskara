@@ -1,6 +1,8 @@
 import {
   DEFAULT_MERCHANT_VOICE_ID,
+  azureTwinForMerchantVoice,
   hasBanglaScript,
+  merchantVoiceGender,
   resolveLiveEpbxVoice,
   resolveMerchantVoice,
   buildOrderVerificationPrompt,
@@ -10,6 +12,31 @@ describe('hasBanglaScript', () => {
   it('detects Bangla', () => {
     expect(hasBanglaScript('হ্যালো')).toBe(true);
     expect(hasBanglaScript('Hello press 1')).toBe(false);
+  });
+});
+
+describe('azureTwinForMerchantVoice', () => {
+  it('maps Algieba / Orus / Pradeep to Azure Pradeep male', () => {
+    expect(azureTwinForMerchantVoice('google:bn-IN-Chirp3-HD-Algieba').voiceId).toBe(
+      'bn-BD-PradeepNeural',
+    );
+    expect(azureTwinForMerchantVoice('google:bn-IN-Chirp3-HD-Orus').shortName).toBe(
+      'Pradeep',
+    );
+    expect(azureTwinForMerchantVoice('azure:bn-BD-PradeepNeural').gender).toBe('male');
+  });
+
+  it('maps female Chirp3 to Azure Nabanita only', () => {
+    const twin = azureTwinForMerchantVoice('google:bn-IN-Chirp3-HD-Aoede');
+    expect(twin.voiceId).toBe('bn-BD-NabanitaNeural');
+    expect(twin.gender).toBe('female');
+  });
+
+  it('soft-migrates legacy Nabanita selection to male Pradeep twin', () => {
+    expect(azureTwinForMerchantVoice('azure:bn-BD-NabanitaNeural').voiceId).toBe(
+      'bn-BD-PradeepNeural',
+    );
+    expect(merchantVoiceGender('azure:bn-BD-NabanitaNeural')).toBe('male');
   });
 });
 
@@ -26,9 +53,10 @@ describe('resolveLiveEpbxVoice', () => {
     expect(v.voiceId).toBe('bn-IN-Chirp3-HD-Orus');
   });
 
-  it('remaps female Chirp3 to Algieba on live path', () => {
+  it('keeps female Chirp3 when Google ready (Azure twin is Nabanita)', () => {
     const v = resolveLiveEpbxVoice('google:bn-IN-Chirp3-HD-Aoede', true);
-    expect(v.voiceId).toBe('bn-IN-Chirp3-HD-Algieba');
+    expect(v.voiceId).toBe('bn-IN-Chirp3-HD-Aoede');
+    expect(v.gender).toBe('female');
   });
 
   it('uses Pradeep when Google missing and merchant on Nabanita', () => {

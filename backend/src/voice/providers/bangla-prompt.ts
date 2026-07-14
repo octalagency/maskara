@@ -262,6 +262,7 @@ export function resolveMerchantVoice(voiceId?: string | null): {
   id: string;
   languageCode?: string;
   useGoogleDirect?: boolean;
+  gender: 'male' | 'female';
 } {
   const parsed = parseMerchantVoice(voiceId);
   const known = MERCHANT_VOICE_OPTIONS.find((v) => v.id === voiceId);
@@ -273,6 +274,7 @@ export function resolveMerchantVoice(voiceId?: string | null): {
       id: known.id,
       languageCode: 'languageCode' in known ? known.languageCode : undefined,
       useGoogleDirect: known.provider === 'google',
+      gender: known.gender,
     };
   }
 
@@ -288,6 +290,7 @@ export function resolveMerchantVoice(voiceId?: string | null): {
       id: `google:${parsed.voiceId}`,
       languageCode: 'bn-IN',
       useGoogleDirect: true,
+      gender: CHIRP3_FEMALE.test(parsed.voiceId) ? 'female' : 'male',
     };
   }
 
@@ -298,6 +301,7 @@ export function resolveMerchantVoice(voiceId?: string | null): {
       id: DEFAULT_MERCHANT_VOICE_ID,
       languageCode: 'bn-IN',
       useGoogleDirect: true,
+      gender: 'male',
     };
   }
 
@@ -306,6 +310,7 @@ export function resolveMerchantVoice(voiceId?: string | null): {
       provider: 'azure',
       voiceId: 'bn-BD-NabanitaNeural',
       id: 'azure:bn-BD-NabanitaNeural',
+      gender: 'female',
     };
   }
 
@@ -314,6 +319,7 @@ export function resolveMerchantVoice(voiceId?: string | null): {
       provider: 'azure',
       voiceId: 'bn-BD-PradeepNeural',
       id: 'azure:bn-BD-PradeepNeural',
+      gender: 'male',
     };
   }
 
@@ -321,13 +327,57 @@ export function resolveMerchantVoice(voiceId?: string | null): {
     provider: 'azure',
     voiceId: 'bn-BD-PradeepNeural',
     id: AZURE_FALLBACK_VOICE_ID,
+    gender: 'male',
   };
 }
 
 /**
- * Live ePBX path only — telephony remains ePBX; TTS is Maskara Google Chirp3.
- * When Google TTS is configured: ignore Azure নবনীতা and force male Algieba
- * (or keep merchant's male Chirp3). Never leave Azure female on the wire.
+ * Gender of the merchant's effective selection (after soft-migrate of legacy নবনীতা).
+ * Male Chirp3 / Pradeep / migrated Nabanita → male. Explicit female Chirp3 → female.
+ */
+export function merchantVoiceGender(
+  voiceId?: string | null,
+): 'male' | 'female' {
+  if (shouldMigrateMerchantVoiceId(voiceId)) return 'male';
+  return resolveMerchantVoice(voiceId).gender;
+}
+
+/**
+ * Azure Neural twin for ePBX text-TTS fallback.
+ * Male (Algieba/Orus/Pradeep/…) → bn-BD-PradeepNeural.
+ * Female Chirp3 only → bn-BD-NabanitaNeural.
+ * NEVER Nabanita when merchant picks male. Soft-migrated Nabanita → Pradeep.
+ */
+export function azureTwinForMerchantVoice(voiceId?: string | null): {
+  provider: 'azure';
+  voiceId: string;
+  id: string;
+  gender: 'male' | 'female';
+  shortName: string;
+} {
+  const gender = merchantVoiceGender(voiceId);
+  if (gender === 'female') {
+    return {
+      provider: 'azure',
+      voiceId: 'bn-BD-NabanitaNeural',
+      id: 'azure:bn-BD-NabanitaNeural',
+      gender: 'female',
+      shortName: 'Nabanita',
+    };
+  }
+  return {
+    provider: 'azure',
+    voiceId: 'bn-BD-PradeepNeural',
+    id: AZURE_FALLBACK_VOICE_ID,
+    gender: 'male',
+    shortName: 'Pradeep',
+  };
+}
+
+/**
+ * Live ePBX path — telephony ePBX; prefer Maskara Google Chirp3 MP3.
+ * Soft-migrate Azure নবনীতা → Algieba. Keep merchant Chirp3 (male or female).
+ * Azure Pradeep selection still synths Algieba when Google is ready (better audio).
  */
 export function resolveLiveEpbxVoice(
   voiceId?: string | null,
@@ -338,17 +388,24 @@ export function resolveLiveEpbxVoice(
   id: string;
   languageCode?: string;
   useGoogleDirect?: boolean;
+  gender: 'male' | 'female';
 } {
   if (googleTtsConfigured) {
+    if (shouldMigrateMerchantVoiceId(voiceId)) {
+      return {
+        ...resolveMerchantVoice(DEFAULT_MERCHANT_VOICE_ID),
+        languageCode: 'bn-IN',
+        useGoogleDirect: true,
+      };
+    }
     const resolved = resolveMerchantVoice(voiceId);
     if (
       resolved.provider === 'google' &&
-      /Chirp3-HD-/i.test(resolved.voiceId) &&
-      !CHIRP3_FEMALE.test(resolved.voiceId)
+      /Chirp3-HD-/i.test(resolved.voiceId)
     ) {
       return { ...resolved, languageCode: 'bn-IN', useGoogleDirect: true };
     }
-    // Azure নবনীতা / Pradeep / female Chirp3 / unknown → Algieba
+    // Azure male (Pradeep) → still synth Algieba for hosted audio quality
     return {
       ...resolveMerchantVoice(DEFAULT_MERCHANT_VOICE_ID),
       languageCode: 'bn-IN',
@@ -356,25 +413,27 @@ export function resolveLiveEpbxVoice(
     };
   }
 
-  // No Google key: Bangla male Azure only (never portal নবনীতা / English)
-  const resolved = resolveMerchantVoice(voiceId);
-  if (/nabanita/i.test(resolved.voiceId) || /nabanita/i.test(voiceId || '')) {
-    return resolveMerchantVoice(AZURE_FALLBACK_VOICE_ID);
-  }
-  if (resolved.provider === 'azure') return resolved;
-  return resolveMerchantVoice(AZURE_FALLBACK_VOICE_ID);
+  // No Google key: Azure twin only (male→Pradeep; female Chirp3→Nabanita; migrated→Pradeep)
+  const twin = azureTwinForMerchantVoice(voiceId);
+  return {
+    provider: twin.provider,
+    voiceId: twin.voiceId,
+    id: twin.id,
+    gender: twin.gender,
+  };
 }
 
-/** Always male Azure Pradeep — never নবনীতা (portal English/female default). */
-export function azureFallbackFor(_voiceId?: string | null): {
+/** @deprecated use azureTwinForMerchantVoice — kept for call sites */
+export function azureFallbackFor(voiceId?: string | null): {
   provider: string;
   voiceId: string;
   id: string;
 } {
+  const twin = azureTwinForMerchantVoice(voiceId);
   return {
-    provider: 'azure',
-    voiceId: 'bn-BD-PradeepNeural',
-    id: AZURE_FALLBACK_VOICE_ID,
+    provider: twin.provider,
+    voiceId: twin.voiceId,
+    id: twin.id,
   };
 }
 
