@@ -180,6 +180,12 @@ export const MERCHANT_VOICE_OPTIONS = [
 
 export const DEFAULT_MERCHANT_VOICE_ID = 'google:bn-IN-Chirp3-HD-Algieba';
 export const AZURE_FALLBACK_VOICE_ID = 'azure:bn-BD-PradeepNeural';
+/**
+ * ePBX portal primary male Chirp3 (maskara.epbx.bd Voice Profile).
+ * Maskara UI recommends Algieba; portal radio uses Algenib — map Algieba→Algenib
+ * so live dials match the saved Google gateway voice (never WaveNet female default).
+ */
+export const EPBX_PORTAL_MALE_CHIRP3 = 'bn-IN-Chirp3-HD-Algenib';
 /** Slightly under 1.0 for clearer, warmer call-center pacing. */
 export const DEFAULT_SPEECH_RATE = 0.95;
 /** Phone-friendly clarity without sounding loud. */
@@ -420,6 +426,55 @@ export function resolveLiveEpbxVoice(
     voiceId: twin.voiceId,
     id: twin.id,
     gender: twin.gender,
+  };
+}
+
+/**
+ * Voice name + provider fields for ePBX initiate when portal Active Gateway = Google.
+ * Algieba / Pradeep / soft-migrated নবনীতা → bn-IN-Chirp3-HD-Algenib (portal male primary).
+ * Female Chirp3 kept as-is. Never Nabanita / azure voice names on this path.
+ */
+export function epbxPortalGoogleVoice(voiceId?: string | null): {
+  provider: 'google';
+  voiceId: string;
+  id: string;
+  shortName: string;
+  gender: 'male' | 'female';
+  languageCode: 'bn-IN';
+} {
+  const gender = merchantVoiceGender(voiceId);
+  if (gender === 'female') {
+    const female = resolveMerchantVoice(voiceId);
+    const voiceName = /Chirp3-HD-/i.test(female.voiceId)
+      ? female.voiceId
+      : 'bn-IN-Chirp3-HD-Aoede';
+    return {
+      provider: 'google',
+      voiceId: voiceName,
+      id: `google:${voiceName}`,
+      shortName: voiceName.replace(/^bn-IN-Chirp3-HD-/i, ''),
+      gender: 'female',
+      languageCode: 'bn-IN',
+    };
+  }
+
+  // Male path: prefer explicit non-Algieba Chirp3 (Orus, Achird, …); else portal Algenib
+  const resolved = resolveLiveEpbxVoice(voiceId, true);
+  let voiceName = resolved.voiceId;
+  if (
+    !/Chirp3-HD-/i.test(voiceName) ||
+    /Algieba|Pradeep|Nabanita/i.test(voiceName) ||
+    shouldMigrateMerchantVoiceId(voiceId)
+  ) {
+    voiceName = EPBX_PORTAL_MALE_CHIRP3;
+  }
+  return {
+    provider: 'google',
+    voiceId: voiceName,
+    id: `google:${voiceName}`,
+    shortName: voiceName.replace(/^bn-IN-Chirp3-HD-/i, ''),
+    gender: 'male',
+    languageCode: 'bn-IN',
   };
 }
 

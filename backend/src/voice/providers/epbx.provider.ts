@@ -8,8 +8,8 @@ import {
 } from './voice-provider.interface';
 import {
   DEFAULT_SPEECH_RATE,
-  azureTwinForMerchantVoice,
   buildOrderVerificationPrompt,
+  epbxPortalGoogleVoice,
   hasBanglaScript,
   resolveLiveEpbxVoice,
 } from './bangla-prompt';
@@ -17,14 +17,15 @@ import {
 /**
  * ePBX.bd — Bangla outbound dial/telephony only.
  *
- * Dual strategy:
- * 1) Best-effort Chirp3 MP3 on every known media alias (ePBX often ignores these).
- * 2) ALWAYS keep Bangla tts_text + Azure Neural twin of merchant selection so
- *    portal TTS cannot default to English / female নবনীতা for male picks.
+ * Portal Active Voice Gateway is Google WaveNet/Chirp3 (maskara.epbx.bd).
+ * Sending azure:* / Nabanita / Pradeep conflicts with that gateway and lets
+ * the portal fall through to WaveNet female / English sandbox defaults.
  *
- * mode stays `custom_tts` (never flip to `audio_url`) — that mode historically
- * discarded our Azure voice and fell through to portal female default.
- * NEVER skip_tts / empty text. Soft-migrated নবনীতা → Algieba → Azure Pradeep.
+ * Strategy (Option A):
+ * 1) Tell ePBX to use Google + Chirp3 voice name matching merchant selection
+ *    (Algieba → bn-IN-Chirp3-HD-Algenib portal male primary).
+ * 2) Best-effort Chirp3 MP3 aliases (often ignored — never rely on them alone).
+ * 3) ALWAYS Bangla tts_text, mode=custom_tts, never skip_tts / English / IVR.
  */
 @Injectable()
 export class EpbxProvider implements VoiceProvider {
@@ -61,6 +62,76 @@ export class EpbxProvider implements VoiceProvider {
     return `${base}?secret=${encodeURIComponent(secret)}`;
   }
 
+  /** Loud voice-key dump — never include Authorization / API secrets. */
+  private logVoicePayload(
+    callId: string,
+    payload: Record<string, unknown>,
+  ): void {
+    const keys = [
+      'mode',
+      'provider',
+      'ai_tts_provider',
+      'tts_provider',
+      'tts_engine',
+      'speech_provider',
+      'voice_gateway',
+      'ai_tts_gateway',
+      'google_tts_voice_id',
+      'google_voice',
+      'google_voice_name',
+      'google_voice_id',
+      'chirp3_voice',
+      'wavenet_voice',
+      'voice_id',
+      'tts_voice',
+      'tts_voice_id',
+      'tts_voice_name',
+      'voice',
+      'voice_name',
+      'neural_voice',
+      'ai_voice',
+      'voice_label',
+      'tts_voice_label',
+      'voice_gender',
+      'tts_gender',
+      'gender',
+      'language',
+      'lang',
+      'tts_language',
+      'locale',
+      'speech_language',
+      'speak_english',
+      'english_enabled',
+      'skip_tts',
+      'disable_tts',
+      'tts_enabled',
+      'use_portal_default_voice',
+      'force_voice',
+      'use_azure',
+      'azure_tts',
+      'google_voice_alias',
+      'maskara_voice',
+      'audio_url',
+      'use_audio_url',
+      'prefer_audio_url',
+      'ivr_id',
+      'azure_voice',
+      'azure_tts_voice_id',
+      'azure_voice_name',
+    ];
+    const snapshot: Record<string, unknown> = {};
+    for (const k of keys) {
+      if (payload[k] !== undefined) snapshot[k] = payload[k];
+    }
+    const tts = typeof payload.tts_text === 'string' ? payload.tts_text : '';
+    snapshot.tts_text_len = tts.length;
+    snapshot.tts_text_bangla = hasBanglaScript(tts);
+    snapshot.tts_text_preview = tts.slice(0, 48);
+    this.logger.log(
+      `[voice] ePBX FULL voice payload callId=${callId} ${JSON.stringify(snapshot)}`,
+    );
+  }
+
   async initiateCall(params: InitiateCallParams): Promise<InitiateCallResult> {
     const apiKey = this.settings.get('EPBX_API_KEY');
     if (!apiKey) throw new Error('EPBX_API_KEY not configured');
@@ -81,6 +152,7 @@ export class EpbxProvider implements VoiceProvider {
 
     const googleReady = this.googleTts.isConfigured();
     let voice = resolveLiveEpbxVoice(params.voiceId, googleReady);
+    const portalVoice = epbxPortalGoogleVoice(params.voiceId);
     const speechRate = params.speechRate ?? DEFAULT_SPEECH_RATE;
     let audioUrl: string | null = null;
     let confirmAudioUrl: string | null = null;
@@ -101,13 +173,12 @@ export class EpbxProvider implements VoiceProvider {
     }
 
     if (googleReady) {
-      // Force Google Chirp3 synth even if merchant DB still has Azure নবনীতা
       if (voice.provider !== 'google') {
         voice = resolveLiveEpbxVoice(params.voiceId, true);
       }
       try {
         this.logger.log(
-          `[voice] Google synth start callId=${params.callId} language=bn-IN voiceId=${voice.id} googleVoice=${voice.voiceId} bangla_script=${banglaOk} chars=${ttsText.length}`,
+          `[voice] Google synth start callId=${params.callId} language=bn-IN voiceId=${voice.id} googleVoice=${voice.voiceId} portalVoice=${portalVoice.voiceId} bangla_script=${banglaOk} chars=${ttsText.length}`,
         );
         const synth = await this.googleTts.synthesize(
           ttsText,
@@ -122,19 +193,16 @@ export class EpbxProvider implements VoiceProvider {
         audioUrl = hosted.url;
         redisCached = hosted.redisCached;
 
-        // Durable shared host required (Redis/S3). Process-local L1 alone 404s on API.
-        // Then prove API container can serve it (ePBX hits api.maskara.bd → backend).
         const audioReachable =
           (hosted.via === 's3' || hosted.redisCached) &&
           (await this.isPublicAudioReachable(audioUrl));
         if (!audioReachable) {
           this.logger.error(
-            `[voice] TTS audio URL not API-fetchable callId=${params.callId} via=${hosted.via} redis_cached=${hosted.redisCached} url=${audioUrl} — refuse audio_url, use Azure twin Bangla text`,
+            `[voice] TTS audio URL not API-fetchable callId=${params.callId} via=${hosted.via} redis_cached=${hosted.redisCached} url=${audioUrl} — refuse audio_url, rely on ePBX Google Chirp3 portal voice`,
           );
           audioUrl = null;
           redisCached = false;
         } else {
-          // Same Chirp3 male for DTMF confirm/cancel/invalid (never ePBX Azure female)
           try {
             const [c, x, i] = await Promise.all([
               this.googleTts.synthesize(confirmBn, voice.voiceId, speechRate),
@@ -146,7 +214,6 @@ export class EpbxProvider implements VoiceProvider {
               this.googleTts.hostAudio(x.buffer, x.mimeType, `cx-${params.callId}`),
               this.googleTts.hostAudio(i.buffer, i.mimeType, `bad-${params.callId}`),
             ]);
-            // Prompt audio already proven fetchable; trust same Redis/S3 path for DTMF clips.
             if (okH.via === 's3' || okH.redisCached) confirmAudioUrl = okH.url;
             if (cxH.via === 's3' || cxH.redisCached) cancelAudioUrl = cxH.url;
             if (badH.via === 's3' || badH.redisCached) invalidAudioUrl = badH.url;
@@ -159,18 +226,18 @@ export class EpbxProvider implements VoiceProvider {
           }
 
           this.logger.log(
-            `[voice] Google TTS ready callId=${params.callId} language=bn-IN voiceId=${voice.id} googleVoice=${voice.voiceId} audio_url=${audioUrl} redis_cached=${redisCached}`,
+            `[voice] Google TTS ready callId=${params.callId} language=bn-IN voiceId=${voice.id} googleVoice=${voice.voiceId} portalVoice=${portalVoice.voiceId} audio_url=${audioUrl} redis_cached=${redisCached}`,
           );
         }
       } catch (err) {
         this.logger.error(
-          `Google TTS failed for call — falling back to Azure twin only: ${err instanceof Error ? err.message : err}`,
+          `Google TTS failed for call — ePBX will use portal Google Chirp3 text-TTS: ${err instanceof Error ? err.message : err}`,
         );
         audioUrl = null;
       }
     } else {
-      this.logger.error(
-        '[voice] GOOGLE_TTS_API_KEY missing on worker — live call will use Azure twin Bangla (never English portal TTS)',
+      this.logger.warn(
+        '[voice] GOOGLE_TTS_API_KEY missing on worker — live call uses ePBX portal Google Chirp3 (Algenib) + Bangla text (no Maskara audio_url)',
       );
     }
 
@@ -180,14 +247,8 @@ export class EpbxProvider implements VoiceProvider {
       );
     }
 
-    const azureTwin = azureTwinForMerchantVoice(params.voiceId);
-    const azureVoice = azureTwin.voiceId;
-    const azureShort = azureTwin.shortName;
-    const azureGender = azureTwin.gender;
-
     // Do NOT send customer_name/amount/order_id/empty english_* —
     // empty '' and COD slots both trigger ePBX English portal template.
-    // Prefer /calls/initiate custom_tts — never language=en / voice_gender portal default.
     const payload: Record<string, unknown> = {
       phone_number: dialPhone,
       caller_id: callerId,
@@ -211,17 +272,15 @@ export class EpbxProvider implements VoiceProvider {
 
       language: 'bn',
       lang: 'bn',
-      tts_language: 'bn-BD',
-      locale: 'bn-BD',
-      speech_language: 'bn-BD',
+      tts_language: portalVoice.languageCode,
+      locale: portalVoice.languageCode,
+      speech_language: portalVoice.languageCode,
       speak_english: false,
       english_enabled: false,
       skip_default_prompt: true,
       use_custom_text_only: true,
       disable_default_greeting: true,
       template: 'custom',
-      // Keep custom_tts even when audio_url attached — audio_url mode made
-      // ePBX drop Azure voice and use portal female default on miss.
       mode: 'custom_tts',
 
       replay_digit: '0',
@@ -242,41 +301,53 @@ export class EpbxProvider implements VoiceProvider {
       callback_url: this.webhookUrl('/voice/webhook/epbx'),
     };
 
-    // Azure Neural twin of merchant selection — cannot be overridden by portal female.
-    payload.provider = 'azure';
-    payload.ai_tts_provider = 'azure';
-    payload.tts_provider = 'azure';
-    payload.tts_engine = 'azure';
-    payload.speech_provider = 'azure';
-    payload.azure_tts_voice_id = azureVoice;
-    payload.azure_voice = azureVoice;
-    payload.azure_voice_name = azureVoice;
-    payload.azure_voice_short = azureShort;
-    payload.voice_id = azureVoice;
-    payload.tts_voice = azureVoice;
-    payload.tts_voice_id = azureVoice;
-    payload.tts_voice_name = azureVoice;
-    payload.voice = azureVoice;
-    payload.voice_name = azureVoice;
-    payload.neural_voice = azureVoice;
-    payload.ai_voice = azureVoice;
-    // Short portal labels some tenants store (Pradeep / Nabanita)
-    payload.voice_label = azureShort;
-    payload.tts_voice_label = azureShort;
-    payload.voice_gender = azureGender;
-    payload.tts_gender = azureGender;
-    payload.gender = azureGender;
+    // Google Chirp3 via ePBX portal gateway — NEVER azure/Nabanita on this path.
+    payload.provider = 'google';
+    payload.ai_tts_provider = 'google';
+    payload.tts_provider = 'google';
+    payload.tts_engine = 'google';
+    payload.speech_provider = 'google';
+    payload.voice_gateway = 'google';
+    payload.ai_tts_gateway = 'google_wavenet';
+    payload.tts_gateway = 'google';
+
+    payload.google_tts_voice_id = portalVoice.voiceId;
+    payload.google_voice = portalVoice.voiceId;
+    payload.google_voice_name = portalVoice.voiceId;
+    payload.google_voice_id = portalVoice.voiceId;
+    payload.chirp3_voice = portalVoice.voiceId;
+    payload.wavenet_voice = portalVoice.voiceId;
+    payload.voice_id = portalVoice.voiceId;
+    payload.tts_voice = portalVoice.voiceId;
+    payload.tts_voice_id = portalVoice.voiceId;
+    payload.tts_voice_name = portalVoice.voiceId;
+    payload.voice = portalVoice.voiceId;
+    payload.voice_name = portalVoice.voiceId;
+    payload.neural_voice = portalVoice.voiceId;
+    payload.ai_voice = portalVoice.voiceId;
+    payload.voice_label = portalVoice.shortName;
+    payload.tts_voice_label = portalVoice.shortName;
+    payload.voice_gender = portalVoice.gender;
+    payload.tts_gender = portalVoice.gender;
+    payload.gender = portalVoice.gender;
+    // Maskara UI Algieba ↔ portal Algenib alias (same male Chirp3 family)
+    if (/Algenib/i.test(portalVoice.voiceId)) {
+      payload.google_voice_alias = 'bn-IN-Chirp3-HD-Algieba';
+      payload.maskara_voice = 'bn-IN-Chirp3-HD-Algieba';
+    }
     payload.speech_rate = '0.92';
     payload.rate = '0.92';
-    // Explicit anti-override — do not leave portal female/English defaults room
     payload.skip_tts = false;
     payload.disable_tts = false;
     payload.tts_enabled = true;
     payload.use_portal_default_voice = false;
     payload.force_voice = true;
+    // Do not leave Azure fields room — portal gateway is Google
+    payload.use_azure = false;
+    payload.azure_tts = false;
 
     if (audioUrl) {
-      // Best-effort Chirp3 play — aliases only; mode stays custom_tts + Azure twin.
+      // Best-effort Chirp3 play — aliases only; mode stays custom_tts + Google voice.
       payload.audio_url = audioUrl;
       payload.media_url = audioUrl;
       payload.play_url = audioUrl;
@@ -320,7 +391,7 @@ export class EpbxProvider implements VoiceProvider {
     const ivrId = this.settings.get('EPBX_IVR_ID');
     if (forceIvr && ivrId) {
       this.logger.warn(
-        `[voice] EPBX_FORCE_IVR=1 — attaching ivr_id=${ivrId} (may override Azure twin)`,
+        `[voice] EPBX_FORCE_IVR=1 — attaching ivr_id=${ivrId} (may override Google Chirp3)`,
       );
       payload.ivr_id = ivrId;
     }
@@ -336,8 +407,9 @@ export class EpbxProvider implements VoiceProvider {
     }
 
     this.logger.log(
-      `[voice] ePBX initiate callId=${params.callId} merchantVoiceId=${params.voiceId || 'null'} resolved=${voice.id} googleVoice=${voice.voiceId} azure=${azureVoice} azureShort=${azureShort} voice_gender=${azureGender} language=${payload.tts_language} audio_url_sent=${Boolean(audioUrl)} redis_cached=${redisCached} tts_text_present=${ttsPresent} bangla_script=${banglaOk} skip_tts=${payload.skip_tts === true} mode=${payload.mode} ivr_forced=${forceIvr && Boolean(ivrId)} chars=${ttsText.length}`,
+      `[voice] ePBX initiate callId=${params.callId} merchantVoiceId=${params.voiceId || 'null'} resolved=${voice.id} googleVoice=${voice.voiceId} portalVoice=${portalVoice.voiceId} portalShort=${portalVoice.shortName} voice_gender=${portalVoice.gender} tts_provider=google language=${payload.tts_language} audio_url_sent=${Boolean(audioUrl)} redis_cached=${redisCached} tts_text_present=${ttsPresent} bangla_script=${banglaOk} skip_tts=${payload.skip_tts === true} mode=${payload.mode} ivr_forced=${forceIvr && Boolean(ivrId)} chars=${ttsText.length}`,
     );
+    this.logVoicePayload(params.callId, payload);
 
     const customerId = this.settings.get('EPBX_CUSTOMER_ID');
     const paths = customerId
@@ -369,7 +441,7 @@ export class EpbxProvider implements VoiceProvider {
           params.callId;
 
         this.logger.log(
-          `[voice] ePBX OK ${path} callId=${params.callId} voiceId=${voice.id} googleVoice=${voice.voiceId} azure=${azureVoice} voice_gender=${azureGender} language=${payload.tts_language} audio_url_sent=${Boolean(audioUrl)} redis_cached=${redisCached} tts_text_present=${ttsPresent} → ${dialPhone} providerId=${providerCallId}`,
+          `[voice] ePBX OK ${path} callId=${params.callId} voiceId=${voice.id} portalVoice=${portalVoice.voiceId} voice_gender=${portalVoice.gender} language=${payload.tts_language} audio_url_sent=${Boolean(audioUrl)} redis_cached=${redisCached} tts_text_present=${ttsPresent} → ${dialPhone} providerId=${providerCallId}`,
         );
         return { providerCallId: String(providerCallId), status: 'RINGING' };
       }

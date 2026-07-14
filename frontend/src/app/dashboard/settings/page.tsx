@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { api, Merchant } from '@/lib/api';
 import {
-  azureTwinLabel,
   clampSpeechRate,
   DEFAULT_SPEECH_RATE,
   fillVoiceScript,
@@ -180,7 +179,6 @@ export default function SettingsPage() {
   }
 
   const selected = getVoiceOption(merchant.voiceId);
-  const azureTwin = azureTwinLabel(merchant.voiceId);
   const previewText = fillVoiceScript(
     (merchant.customGreeting || DEFAULT_SCRIPT).trim() || DEFAULT_SCRIPT,
     {
@@ -289,8 +287,11 @@ export default function SettingsPage() {
             <div>
               <h3 className="section-title">AI ভয়েস বাছুন</h3>
               <p className="page-subtitle">
-                প্রিভিউতে Google Chirp3 শোনাবে। লাইভে ePBX Chirp3 অডিও না চালালেও একই লিঙ্গের Azure ভয়েস (
-                {azureTwin.label}) যাবে — পুরুষ বাছাই করলে কখনো নারী নবনীতা নয়।
+                Maskara-তে <strong>Algieba</strong> বাছুন। ePBX পোর্টালেও Developer API → Voice
+                Profile থেকে পুরুষ Chirp3 (
+                <strong>bn-IN-Chirp3-HD-Algenib</strong>) সিলেক্ট করে{' '}
+                <strong>Save Voice Profile</strong> চাপুন — দুই জায়গায় পুরুষ না থাকলে লাইভে নারী
+                WaveNet/নবনীতা শোনা যায়।
               </p>
             </div>
 
@@ -366,21 +367,24 @@ export default function SettingsPage() {
               {selected.requiresGoogleTts ? (
                 <>
                   {' '}
-                  — লাইভ ePBX ফলব্যাক:{' '}
-                  <strong>{azureTwin.label}</strong> (
-                  {azureTwin.gender === 'male' ? 'পুরুষ' : 'নারী'})
+                  — লাইভ ePBX Google Chirp3:{' '}
+                  <strong>
+                    {selected.gender === 'male'
+                      ? 'bn-IN-Chirp3-HD-Algenib'
+                      : selected.id.replace(/^google:/, '')}
+                  </strong>{' '}
+                  ({selected.gender === 'male' ? 'পুরুষ' : 'নারী'})
                 </>
               ) : (
-                <> — রিয়েল কলে এই Azure ভয়েস যাবে।</>
+                <> — রিয়েল কলেও ePBX Google পোর্টাল ভয়েস প্রোফাইল ব্যবহার হবে।</>
               )}
             </div>
-            {saved && selected.requiresGoogleTts && (
+            {saved && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
-                সেভ হয়েছে। প্রিভিউ Chirp3 (<strong>{selected.label}</strong>)। লাইভ কলে ePBX যদি
-                MP3 না চালায়, একই লিঙ্গের Azure <strong>{azureTwin.label}</strong> শোনাবে
-                {azureTwin.gender === 'male'
-                  ? ' — পুরুষ বাছাইয়ে নারী ভয়েস যাবে না।'
-                  : '।'}
+                সেভ হয়েছে। এখন ePBX (<strong>maskara.epbx.bd</strong>) → Developer API Settings-এ{' '}
+                <strong>Algenib (MALE)</strong> সিলেক্ট করে <strong>Save Voice Profile</strong>{' '}
+                চাপুন। ডিপ্লয়ের পর Maskara Algieba + ePBX Algenib দুটোই পুরুষ থাকলে লাইভ কল পুরুষ
+                শোনাবে।
               </div>
             )}
 
