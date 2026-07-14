@@ -4,10 +4,13 @@ import { useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { api, Merchant } from '@/lib/api';
 import {
+  clampSpeechRate,
+  DEFAULT_SPEECH_RATE,
   fillVoiceScript,
   getVoiceOption,
   normalizeVoiceId,
   playPreviewAudio,
+  speechRateLabel,
   stopBanglaPreview,
   speakBangla,
   voiceOptionsForConfig,
@@ -28,6 +31,7 @@ export default function SettingsPage() {
   const [previewingId, setPreviewingId] = useState<string | null>(null);
   const [googleTtsConfigured, setGoogleTtsConfigured] = useState(true);
   const voiceChoices = voiceOptionsForConfig(googleTtsConfigured);
+  const rate = clampSpeechRate(merchant.speechRate);
 
   useEffect(() => {
     api
@@ -45,15 +49,16 @@ export default function SettingsPage() {
       .getMerchant()
       .then((m) => {
         const voiceId = normalizeVoiceId(m.voiceId) || DEFAULT_VOICE;
+        const speechRate = clampSpeechRate(m.speechRate);
         setMerchant({
           ...m,
           customGreeting: m.customGreeting?.trim()
             ? m.customGreeting.replace(/কনফার্ম/gi, 'নিশ্চিত')
             : DEFAULT_SCRIPT,
           voiceId,
+          speechRate,
         });
-        // Migrate legacy ElevenLabs / WaveNet ids → Chirp3 or Azure
-        if (voiceId !== m.voiceId) {
+        if (voiceId !== m.voiceId || m.speechRate == null) {
           void api
             .updateMerchant({
               name: m.name,
@@ -61,6 +66,7 @@ export default function SettingsPage() {
               phone: m.phone,
               customGreeting: m.customGreeting?.trim() || DEFAULT_SCRIPT,
               voiceId,
+              speechRate,
               maxCallRetries: m.maxCallRetries ?? 9,
               retryIntervalMin: m.retryIntervalMin ?? 90,
             })
@@ -75,6 +81,7 @@ export default function SettingsPage() {
           phone: '',
           customGreeting: DEFAULT_SCRIPT,
           voiceId: DEFAULT_VOICE,
+          speechRate: DEFAULT_SPEECH_RATE,
         });
       });
 
@@ -87,9 +94,11 @@ export default function SettingsPage() {
     setPreviewingId(null);
   }
 
-  /** Reads whatever is currently written in the script box — server TTS audio */
   async function playScript(voiceId?: string | null) {
-    const m = { ...merchant, voiceId: voiceId || merchant.voiceId || DEFAULT_VOICE };
+    const m = {
+      ...merchant,
+      voiceId: voiceId || merchant.voiceId || DEFAULT_VOICE,
+    };
     const script = (m.customGreeting || DEFAULT_SCRIPT).trim() || DEFAULT_SCRIPT;
     const text = fillVoiceScript(script, {
       storeName: m.storeNameBangla || m.name || 'আমাদের স্টোর',
@@ -104,14 +113,17 @@ export default function SettingsPage() {
     setError('');
 
     try {
-      const result = await api.previewVoice(text, m.voiceId);
+      const result = await api.previewVoice(
+        text,
+        m.voiceId,
+        clampSpeechRate(m.speechRate),
+      );
       const ok = playPreviewAudio(result.audioBase64, result.mimeType, () => {
         setPreviewing(false);
         setPreviewingId(null);
       });
       if (!ok) throw new Error('audio play failed');
     } catch {
-      // Last resort: browser speech (often silent on Bangla)
       const ok = speakBangla(text, m.voiceId, () => {
         setPreviewing(false);
         setPreviewingId(null);
@@ -124,12 +136,11 @@ export default function SettingsPage() {
     }
   }
 
-  async function selectVoice(voiceId: string) {
-    const next = { ...merchant, voiceId };
+  async function persistMerchant(patch: Partial<Merchant>, play = false) {
+    const next = { ...merchant, ...patch };
     setMerchant(next);
-    void playScript(voiceId);
+    if (play) void playScript(patch.voiceId || next.voiceId);
 
-    // Immediately persist — otherwise real calls keep the old voice
     setSaving(true);
     setError('');
     try {
@@ -138,51 +149,33 @@ export default function SettingsPage() {
         storeNameBangla: next.storeNameBangla,
         phone: next.phone,
         customGreeting: next.customGreeting?.trim() || DEFAULT_SCRIPT,
-        voiceId,
+        voiceId: normalizeVoiceId(next.voiceId) || DEFAULT_VOICE,
+        speechRate: clampSpeechRate(next.speechRate),
         maxCallRetries: next.maxCallRetries ?? 9,
         retryIntervalMin: next.retryIntervalMin ?? 90,
       });
       setMerchant({
         ...updated,
         customGreeting: updated.customGreeting || DEFAULT_SCRIPT,
-        voiceId: normalizeVoiceId(updated.voiceId) || voiceId,
+        voiceId: normalizeVoiceId(updated.voiceId) || next.voiceId,
+        speechRate: clampSpeechRate(updated.speechRate ?? next.speechRate),
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch {
-      setError('ভয়েস সেভ হয়নি। আবার ক্লিক করুন বা নিচে সেভ চাপুন।');
+      setError('সেভ হয়নি। আবার চেষ্টা করুন।');
     } finally {
       setSaving(false);
     }
   }
 
+  async function selectVoice(voiceId: string) {
+    await persistMerchant({ voiceId }, true);
+  }
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    setSaving(true);
-    setError('');
-    try {
-      const voiceId = normalizeVoiceId(merchant.voiceId) || DEFAULT_VOICE;
-      const updated = await api.updateMerchant({
-        name: merchant.name,
-        storeNameBangla: merchant.storeNameBangla,
-        phone: merchant.phone,
-        customGreeting: merchant.customGreeting?.trim() || DEFAULT_SCRIPT,
-        voiceId,
-        maxCallRetries: merchant.maxCallRetries ?? 9,
-        retryIntervalMin: merchant.retryIntervalMin ?? 90,
-      });
-      setMerchant({
-        ...updated,
-        customGreeting: updated.customGreeting || DEFAULT_SCRIPT,
-        voiceId: normalizeVoiceId(updated.voiceId) || DEFAULT_VOICE,
-      });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch {
-      setError('সেভ করতে ব্যর্থ হয়েছে। আবার চেষ্টা করুন।');
-    } finally {
-      setSaving(false);
-    }
+    await persistMerchant({});
   }
 
   const selected = getVoiceOption(merchant.voiceId);
@@ -206,10 +199,14 @@ export default function SettingsPage() {
 
         <form onSubmit={handleSave} className="space-y-5">
           {saved && (
-            <div className="rounded-xl bg-emerald-50 px-4 py-3 text-[14px] text-emerald-700">সেভ হয়েছে!</div>
+            <div className="rounded-xl bg-emerald-50 px-4 py-3 text-[14px] text-emerald-700">
+              সেভ হয়েছে!
+            </div>
           )}
           {error && (
-            <div className="rounded-xl bg-rose-50 px-4 py-3 text-[14px] text-rose-700">{error}</div>
+            <div className="rounded-xl bg-rose-50 px-4 py-3 text-[14px] text-rose-700">
+              {error}
+            </div>
           )}
 
           <section className="card space-y-4">
@@ -227,7 +224,9 @@ export default function SettingsPage() {
               <input
                 className="input mt-1"
                 value={merchant.storeNameBangla || ''}
-                onChange={(e) => setMerchant({ ...merchant, storeNameBangla: e.target.value })}
+                onChange={(e) =>
+                  setMerchant({ ...merchant, storeNameBangla: e.target.value })
+                }
               />
               <p className="mt-1 text-[12px] text-slate-400">AI কলে এই নাম বলবে</p>
             </div>
@@ -255,13 +254,17 @@ export default function SettingsPage() {
             <textarea
               className="input min-h-[150px] leading-relaxed"
               value={merchant.customGreeting ?? ''}
-              onChange={(e) => setMerchant({ ...merchant, customGreeting: e.target.value })}
+              onChange={(e) =>
+                setMerchant({ ...merchant, customGreeting: e.target.value })
+              }
             />
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 className="text-[13px] font-semibold text-brand-600 hover:text-brand-700"
-                onClick={() => setMerchant({ ...merchant, customGreeting: DEFAULT_SCRIPT })}
+                onClick={() =>
+                  setMerchant({ ...merchant, customGreeting: DEFAULT_SCRIPT })
+                }
               >
                 ডিফল্ট স্ক্রিপ্ট বসান
               </button>
@@ -284,7 +287,7 @@ export default function SettingsPage() {
             <div>
               <h3 className="section-title">AI ভয়েস বাছুন</h3>
               <p className="page-subtitle">
-                আলগিবা = Google Chirp3 (প্রস্তাবিত), প্রদীপ/নবনীতা = Azure ফলব্যাক। কার্ডে ক্লিক করলেই সেভ হয়।
+                Google Chirp3 আরও অপশন + Azure ফলব্যাক। কার্ডে ক্লিক করলেই সেভ ও প্রিভিউ হয়।
               </p>
             </div>
 
@@ -309,7 +312,9 @@ export default function SettingsPage() {
                         <div
                           className={cn(
                             'flex h-10 w-10 items-center justify-center rounded-full',
-                            v.gender === 'female' ? 'bg-rose-50 text-rose-600' : 'bg-sky-50 text-sky-700',
+                            v.gender === 'female'
+                              ? 'bg-rose-50 text-rose-600'
+                              : 'bg-sky-50 text-sky-700',
                           )}
                         >
                           <User className="h-5 w-5" />
@@ -325,10 +330,12 @@ export default function SettingsPage() {
                         </span>
                       )}
                     </div>
-                    <p className="mt-3 text-[13px] leading-snug text-slate-600">{v.description}</p>
+                    <p className="mt-3 text-[13px] leading-snug text-slate-600">
+                      {v.description}
+                    </p>
                     <div className="mt-3 flex items-center justify-between gap-2">
                       {v.recommended ? (
-                        <span className="badge bg-emerald-50 text-emerald-700">সবচেয়ে প্রাকৃতিক</span>
+                        <span className="badge bg-emerald-50 text-emerald-700">প্রস্তাবিত</span>
                       ) : (
                         <span className="badge bg-slate-100 text-slate-500">
                           {v.gender === 'female' ? 'নারী' : 'পুরুষ'}
@@ -352,7 +359,43 @@ export default function SettingsPage() {
             </div>
 
             <div className="rounded-xl border border-brand-100 bg-brand-50/50 px-4 py-3 text-[13px] text-slate-700">
-              নির্বাচিত: <strong>{selected.label}</strong> ({selected.provider}) — রিয়েল কলে এই ভয়েস যাবে।
+              নির্বাচিত: <strong>{selected.label}</strong> ({selected.provider}) — রিয়েল কলে এই
+              ভয়েস যাবে।
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[14px] font-semibold text-slate-900">কথার গতি</p>
+                  <p className="text-[12px] text-slate-500">
+                    Google TTS speaking rate — একটু দ্রুত করতে ১.১০–১.২০ বাড়ান
+                  </p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-[12px] font-semibold text-slate-700">
+                  {speechRateLabel(rate)} · {rate.toFixed(2)}×
+                </span>
+              </div>
+              <input
+                type="range"
+                min={0.75}
+                max={1.35}
+                step={0.05}
+                value={rate}
+                onChange={(e) =>
+                  setMerchant({
+                    ...merchant,
+                    speechRate: clampSpeechRate(Number(e.target.value)),
+                  })
+                }
+                onMouseUp={() => void persistMerchant({}, true)}
+                onTouchEnd={() => void persistMerchant({}, true)}
+                className="w-full accent-brand-600"
+              />
+              <div className="flex justify-between text-[11px] text-slate-400">
+                <span>ধীরে (০.৭৫)</span>
+                <span>স্বাভাবিক (১.০৫)</span>
+                <span>দ্রুত (১.৩৫)</span>
+              </div>
             </div>
           </section>
 

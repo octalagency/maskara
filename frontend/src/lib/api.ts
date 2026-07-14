@@ -454,7 +454,7 @@ class ApiClient {
     return this.request<VoiceProviderInfo>('/voice/provider');
   }
 
-  previewVoice(text: string, voiceId?: string | null) {
+  previewVoice(text: string, voiceId?: string | null, speechRate?: number | null) {
     return this.request<{
       mimeType: string;
       audioBase64: string;
@@ -462,7 +462,7 @@ class ApiClient {
       voice: string;
     }>('/voice/preview', {
       method: 'POST',
-      body: JSON.stringify({ text, voiceId }),
+      body: JSON.stringify({ text, voiceId, speechRate }),
     });
   }
 
@@ -597,6 +597,7 @@ export interface Merchant {
   status: string;
   customGreeting?: string | null;
   voiceId?: string | null;
+  speechRate?: number | null;
   voiceLanguage?: string;
   maxCallRetries?: number;
   retryIntervalMin?: number;

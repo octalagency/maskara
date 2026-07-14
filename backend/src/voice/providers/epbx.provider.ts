@@ -80,7 +80,11 @@ export class EpbxProvider implements VoiceProvider {
     // Direct Google Cloud TTS → host MP3 → ePBX plays URL (bypasses ePBX Google TTS)
     if (voice.provider === 'google' && this.googleTts.isConfigured()) {
       try {
-        const synth = await this.googleTts.synthesize(ttsText, voice.voiceId);
+        const synth = await this.googleTts.synthesize(
+          ttsText,
+          voice.voiceId,
+          params.speechRate ?? 1.05,
+        );
         audioUrl = await this.googleTts.hostAudio(
           synth.buffer,
           synth.mimeType,

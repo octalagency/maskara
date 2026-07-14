@@ -61,11 +61,11 @@ export class VoiceController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Generate Bangla TTS preview audio for settings' })
-  async preview(@Body() body: { text?: string; voiceId?: string }) {
+  async preview(@Body() body: { text?: string; voiceId?: string; speechRate?: number }) {
     const text = (body.text || '').trim();
     if (!text) throw new BadRequestException('text required');
     try {
-      return await this.ttsPreview.synthesize(text, body.voiceId);
+      return await this.ttsPreview.synthesize(text, body.voiceId, body.speechRate);
     } catch (err) {
       throw new BadRequestException(
         err instanceof Error ? err.message : 'Preview failed',

@@ -88,15 +88,20 @@ export class VoiceService {
 
     let merchantVoiceId: string | null =
       (merchant as { voiceId?: string | null }).voiceId ?? null;
-    if (!merchantVoiceId) {
-      try {
-        const rows = await this.prisma.$queryRaw<Array<{ voiceId: string | null }>>`
-          SELECT "voiceId" FROM "Merchant" WHERE id = ${merchantId} LIMIT 1
-        `;
-        merchantVoiceId = rows[0]?.voiceId ?? null;
-      } catch {
-        merchantVoiceId = null;
+    let speechRate: number | null =
+      (merchant as { speechRate?: number | null }).speechRate ?? null;
+    try {
+      const rows = await this.prisma.$queryRaw<
+        Array<{ voiceId: string | null; speechRate: number | null }>
+      >`
+        SELECT "voiceId", "speechRate" FROM "Merchant" WHERE id = ${merchantId} LIMIT 1
+      `;
+      if (!merchantVoiceId) merchantVoiceId = rows[0]?.voiceId ?? null;
+      if (speechRate == null && rows[0]?.speechRate != null) {
+        speechRate = Number(rows[0].speechRate);
       }
+    } catch {
+      // ignore
     }
 
     try {
@@ -110,6 +115,7 @@ export class VoiceService {
         merchantId,
         customGreeting: merchant.customGreeting,
         voiceId: merchantVoiceId,
+        speechRate,
       });
 
       await this.prisma.call.update({

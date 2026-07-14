@@ -10,11 +10,9 @@ export function toBanglaDigits(value: string | number | null | undefined): strin
 export function sanitizeBanglaSpeech(text: string): string {
   let out = text
     .replace(/#/g, '')
-    // Banglish → Bangla
     .replace(/কনফার্ম|কনফার্মড|কনফার্মড|কনফারম/gi, 'নিশ্চিত')
     .replace(/ক্যান্সেল|ক্যানসেল|ক্যানসেলড/gi, 'বাতিল')
     .replace(/অর্ডারটি\s*যদি\s*নিশ্চিত\s*হয়/g, 'অর্ডারটি নিশ্চিত করতে')
-    // English phrases
     .replace(/\border\b/gi, 'অর্ডার')
     .replace(/\bpress\s*(?:one|1)\b/gi, 'এক চাপুন')
     .replace(/\bpress\s*(?:two|2)\b/gi, 'দুই চাপুন')
@@ -29,7 +27,6 @@ export function sanitizeBanglaSpeech(text: string): string {
     .replace(/\bredex\b/gi, 'রেডেক্স')
     .replace(/\bpathao\b/gi, 'পাঠাও')
     .replace(/\bcourier\b/gi, 'কুরিয়ার')
-    // Drop leftover Latin word runs (TTS often reads these in English)
     .replace(/[A-Za-z][A-Za-z0-9+._-]{1,}/g, '')
     .replace(/\s+/g, ' ')
     .replace(/\s+([।,?])/g, '$1')
@@ -74,36 +71,105 @@ export function buildOrderVerificationPrompt(params: {
   );
 }
 
-/**
- * Merchant voice options.
- * Chirp3 Algieba is synthesized by Maskara via Google Cloud TTS (not ePBX Google fields).
- * Azure voices are the ePBX-native fallback when Google TTS is unavailable.
- */
+/** Curated Google Chirp3 HD voices (bn-IN) + Azure fallbacks. */
 export const MERCHANT_VOICE_OPTIONS = [
   {
     id: 'google:bn-IN-Chirp3-HD-Algieba',
-    label: 'Algieba — Google Chirp3 পুরুষ',
+    label: 'Algieba — Chirp3 পুরুষ',
     provider: 'google',
     voiceId: 'bn-IN-Chirp3-HD-Algieba',
     languageCode: 'bn-IN',
+    gender: 'male',
+  },
+  {
+    id: 'google:bn-IN-Chirp3-HD-Achird',
+    label: 'Achird — Chirp3 পুরুষ',
+    provider: 'google',
+    voiceId: 'bn-IN-Chirp3-HD-Achird',
+    languageCode: 'bn-IN',
+    gender: 'male',
+  },
+  {
+    id: 'google:bn-IN-Chirp3-HD-Fenrir',
+    label: 'Fenrir — Chirp3 পুরুষ',
+    provider: 'google',
+    voiceId: 'bn-IN-Chirp3-HD-Fenrir',
+    languageCode: 'bn-IN',
+    gender: 'male',
+  },
+  {
+    id: 'google:bn-IN-Chirp3-HD-Orus',
+    label: 'Orus — Chirp3 পুরুষ',
+    provider: 'google',
+    voiceId: 'bn-IN-Chirp3-HD-Orus',
+    languageCode: 'bn-IN',
+    gender: 'male',
+  },
+  {
+    id: 'google:bn-IN-Chirp3-HD-Puck',
+    label: 'Puck — Chirp3 পুরুষ',
+    provider: 'google',
+    voiceId: 'bn-IN-Chirp3-HD-Puck',
+    languageCode: 'bn-IN',
+    gender: 'male',
+  },
+  {
+    id: 'google:bn-IN-Chirp3-HD-Achernar',
+    label: 'Achernar — Chirp3 নারী',
+    provider: 'google',
+    voiceId: 'bn-IN-Chirp3-HD-Achernar',
+    languageCode: 'bn-IN',
+    gender: 'female',
+  },
+  {
+    id: 'google:bn-IN-Chirp3-HD-Aoede',
+    label: 'Aoede — Chirp3 নারী',
+    provider: 'google',
+    voiceId: 'bn-IN-Chirp3-HD-Aoede',
+    languageCode: 'bn-IN',
+    gender: 'female',
+  },
+  {
+    id: 'google:bn-IN-Chirp3-HD-Kore',
+    label: 'Kore — Chirp3 নারী',
+    provider: 'google',
+    voiceId: 'bn-IN-Chirp3-HD-Kore',
+    languageCode: 'bn-IN',
+    gender: 'female',
+  },
+  {
+    id: 'google:bn-IN-Chirp3-HD-Leda',
+    label: 'Leda — Chirp3 নারী',
+    provider: 'google',
+    voiceId: 'bn-IN-Chirp3-HD-Leda',
+    languageCode: 'bn-IN',
+    gender: 'female',
   },
   {
     id: 'azure:bn-BD-PradeepNeural',
-    label: 'প্রদীপ — Azure বাংলাদেশি পুরুষ',
+    label: 'প্রদীপ — Azure পুরুষ',
     provider: 'azure',
     voiceId: 'bn-BD-PradeepNeural',
+    gender: 'male',
   },
   {
     id: 'azure:bn-BD-NabanitaNeural',
-    label: 'নবনীতা — Azure বাংলাদেশি নারী',
+    label: 'নবনীতা — Azure নারী',
     provider: 'azure',
     voiceId: 'bn-BD-NabanitaNeural',
+    gender: 'female',
   },
 ] as const;
 
-/** Prefer Chirp3 when Google TTS is configured; Azure Pradeep otherwise. */
 export const DEFAULT_MERCHANT_VOICE_ID = 'google:bn-IN-Chirp3-HD-Algieba';
 export const AZURE_FALLBACK_VOICE_ID = 'azure:bn-BD-PradeepNeural';
+export const DEFAULT_SPEECH_RATE = 1.05;
+
+export function clampSpeechRate(rate?: number | null): number {
+  const n = Number(rate);
+  if (!Number.isFinite(n)) return DEFAULT_SPEECH_RATE;
+  return Math.min(1.35, Math.max(0.75, Math.round(n * 100) / 100));
+}
 
 export function parseMerchantVoice(voiceId?: string | null): {
   provider?: string;
@@ -124,11 +190,6 @@ export function parseMerchantVoice(voiceId?: string | null): {
   return { provider, voiceId: id };
 }
 
-/**
- * Resolve merchant voice selection.
- * Preserves Google Chirp3 Algieba and Azure voices.
- * Empty / unknown → Chirp3 Algieba (Maskara Google TTS); ElevenLabs → Azure Pradeep.
- */
 export function resolveMerchantVoice(voiceId?: string | null): {
   provider: string;
   voiceId: string;
@@ -137,31 +198,44 @@ export function resolveMerchantVoice(voiceId?: string | null): {
   useGoogleDirect?: boolean;
 } {
   const parsed = parseMerchantVoice(voiceId);
-  const raw = `${parsed.provider || ''}:${parsed.voiceId || ''}`.toLowerCase();
-  const idLower = (voiceId || '').toLowerCase();
+  const known = MERCHANT_VOICE_OPTIONS.find((v) => v.id === voiceId);
 
+  if (known) {
+    return {
+      provider: known.provider,
+      voiceId: known.voiceId,
+      id: known.id,
+      languageCode: 'languageCode' in known ? known.languageCode : undefined,
+      useGoogleDirect: known.provider === 'google',
+    };
+  }
+
+  // Any other Chirp3 HD voice name
   if (
-    !voiceId ||
-    raw.includes('algieba') ||
-    raw.includes('chirp3') ||
-    idLower.includes('algieba') ||
-    idLower.includes('chirp3') ||
-    (parsed.provider === 'google' && parsed.voiceId?.includes('Chirp3'))
+    parsed.provider === 'google' &&
+    parsed.voiceId &&
+    /Chirp3-HD-/i.test(parsed.voiceId)
   ) {
     return {
       provider: 'google',
-      voiceId: 'bn-IN-Chirp3-HD-Algieba',
-      id: 'google:bn-IN-Chirp3-HD-Algieba',
+      voiceId: parsed.voiceId,
+      id: `google:${parsed.voiceId}`,
       languageCode: 'bn-IN',
       useGoogleDirect: true,
     };
   }
 
-  if (
-    raw.includes('nabanita') ||
-    raw.includes('wavenet-a') ||
-    (parsed.provider === 'azure' && parsed.voiceId === 'bn-BD-NabanitaNeural')
-  ) {
+  if (!voiceId || /algieba|elevenlabs/i.test(voiceId)) {
+    return {
+      provider: 'google',
+      voiceId: 'bn-IN-Chirp3-HD-Algieba',
+      id: DEFAULT_MERCHANT_VOICE_ID,
+      languageCode: 'bn-IN',
+      useGoogleDirect: true,
+    };
+  }
+
+  if (/nabanita/i.test(voiceId || '')) {
     return {
       provider: 'azure',
       voiceId: 'bn-BD-NabanitaNeural',
@@ -169,10 +243,7 @@ export function resolveMerchantVoice(voiceId?: string | null): {
     };
   }
 
-  if (
-    raw.includes('pradeep') ||
-    (parsed.provider === 'azure' && parsed.voiceId === 'bn-BD-PradeepNeural')
-  ) {
+  if (/pradeep/i.test(voiceId || '')) {
     return {
       provider: 'azure',
       voiceId: 'bn-BD-PradeepNeural',
@@ -180,7 +251,6 @@ export function resolveMerchantVoice(voiceId?: string | null): {
     };
   }
 
-  // ElevenLabs / other Google → Azure male fallback for ePBX-native TTS
   return {
     provider: 'azure',
     voiceId: 'bn-BD-PradeepNeural',
@@ -188,7 +258,6 @@ export function resolveMerchantVoice(voiceId?: string | null): {
   };
 }
 
-/** Azure voice used when Google direct TTS is unavailable. */
 export function azureFallbackFor(voiceId?: string | null): {
   provider: string;
   voiceId: string;
@@ -203,8 +272,8 @@ export function azureFallbackFor(voiceId?: string | null): {
     };
   }
   if (
-    /nabanita|wavenet-a|achernar|female/i.test(voiceId || '') &&
-    !/pradeep|algieba|wavenet-b/i.test(voiceId || '')
+    /nabanita|wavenet-a|achernar|aoede|kore|leda|female/i.test(voiceId || '') &&
+    !/pradeep|algieba|achird|fenrir|orus|puck/i.test(voiceId || '')
   ) {
     return {
       provider: 'azure',

@@ -1,4 +1,12 @@
-import { IsString, IsOptional, IsBoolean, IsInt, Min, Max } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsBoolean,
+  IsInt,
+  IsNumber,
+  Min,
+  Max,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class UpdateMerchantDto {
@@ -29,6 +37,16 @@ export class UpdateMerchantDto {
   @IsOptional()
   @IsString()
   voiceId?: string;
+
+  @ApiProperty({
+    required: false,
+    description: 'Speech rate 0.75–1.35 (Google TTS speakingRate)',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0.75)
+  @Max(1.35)
+  speechRate?: number;
 
   @ApiProperty({ required: false })
   @IsOptional()

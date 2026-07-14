@@ -40,15 +40,20 @@ export class GoogleTtsService {
    */
   async synthesizeMp3(
     text: string,
-    opts?: { languageCode?: string; voiceName?: string },
+    opts?: { languageCode?: string; voiceName?: string; speakingRate?: number },
   ): Promise<Buffer> {
-    const result = await this.synthesize(text, opts?.voiceName || 'bn-IN-Chirp3-HD-Algieba');
+    const result = await this.synthesize(
+      text,
+      opts?.voiceName || 'bn-IN-Chirp3-HD-Algieba',
+      opts?.speakingRate,
+    );
     return result.buffer;
   }
 
   async synthesize(
     text: string,
     voiceName = 'bn-IN-Chirp3-HD-Algieba',
+    speakingRate = 1.05,
   ): Promise<{ buffer: Buffer; mimeType: string; voice: string }> {
     const apiKey = this.getApiKey();
     if (!apiKey) {
@@ -62,6 +67,8 @@ export class GoogleTtsService {
       ? voiceName.slice(0, 5)
       : 'bn-IN';
 
+    const rate = Math.min(1.35, Math.max(0.75, Number(speakingRate) || 1.05));
+
     const url = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(apiKey)}`;
     const res = await fetch(url, {
       method: 'POST',
@@ -71,7 +78,7 @@ export class GoogleTtsService {
         voice: { languageCode, name: voiceName },
         audioConfig: {
           audioEncoding: 'MP3',
-          speakingRate: 0.95,
+          speakingRate: rate,
           pitch: 0,
         },
       }),
@@ -90,7 +97,7 @@ export class GoogleTtsService {
 
     const buffer = Buffer.from(body.audioContent, 'base64');
     this.logger.log(
-      `Google TTS ok voice=${voiceName} bytes=${buffer.length} chars=${clean.length}`,
+      `Google TTS ok voice=${voiceName} rate=${rate} bytes=${buffer.length} chars=${clean.length}`,
     );
     return { buffer, mimeType: 'audio/mpeg', voice: voiceName };
   }

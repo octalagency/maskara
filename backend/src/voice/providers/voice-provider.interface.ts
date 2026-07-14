@@ -12,6 +12,8 @@ export interface InitiateCallParams {
   customGreeting?: string | null;
   /** Merchant TTS voice preference, e.g. azure:bn-BD-NabanitaNeural */
   voiceId?: string | null;
+  /** Google TTS speaking rate 0.75–1.35 (1.0 = normal) */
+  speechRate?: number | null;
 }
 
 export interface InitiateCallResult {

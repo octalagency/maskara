@@ -6,8 +6,88 @@ export const VOICE_OPTIONS = [
     short: 'Algieba',
     gender: 'male' as const,
     provider: 'Google Chirp3',
-    description: 'সবচেয়ে প্রাকৃতিক — Google Cloud TTS দিয়ে প্রিভিউ ও কল',
+    description: 'ManyDial স্টাইল — সবচেয়ে প্রাকৃতিক পুরুষ',
     recommended: true,
+    requiresGoogleTts: true,
+  },
+  {
+    id: 'google:bn-IN-Chirp3-HD-Achird',
+    label: 'Achird',
+    short: 'Achird',
+    gender: 'male' as const,
+    provider: 'Google Chirp3',
+    description: 'স্পষ্ট পুরুষ ভয়েস',
+    recommended: false,
+    requiresGoogleTts: true,
+  },
+  {
+    id: 'google:bn-IN-Chirp3-HD-Fenrir',
+    label: 'Fenrir',
+    short: 'Fenrir',
+    gender: 'male' as const,
+    provider: 'Google Chirp3',
+    description: 'গভীর পুরুষ ভয়েস',
+    recommended: false,
+    requiresGoogleTts: true,
+  },
+  {
+    id: 'google:bn-IN-Chirp3-HD-Orus',
+    label: 'Orus',
+    short: 'Orus',
+    gender: 'male' as const,
+    provider: 'Google Chirp3',
+    description: 'নরম পুরুষ ভয়েস',
+    recommended: false,
+    requiresGoogleTts: true,
+  },
+  {
+    id: 'google:bn-IN-Chirp3-HD-Puck',
+    label: 'Puck',
+    short: 'Puck',
+    gender: 'male' as const,
+    provider: 'Google Chirp3',
+    description: 'হালকা/চাপাচাপি পুরুষ টোন',
+    recommended: false,
+    requiresGoogleTts: true,
+  },
+  {
+    id: 'google:bn-IN-Chirp3-HD-Achernar',
+    label: 'Achernar',
+    short: 'Achernar',
+    gender: 'female' as const,
+    provider: 'Google Chirp3',
+    description: 'প্রাকৃতিক নারী ভয়েস',
+    recommended: true,
+    requiresGoogleTts: true,
+  },
+  {
+    id: 'google:bn-IN-Chirp3-HD-Aoede',
+    label: 'Aoede',
+    short: 'Aoede',
+    gender: 'female' as const,
+    provider: 'Google Chirp3',
+    description: 'মিষ্টি নারী ভয়েস',
+    recommended: false,
+    requiresGoogleTts: true,
+  },
+  {
+    id: 'google:bn-IN-Chirp3-HD-Kore',
+    label: 'Kore',
+    short: 'Kore',
+    gender: 'female' as const,
+    provider: 'Google Chirp3',
+    description: 'স্পষ্ট নারী ভয়েস',
+    recommended: false,
+    requiresGoogleTts: true,
+  },
+  {
+    id: 'google:bn-IN-Chirp3-HD-Leda',
+    label: 'Leda',
+    short: 'Leda',
+    gender: 'female' as const,
+    provider: 'Google Chirp3',
+    description: 'নরম নারী ভয়েস',
+    recommended: false,
     requiresGoogleTts: true,
   },
   {
@@ -26,7 +106,7 @@ export const VOICE_OPTIONS = [
     short: 'নবনীতা',
     gender: 'female' as const,
     provider: 'Azure Neural',
-    description: 'বাংলাদেশি নারী ভয়েস',
+    description: 'বাংলাদেশি নারী — ePBX ফলব্যাক',
     recommended: false,
     requiresGoogleTts: false,
   },
@@ -36,19 +116,40 @@ export type VoiceOption = (typeof VOICE_OPTIONS)[number];
 
 export const GOOGLE_VOICE = 'google:bn-IN-Chirp3-HD-Algieba';
 export const AZURE_MALE_VOICE = 'azure:bn-BD-PradeepNeural';
+export const DEFAULT_SPEECH_RATE = 1.05;
 
 const DEFAULT_VOICE = GOOGLE_VOICE;
 
+const KNOWN_IDS = new Set(VOICE_OPTIONS.map((v) => v.id));
+
+export function clampSpeechRate(rate?: number | null): number {
+  const n = Number(rate);
+  if (!Number.isFinite(n)) return DEFAULT_SPEECH_RATE;
+  return Math.min(1.35, Math.max(0.75, Math.round(n * 100) / 100));
+}
+
+export function speechRateLabel(rate?: number | null): string {
+  const r = clampSpeechRate(rate);
+  if (r <= 0.9) return 'ধীরে';
+  if (r >= 1.15) return 'দ্রুত';
+  return 'স্বাভাবিক';
+}
+
 export function normalizeVoiceId(voiceId?: string | null): string {
   if (!voiceId) return DEFAULT_VOICE;
-  if (voiceId === 'azure:bn-BD-NabanitaNeural') return voiceId;
-  if (voiceId === 'azure:bn-BD-PradeepNeural') return voiceId;
-  if (voiceId === 'google:bn-IN-Chirp3-HD-Algieba') return voiceId;
-  if (/nabanita|wavenet-a|achernar/i.test(voiceId) && !/pradeep|algieba|wavenet-b/i.test(voiceId)) {
-    return 'azure:bn-BD-NabanitaNeural';
-  }
+  if (KNOWN_IDS.has(voiceId as VoiceOption['id'])) return voiceId;
+  if (/nabanita/i.test(voiceId)) return 'azure:bn-BD-NabanitaNeural';
   if (/pradeep/i.test(voiceId)) return 'azure:bn-BD-PradeepNeural';
-  if (/algieba|chirp3|elevenlabs/i.test(voiceId)) return 'google:bn-IN-Chirp3-HD-Algieba';
+  if (/algieba|elevenlabs/i.test(voiceId)) return 'google:bn-IN-Chirp3-HD-Algieba';
+  if (/achird/i.test(voiceId)) return 'google:bn-IN-Chirp3-HD-Achird';
+  if (/fenrir/i.test(voiceId)) return 'google:bn-IN-Chirp3-HD-Fenrir';
+  if (/orus/i.test(voiceId)) return 'google:bn-IN-Chirp3-HD-Orus';
+  if (/puck/i.test(voiceId)) return 'google:bn-IN-Chirp3-HD-Puck';
+  if (/achernar/i.test(voiceId)) return 'google:bn-IN-Chirp3-HD-Achernar';
+  if (/aoede/i.test(voiceId)) return 'google:bn-IN-Chirp3-HD-Aoede';
+  if (/kore/i.test(voiceId)) return 'google:bn-IN-Chirp3-HD-Kore';
+  if (/leda/i.test(voiceId)) return 'google:bn-IN-Chirp3-HD-Leda';
+  if (/chirp3/i.test(voiceId) && voiceId.includes(':')) return voiceId;
   return DEFAULT_VOICE;
 }
 
@@ -129,7 +230,7 @@ export function pickBrowserVoice(gender: 'male' | 'female') {
     else if (lang.startsWith('bn')) s += 80;
     else if (name.includes('bengali') || name.includes('bangla') || name.includes('বাংলা')) s += 70;
     if (gender === 'female' && /female|woman|nabanita|zira|samantha|veena|heera/i.test(name)) s += 30;
-    if (gender === 'male' && /male|man|pradeep|david|ravi|rishi|algieba/i.test(name)) s += 30;
+    if (gender === 'male' && /male|man|pradeep|david|ravi|rishi/i.test(name)) s += 30;
     return s;
   };
 

@@ -17,7 +17,11 @@ export class TtsPreviewService {
    * Prefer direct Google Cloud TTS for Chirp3 / when key present;
    * then ePBX TTS; then Google Translate TTS fallback.
    */
-  async synthesize(text: string, voiceId?: string | null): Promise<{
+  async synthesize(
+    text: string,
+    voiceId?: string | null,
+    speechRate?: number | null,
+  ): Promise<{
     mimeType: string;
     audioBase64: string;
     engine: string;
@@ -31,7 +35,11 @@ export class TtsPreviewService {
 
     if (voice.provider === 'google' && this.googleTts.isConfigured()) {
       try {
-        const result = await this.googleTts.synthesize(clipped, voice.voiceId);
+        const result = await this.googleTts.synthesize(
+          clipped,
+          voice.voiceId,
+          speechRate ?? 1.05,
+        );
         return {
           mimeType: result.mimeType,
           audioBase64: result.buffer.toString('base64'),
