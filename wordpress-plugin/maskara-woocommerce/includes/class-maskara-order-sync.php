@@ -16,7 +16,7 @@ class Maskara_Order_Sync {
         add_action('woocommerce_order_status_pending', array($this, 'queue_send'), 10, 1);
         add_action('woocommerce_payment_complete', array($this, 'queue_send'), 20, 1);
 
-        // Cancel / refund / fail on website → notify Maskara to stop calls
+        // Website cancel/refund/fail → Maskara CANCELLED + stop further calls
         add_action('woocommerce_order_status_cancelled', array($this, 'queue_status_sync'), 10, 1);
         add_action('woocommerce_order_status_refunded', array($this, 'queue_status_sync'), 10, 1);
         add_action('woocommerce_order_status_failed', array($this, 'queue_status_sync'), 10, 1);
@@ -50,7 +50,6 @@ class Maskara_Order_Sync {
         $this->maybe_send_order($order_id);
     }
 
-    /** Queue a status sync (cancel/refund/fail) to Maskara. */
     public function queue_status_sync($order_id) {
         $order_id = absint($order_id);
         if (!$order_id) return;
@@ -66,7 +65,8 @@ class Maskara_Order_Sync {
     }
 
     /**
-     * Notify Maskara of Woo cancel/refund/fail so dashboard shows CANCELLED and calls stop.
+     * Notify Maskara of WooCommerce status (cancelled/refunded/failed).
+     * Backend marks existing order CANCELLED and stops further calls.
      */
     public function sync_order_status($order_id) {
         $api = new Maskara_API();
@@ -74,21 +74,21 @@ class Maskara_Order_Sync {
             return;
         }
 
-        $order = wc_get_order(absint($order_id));
+        $order = wc_get_order($order_id);
         if (!$order) return;
 
-        // Only sync if Maskara already knows about this order (or force via webhook)
         $response = $api->parse_response($api->sync_order_status($order));
         if (is_wp_error($response)) {
             $order->add_order_note('Maskara status sync failed: ' . $response->get_error_message());
             return;
         }
 
-        $status = $order->get_status();
+        $status = strtolower((string) $order->get_status());
         if (in_array($status, array('cancelled', 'refunded', 'failed'), true)) {
             $order->update_meta_data('_maskara_verify_status', 'cancelled');
+            $order->update_meta_data('_maskara_verification', 'cancelled');
             $order->save();
-            $order->add_order_note('Maskara: order marked CANCELLED (website ' . $status . ').');
+            $order->add_order_note('Maskara: website ' . $status . ' synced — calls stopped.');
         }
     }
 

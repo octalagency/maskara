@@ -357,7 +357,9 @@ class Maskara_Pathao {
         }
 
         // City required — Woo city/state fields, else parsed from free-text (চট্টগ্রাম / Chittagong / …)
-        if ($city === '') {
+        // City is optional - Pathao resolves city/zone/area from the full
+        // recipient_address text, so we never block on a missing city.
+        if (false) {
             return $invalid('ঠিকানা ঠিক না থাকার কারণে কুরিয়ারে পাঠানো যায়নি — শহর/এলাকা (City) নেই।');
         }
 
