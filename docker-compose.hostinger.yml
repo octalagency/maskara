@@ -115,6 +115,7 @@ services:
       GOOGLE_TTS_API_KEY: ${GOOGLE_TTS_API_KEY:-}
       API_URL: ${API_URL:-https://api.maskara.bd}
       PUBLIC_API_URL: ${PUBLIC_API_URL:-https://api.maskara.bd}
+      INTERNAL_API_URL: ${INTERNAL_API_URL:-http://backend:4000}
       FRONTEND_URL: ${FRONTEND_URL:-https://app.maskara.bd}
       VOICE_WEBHOOK_SECRET: ${VOICE_WEBHOOK_SECRET:-maskara_local_voice_webhook_secret_32chars}
       WOOCOMMERCE_WEBHOOK_SECRET: ${WOOCOMMERCE_WEBHOOK_SECRET:-maskara_local_woocommerce_webhook_secret_ok}
