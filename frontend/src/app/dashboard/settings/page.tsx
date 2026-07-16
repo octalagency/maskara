@@ -287,11 +287,12 @@ export default function SettingsPage() {
             <div>
               <h3 className="section-title">AI ভয়েস বাছুন</h3>
               <p className="page-subtitle">
-                Maskara-তে <strong>Algieba</strong> বাছুন। ePBX পোর্টালেও Developer API → Voice
-                Profile থেকে পুরুষ Chirp3 (
-                <strong>bn-IN-Chirp3-HD-Algenib</strong>) সিলেক্ট করে{' '}
-                <strong>Save Voice Profile</strong> চাপুন — দুই জায়গায় পুরুষ না থাকলে লাইভে নারী
-                WaveNet/নবনীতা শোনা যায়।
+                Maskara-তে <strong>Algieba</strong> বাছুন। ePBX-এ{' '}
+                <strong>bn-IN-Chirp3-HD-Algenib (MALE)</strong> সিলেক্ট করে{' '}
+                <strong>Save Voice Profile</strong> চাপুন। উপরে Active Voice Model যদি{' '}
+                <strong>WaveNet/Neural2</strong> থাকে, সেটাই নারী ভয়েস দিতে পারে — সম্ভব হলে Chirp3
+                গেটওয়ে বেছে নিন। Sandbox-এ ইংরেজি টেক্সট দিয়ে টেস্ট করবেন না (বাংলা দিয়ে
+                Synthesize &amp; Play)।
               </p>
             </div>
 

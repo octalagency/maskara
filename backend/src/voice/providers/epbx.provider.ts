@@ -76,11 +76,19 @@ export class EpbxProvider implements VoiceProvider {
       'speech_provider',
       'voice_gateway',
       'ai_tts_gateway',
+      'tts_gateway',
+      'tts_engine',
+      'google_tts_model',
+      'tts_model',
+      'model',
+      'use_chirp3',
+      'use_wavenet',
       'google_tts_voice_id',
       'google_voice',
       'google_voice_name',
       'google_voice_id',
       'chirp3_voice',
+      'chirp3_voice_id',
       'wavenet_voice',
       'voice_id',
       'tts_voice',
@@ -301,22 +309,31 @@ export class EpbxProvider implements VoiceProvider {
       callback_url: this.webhookUrl('/voice/webhook/epbx'),
     };
 
-    // Google Chirp3 via ePBX portal gateway — NEVER azure/Nabanita on this path.
+    // Force Chirp3 HD gateway — NEVER google_wavenet (portal WaveNet defaults to female).
     payload.provider = 'google';
     payload.ai_tts_provider = 'google';
     payload.tts_provider = 'google';
-    payload.tts_engine = 'google';
+    payload.tts_engine = 'chirp3';
     payload.speech_provider = 'google';
-    payload.voice_gateway = 'google';
-    payload.ai_tts_gateway = 'google_wavenet';
-    payload.tts_gateway = 'google';
+    payload.voice_gateway = 'google_chirp3';
+    payload.ai_tts_gateway = 'google_chirp3';
+    payload.tts_gateway = 'google_chirp3';
+    payload.google_tts_model = 'chirp3-hd';
+    payload.tts_model = 'chirp3-hd';
+    payload.model = 'chirp3-hd';
+    payload.active_voice_gateway = 'google_chirp3';
+    payload.use_chirp3 = true;
+    payload.use_wavenet = false;
+    payload.wavenet = false;
 
     payload.google_tts_voice_id = portalVoice.voiceId;
     payload.google_voice = portalVoice.voiceId;
     payload.google_voice_name = portalVoice.voiceId;
     payload.google_voice_id = portalVoice.voiceId;
     payload.chirp3_voice = portalVoice.voiceId;
-    payload.wavenet_voice = portalVoice.voiceId;
+    payload.chirp3_voice_id = portalVoice.voiceId;
+    payload.chirp3_voice_name = portalVoice.voiceId;
+    // Do NOT set wavenet_voice — that steers ePBX onto WaveNet female defaults.
     payload.voice_id = portalVoice.voiceId;
     payload.tts_voice = portalVoice.voiceId;
     payload.tts_voice_id = portalVoice.voiceId;
