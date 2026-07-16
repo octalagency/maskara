@@ -18,6 +18,52 @@ class Maskara_Admin {
         add_action('wp_ajax_maskara_get_shipments', array($this, 'ajax_shipments'));
         add_action('wp_ajax_maskara_sync_all', array($this, 'ajax_sync_all'));
         add_action('wp_ajax_maskara_sync_one', array($this, 'ajax_sync_one'));
+
+        // WP Admin → Dashboard home shows Maskara panel (redirect + widget).
+        add_action('load-index.php', array($this, 'redirect_wp_dashboard_to_maskara'));
+        add_action('wp_dashboard_setup', array($this, 'register_dashboard_widget'));
+    }
+
+    /**
+     * Send WooCommerce managers from WP Dashboard home to Maskara dashboard.
+     */
+    public function redirect_wp_dashboard_to_maskara() {
+        if (!current_user_can(self::CAP)) {
+            return;
+        }
+        // Allow ?maskara_stay=1 to keep classic WP dashboard.
+        if (isset($_GET['maskara_stay'])) {
+            return;
+        }
+        wp_safe_redirect(admin_url('admin.php?page=' . self::MENU));
+        exit;
+    }
+
+    /** Fallback: also register a Maskara widget on classic WP dashboard. */
+    public function register_dashboard_widget() {
+        if (!current_user_can(self::CAP)) {
+            return;
+        }
+        wp_add_dashboard_widget(
+            'maskara_dashboard_panel',
+            'Maskara — AI Order Verification',
+            array($this, 'render_dashboard_widget')
+        );
+    }
+
+    public function render_dashboard_widget() {
+        $url = admin_url('admin.php?page=' . self::MENU);
+        $settings = admin_url('admin.php?page=maskara-settings');
+        $app = 'https://app.maskara.bd/dashboard/orders';
+        echo '<div class="msk-wp-dash-widget">';
+        echo '<p><strong>Maskara</strong> COD ভেরিফিকেশন, কল ও Pathao কুরিয়ার ড্যাশবোর্ড।</p>';
+        echo '<p style="margin:12px 0;">';
+        echo '<a class="button button-primary" href="' . esc_url($url) . '">Maskara Dashboard খুলুন</a> ';
+        echo '<a class="button" href="' . esc_url($settings) . '">Settings</a> ';
+        echo '<a class="button" href="' . esc_url($app) . '" target="_blank" rel="noopener">app.maskara.bd</a>';
+        echo '</p>';
+        echo '<p class="description">অর্ডার হলে ~২০ সেকেন্ডের মধ্যে কল যায় (২৪ ঘণ্টা)। বাম মেনু থেকেও <strong>Maskara</strong> খুলতে পারেন।</p>';
+        echo '</div>';
     }
 
     public function register_menu() {
@@ -28,7 +74,7 @@ class Maskara_Admin {
             self::MENU,
             array($this, 'render_dashboard'),
             'dashicons-phone',
-            56
+            2
         );
 
         add_submenu_page(self::MENU, 'Dashboard', 'Dashboard', self::CAP, self::MENU, array($this, 'render_dashboard'));

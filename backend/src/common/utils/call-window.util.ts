@@ -1,20 +1,16 @@
-/** Bangladesh call window: 08:00–22:00 local time. */
+/**
+ * Call window: always open — first call within ~20s of order, any hour.
+ * (Previously 08:00–22:00 Asia/Dhaka; removed per product request.)
+ */
 export function isWithinCallWindow(
-  timezone = 'Asia/Dhaka',
-  startHour = 8,
-  endHour = 22,
-  now = new Date(),
+  _timezone = 'Asia/Dhaka',
+  _startHour = 0,
+  _endHour = 24,
+  _now = new Date(),
 ): boolean {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: timezone,
-    hour: 'numeric',
-    hour12: false,
-  }).formatToParts(now);
-
-  const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? '0');
-  return hour >= startHour && hour < endHour;
+  return true;
 }
 
 export function callWindowLabel(timezone = 'Asia/Dhaka'): string {
-  return `সকাল ${8}টা – রাত ${10}টা (${timezone})`;
+  return `২৪ ঘণ্টা — অর্ডারের ~২০ সেকেন্ডের মধ্যে (${timezone})`;
 }

@@ -14,10 +14,10 @@ docker cp frontend/public/downloads/maskara-woocommerce.zip \
 docker cp frontend/public/downloads/maskara-woocommerce.zip \
   maskara-frontend:/app/public/maskara-woocommerce.zip 2>/dev/null || true
 docker cp frontend/public/downloads/maskara-woocommerce.zip \
-  maskara-frontend:/app/public/maskara-woocommerce-1.5.11.zip 2>/dev/null || true
+  maskara-frontend:/app/public/maskara-woocommerce-1.5.12.zip 2>/dev/null || true
 
 echo "Live check:"
 wget -qO- "http://127.0.0.1:3000/downloads/maskara-woocommerce-update.json" 2>/dev/null \
   || docker exec maskara-frontend wget -qO- http://127.0.0.1:3000/downloads/maskara-woocommerce-update.json
 echo ""
-echo "✓ Plugin 1.5.11 live — WordPress → Plugins → Check for updates"
+echo "✓ Plugin 1.5.12 live — WordPress → Plugins → Check for updates"

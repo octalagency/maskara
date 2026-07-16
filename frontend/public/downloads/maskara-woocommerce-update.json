@@ -1,12 +1,12 @@
 {
   "name": "Maskara Order Verification",
   "slug": "maskara-woocommerce",
-  "version": "1.5.11",
+  "version": "1.5.12",
   "download_url": "https://app.maskara.bd/downloads/maskara-woocommerce.zip",
   "homepage": "https://maskara.bd",
   "requires": "5.8",
   "tested": "6.7",
   "requires_php": "7.4",
   "description": "AI voice order verification for WooCommerce. Confirm sets Completed + Pathao auto-deploy. Miss/cancel sets Cancelled.",
-  "changelog": "<h4>1.5.11</h4><ul><li>City বাধ্যতামূলক নয় — পুরো ঠিকানা সরাসরি Pathao তে push হয় (Pathao নিজেই city/zone/area ধরে নেয়), তাই ঠিকানা ঠিক থাকলে অটো-ডিপ্লয় আর আটকাবে না</li></ul><h4>1.5.10</h4><ul><li>ঠিকানার টেক্সট থেকে শহর ধরে Pathao অটো-ডিপ্লয় (চট্টগ্রাম/Chittagong ইত্যাদি — Woo City ফিল্ড খালি থাকলেও)</li><li>BD city alias map + shipping/billing merge</li></ul><h4>1.5.9</h4><ul><li>Sync cancelled/refunded/failed Woo orders to Maskara (stops calls, dashboard CANCELLED)</li></ul><h4>1.5.8</h4><ul><li>ঠিকানা ঠিক হলে Pathao তে অটো-ডিপ্লয়</li><li>Orders লিস্টে ম্যানুয়াল «Pathao তে পাঠান» বাটন</li></ul>"
+  "changelog": "<h4>1.5.12</h4><ul><li>WP Dashboard খুললেই Maskara Dashboard panel দেখায় (redirect)</li><li>কল উইন্ডো ৮টা সরিয়ে দেওয়া — অর্ডারের ~২০ সেকেন্ডের মধ্যে ২৪ ঘণ্টা কল</li></ul><h4>1.5.11</h4><ul><li>City বাধ্যতামূলক নয় — পুরো ঠিকানা Pathao তে push</li></ul>"
 }

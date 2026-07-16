@@ -1,13 +1,14 @@
 /**
  * Call schedule:
- * 1) Attempt 1 — ASAP (queue on create + 20s backup cron)
+ * 1) Attempt 1 — ASAP (queue on create + 20s backup cron), any hour
  * 2) Attempt 2 — 2 minutes later if still unanswered
- * 3) Attempts 3–10 — 8 slots staggered across 08:00–22:00 with per-order jitter
+ * 3) Attempts 3–10 — 8 slots staggered across the calendar day with per-order jitter
  */
 
 const DEFAULT_TZ = 'Asia/Dhaka';
-const DEFAULT_START_HOUR = 8;
-const DEFAULT_END_HOUR = 22;
+/** Full day — no 8 AM / 10 PM gate. */
+const DEFAULT_START_HOUR = 0;
+const DEFAULT_END_HOUR = 24;
 
 /** Delay between first and second call. */
 export const SECOND_CALL_DELAY_MS = 2 * 60 * 1000;
