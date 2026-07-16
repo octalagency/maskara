@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Users, ShoppingCart, DollarSign, Phone, TrendingUp, Globe, Banknote, SlidersHorizontal, Wallet } from 'lucide-react';
+import { Users, ShoppingCart, DollarSign, Phone, TrendingUp, Globe, Banknote, SlidersHorizontal, Wallet, Mic2 } from 'lucide-react';
 import { StatCard } from '@/components/ui/StatCard';
 import { api, AdminDashboard, PlatformStatus } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
@@ -34,7 +34,8 @@ export default function AdminDashboardPage() {
 
   const controls = [
     { href: '/admin/merchants', label: 'মার্চেন্ট', desc: 'তৈরি, plan, suspend, store status', icon: Users, color: 'bg-blue-50 text-blue-700' },
-    { href: '/admin/config', label: 'Voice / ePBX', desc: 'কল provider, webhook URL', icon: SlidersHorizontal, color: 'bg-amber-50 text-amber-700' },
+    { href: '/admin/voice', label: 'Voice Studio', desc: 'Chirp3 artists, synthesize playground', icon: Mic2, color: 'bg-sky-50 text-sky-700' },
+    { href: '/admin/config', label: 'Voice / ePBX', desc: 'Maskara TTS + dial-only telephony', icon: SlidersHorizontal, color: 'bg-amber-50 text-amber-700' },
     { href: '/admin/payments', label: 'পেমেন্ট গেটওয়ে', desc: 'bKash, Nagad PGW', icon: Banknote, color: 'bg-pink-50 text-pink-700' },
     { href: '/admin/plans', label: 'প্ল্যান', desc: 'দাম, limit, features', icon: ShoppingCart, color: 'bg-purple-50 text-purple-700' },
     { href: '/admin/billing', label: 'বিলিং', desc: 'Payment confirm', icon: Wallet, color: 'bg-emerald-50 text-emerald-700' },

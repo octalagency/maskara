@@ -198,7 +198,12 @@ export default function AdminConfigPage() {
     <div className="mx-auto max-w-3xl space-y-8">
       <div>
         <h2 className="text-2xl font-bold text-slate-900">Voice / ePBX</h2>
-        <p className="text-sm text-slate-500">maskara.epbx.bd — সব merchant-এর call এখান থেকে যায়</p>
+        <p className="text-sm text-slate-500">
+          Maskara Chirp3 = voice engine · ePBX = dial only ·{' '}
+          <a href="/admin/voice" className="text-brand-600 hover:underline">
+            Voice Studio
+          </a>
+        </p>
       </div>
 
       <div className="card border-brand-200 bg-brand-50/30">
@@ -264,7 +269,7 @@ export default function AdminConfigPage() {
               <span className={status.epbx ? 'badge-success' : 'badge-warning'}>ePBX {status.epbx ? '✓' : '—'}</span>
               <span className={status.ippbx ? 'badge-success' : 'badge-warning'}>ippbx {status.ippbx ? '✓' : '—'}</span>
               <span className={status.twilio ? 'badge-success' : 'badge-warning'}>Twilio {status.twilio ? '✓' : '—'}</span>
-              <span className={status.googleTts ? 'badge-success' : 'badge-warning'}>Google TTS {status.googleTts ? '✓' : '—'}</span>
+              <span className={status.googleTts ? 'badge-success' : 'badge-warning'}>Maskara TTS {status.googleTts ? '✓' : '—'}</span>
             </div>
           </div>
         </div>
@@ -309,9 +314,14 @@ export default function AdminConfigPage() {
 
         <div className="rounded-lg border border-sky-200 bg-sky-50/40 p-4 space-y-3">
           <div>
-            <h4 className="font-semibold text-slate-900">Google Cloud TTS (Chirp3 Algieba)</h4>
+            <h4 className="font-semibold text-slate-900">Maskara Voice Engine (Chirp3)</h4>
             <p className="text-xs text-slate-500">
-              Maskara সরাসরি synthesize করে — ePBX Google fields নয়। API enable করতে হবে: Cloud Text-to-Speech API.
+              Live call audio-র একমাত্র source — Maskara Google Chirp3 synthesize করে।
+              ePBX portal Active Voice Model / eAI key ব্যবহার হয় না। Cloud Text-to-Speech API enable থাকতে হবে।
+              Preview:{' '}
+              <a href="/admin/voice" className="font-medium text-brand-600 hover:underline">
+                Voice Studio
+              </a>
             </p>
           </div>
           <div>
@@ -331,8 +341,10 @@ export default function AdminConfigPage() {
         <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4 space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h4 className="font-semibold text-slate-900">ePBX.bd Configuration</h4>
-              <p className="text-xs text-slate-500">Bangladesh — maskara.epbx.bd workspace</p>
+              <h4 className="font-semibold text-slate-900">Telephony (dial only) — ePBX</h4>
+              <p className="text-xs text-slate-500">
+                শুধু নম্বর দিয়ে originate + webhooks — Maskara MP3 play করে। Portal TTS / eAI voice নয়।
+              </p>
             </div>
             <label className="flex items-center gap-2 text-sm">
               <input

@@ -230,7 +230,7 @@ export default function AdminSettingsPage() {
       <form onSubmit={handleGoogleTtsSave} className="card space-y-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-lg font-semibold text-slate-900">Google Cloud TTS</h3>
+            <h3 className="text-lg font-semibold text-slate-900">Maskara Voice Engine (Chirp3)</h3>
             <p className="text-sm text-slate-500">
               Chirp3 Algieba ভয়েস — Cloud Text-to-Speech API Key কানেক্ট করুন
             </p>
