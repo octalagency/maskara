@@ -26,7 +26,12 @@ async function bootstrap() {
   validateProductionEnv();
   const app = await NestFactory.create(AppModule, { rawBody: true });
 
-  app.use(helmet());
+  app.use(
+    helmet({
+      // ePBX must fetch hosted TTS MP3 from api.maskara.bd
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
   const allowedOrigins = [
     process.env.FRONTEND_URL || 'http://localhost:3000',
     process.env.APP_URL,

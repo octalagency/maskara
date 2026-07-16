@@ -231,7 +231,9 @@ export class EpbxProvider implements VoiceProvider {
       use_custom_text_only: true,
       disable_default_greeting: true,
       template: 'custom',
-      mode: 'custom_tts',
+      // Play Maskara MP3 — portal eAI/WaveNet female must not speak.
+      mode: 'play_audio',
+      dial_only: true,
 
       replay_digit: '0',
       repeat_digit: '0',
@@ -251,7 +253,19 @@ export class EpbxProvider implements VoiceProvider {
       callback_url: this.webhookUrl('/voice/webhook/epbx'),
     };
 
-    // Google Chirp3 only — never eAI / WaveNet (portal WaveNet → female English).
+    // Never eAI / ElevenLabs / WaveNet — portal Active Voice Gateway often defaults female.
+    payload.use_eai = false;
+    payload.eai = false;
+    payload.eai_enabled = false;
+    payload.use_elevenlabs = false;
+    payload.elevenlabs = false;
+    payload.eleven_labs = false;
+    payload.use_wavenet = false;
+    payload.wavenet = false;
+    payload.use_azure = false;
+    payload.azure_tts = false;
+
+    // If ePBX still synthesizes (ignores skip_tts), force male Google Chirp3 Algenib.
     payload.provider = 'google';
     payload.ai_tts_provider = 'google';
     payload.tts_provider = 'google';
@@ -265,8 +279,6 @@ export class EpbxProvider implements VoiceProvider {
     payload.model = 'chirp3-hd';
     payload.active_voice_gateway = 'google_chirp3';
     payload.use_chirp3 = true;
-    payload.use_wavenet = false;
-    payload.wavenet = false;
 
     payload.google_tts_voice_id = portalVoice.voiceId;
     payload.google_voice = portalVoice.voiceId;
@@ -285,24 +297,26 @@ export class EpbxProvider implements VoiceProvider {
     payload.ai_voice = portalVoice.voiceId;
     payload.voice_label = portalVoice.shortName;
     payload.tts_voice_label = portalVoice.shortName;
-    payload.voice_gender = portalVoice.gender;
-    payload.tts_gender = portalVoice.gender;
-    payload.gender = portalVoice.gender;
-    if (/Algenib/i.test(portalVoice.voiceId)) {
-      payload.google_voice_alias = 'bn-IN-Chirp3-HD-Algieba';
-      payload.maskara_voice = 'bn-IN-Chirp3-HD-Algieba';
-    } else {
-      payload.maskara_voice = voice.voiceId;
-    }
+    payload.voice_gender = 'male';
+    payload.tts_gender = 'male';
+    payload.gender = 'male';
+    payload.google_voice_alias = 'bn-IN-Chirp3-HD-Algieba';
+    payload.maskara_voice = voice.voiceId;
     payload.speech_rate = String(speechRate);
     payload.rate = String(speechRate);
-    payload.skip_tts = false;
-    payload.disable_tts = false;
-    payload.tts_enabled = true;
+
+    // Prefer Maskara hosted MP3 over any portal TTS.
+    payload.skip_tts = true;
+    payload.disable_tts = true;
+    payload.tts_enabled = false;
     payload.use_portal_default_voice = false;
     payload.force_voice = true;
-    payload.use_azure = false;
-    payload.azure_tts = false;
+    payload.use_audio_url = true;
+    payload.prefer_audio_url = true;
+    payload.require_audio_url = true;
+    payload.play_pre_recorded = true;
+    payload.audio_only = true;
+    payload.tts_mode = 'audio';
 
     payload.audio_url = audioUrl;
     payload.media_url = audioUrl;
@@ -326,8 +340,6 @@ export class EpbxProvider implements VoiceProvider {
     payload.fixed_audio = audioUrl;
     payload.replay_audio_url = audioUrl;
     payload.repeat_audio_url = audioUrl;
-    payload.use_audio_url = true;
-    payload.prefer_audio_url = true;
 
     if (confirmAudioUrl) {
       payload.confirm_audio_url = confirmAudioUrl;
@@ -351,7 +363,7 @@ export class EpbxProvider implements VoiceProvider {
     }
 
     this.logger.log(
-      `[voice] ePBX initiate callId=${params.callId} audio_url_sent=true merchantVoiceId=${params.voiceId || 'null'} resolved=${voice.id} googleVoice=${voice.voiceId} portalVoice=${portalVoice.voiceId} voice_gender=${portalVoice.gender} redis_cached=${redisCached} mode=custom_tts prefer_audio=true ivr_forced=${forceIvr && Boolean(ivrId)} chars=${ttsText.length}`,
+      `[voice] ePBX initiate callId=${params.callId} audio_url_sent=true skip_tts=true mode=play_audio merchantVoiceId=${params.voiceId || 'null'} resolved=${voice.id} googleVoice=${voice.voiceId} portalVoice=${portalVoice.voiceId} voice_gender=male redis_cached=${redisCached} ivr_forced=${forceIvr && Boolean(ivrId)} chars=${ttsText.length}`,
     );
     this.logVoicePayload(params.callId, payload);
 

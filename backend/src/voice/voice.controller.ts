@@ -52,8 +52,11 @@ export class VoiceController {
   async serveTtsAudio(@Param('id') id: string, @Res() res: Response) {
     const audio = await this.googleTts.getCached(id);
     if (!audio) throw new NotFoundException('Audio expired or not found');
+    // ePBX fetches this URL cross-origin — override helmet CORP same-origin.
     res.setHeader('Content-Type', audio.mime);
     res.setHeader('Cache-Control', 'public, max-age=600');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Access-Control-Allow-Origin', '*');
     res.send(audio.buf);
   }
 
