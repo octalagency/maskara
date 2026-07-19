@@ -287,10 +287,10 @@ export default function SettingsPage() {
             <div>
               <h3 className="section-title">AI ভয়েস বাছুন</h3>
               <p className="page-subtitle">
-                লাইভ কল Maskara Chirp3 <strong>Algieba (পুরুষ)</strong> MP3 চালায়। ePBX-এও{' '}
-                <strong>Algenib (MALE)</strong> সিলেক্ট করে <strong>Save Voice Profile</strong>{' '}
-                চাপুন। দুই পাশেই পুরুষ + VPS rebuild হলেই নারী WaveNet আসবে না। Sandbox-এ ইংরেজি
-                টেক্সট দিয়ে টেস্ট করবেন না।
+                টেক্সট→ভয়েস Maskara Chirp3 (<strong>Algieba পুরুষ</strong>) করে। ePBX শুধু কল
+                করে ও Maskara MP3 প্লে করে — পোর্টাল WaveNet/eAI ব্যবহার হয় না। ePBX-এ{' '}
+                <strong>Save Voice Profile</strong> দরকার নেই ভয়েসের জন্য; IVR Menus ব্যবহার করবেন
+                না।
               </p>
             </div>
 
