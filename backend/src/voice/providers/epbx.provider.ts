@@ -353,15 +353,12 @@ export class EpbxProvider implements VoiceProvider {
       payload.invalid_audio_url = invalidUrl;
     }
 
-    // Never attach portal IVR unless explicitly forced
-    if (
-      this.settings.get('EPBX_FORCE_IVR') === '1' &&
-      this.settings.get('EPBX_IVR_ID')
-    ) {
+    // Never send portal IVR (Filo Bangladesh etc.) — overrides Maskara Chirp3 with female menus.
+    // Ignore EPBX_IVR_ID / EPBX_FORCE_IVR entirely on order verification dials.
+    if (this.settings.get('EPBX_IVR_ID') || this.settings.get('EPBX_FORCE_IVR') === '1') {
       this.logger.warn(
-        `[voice] EPBX_FORCE_IVR=1 — ivr_id may override Maskara audio`,
+        `[voice] Ignoring EPBX_IVR_ID=${this.settings.get('EPBX_IVR_ID') || ''} — Maskara audio only`,
       );
-      payload.ivr_id = this.settings.get('EPBX_IVR_ID');
     }
 
     return payload;
