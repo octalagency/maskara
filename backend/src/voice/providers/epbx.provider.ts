@@ -215,7 +215,12 @@ export class EpbxProvider implements VoiceProvider {
     } = args;
 
     // Honor merchant gender; default product path is male (Algieba→Algenib).
-    const gender = portalVoice.gender;
+    // Force male for Algieba/Algenib/migrated — never leave portal WaveNet female room.
+    const gender =
+      portalVoice.gender === 'female' &&
+      /Achernar|Aoede|Kore|Leda/i.test(portalVoice.voiceId)
+        ? 'female'
+        : 'male';
 
     const payload: Record<string, unknown> = {
       phone_number: dialPhone,
@@ -223,7 +228,8 @@ export class EpbxProvider implements VoiceProvider {
       to: dialPhone,
       from: callerId,
 
-      // Bangla required by ePBX API — never English sandbox text
+      // Bangla text kept so ePBX originate accepts the request —
+      // playback must use Maskara MP3 (skip_tts), not portal WaveNet female.
       custom_text: ttsText,
       tts_text: ttsText,
       message: ttsText,
@@ -250,8 +256,8 @@ export class EpbxProvider implements VoiceProvider {
       disable_default_greeting: true,
       template: 'custom',
 
-      // Prefer Maskara MP3; keep custom_tts so ePBX accepts Bangla text + voice ids
-      mode: 'custom_tts',
+      // play_audio = Maskara MP3; custom_tts historically let portal eAI speak female
+      mode: 'play_audio',
       dial_only: true,
 
       replay_digit: '0',
@@ -283,7 +289,7 @@ export class EpbxProvider implements VoiceProvider {
       azure_tts: false,
       use_portal_default_voice: false,
 
-      // Google Chirp3 male (Algenib) if ePBX synthesizes instead of playing MP3
+      // If ePBX still synthesizes, force male Chirp3 Algenib (not WaveNet female)
       provider: 'google',
       ai_tts_provider: 'google',
       tts_provider: 'google',
@@ -318,14 +324,17 @@ export class EpbxProvider implements VoiceProvider {
       speech_rate: String(speechRate),
       rate: String(speechRate),
 
-      // Play Maskara audio first
-      skip_tts: false,
-      disable_tts: false,
-      tts_enabled: true,
+      // CRITICAL: do not let ePBX run portal TTS (female WaveNet default)
+      skip_tts: true,
+      disable_tts: true,
+      tts_enabled: false,
       force_voice: true,
       use_audio_url: true,
       prefer_audio_url: true,
       require_audio_url: true,
+      play_pre_recorded: true,
+      audio_only: true,
+      tts_mode: 'audio',
 
       audio_url: audioUrl,
       media_url: audioUrl,
@@ -337,6 +346,13 @@ export class EpbxProvider implements VoiceProvider {
       media: audioUrl,
       file_url: audioUrl,
       mp3_url: audioUrl,
+      play_audio: audioUrl,
+      voice_url: audioUrl,
+      sound_url: audioUrl,
+      announcement_url: audioUrl,
+      recording_url: audioUrl,
+      fixed_audio_url: audioUrl,
+      fixed_audio: audioUrl,
       replay_audio_url: audioUrl,
       repeat_audio_url: audioUrl,
     };

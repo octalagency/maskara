@@ -458,14 +458,20 @@ export function epbxPortalGoogleVoice(voiceId?: string | null): {
     };
   }
 
-  // Male path: prefer explicit non-Algieba Chirp3 (Orus, Achird, …); else portal Algenib
+  // Male path: ALWAYS portal Algenib for default/Algieba/Azure — never WaveNet female.
+  // Explicit other male Chirp3 (Orus, …) kept; female Chirp3 only when merchant picks female.
   const resolved = resolveLiveEpbxVoice(voiceId, true);
   let voiceName = resolved.voiceId;
   if (
     !/Chirp3-HD-/i.test(voiceName) ||
-    /Algieba|Pradeep|Nabanita/i.test(voiceName) ||
-    shouldMigrateMerchantVoiceId(voiceId)
+    /Algieba|Algenib|Pradeep|Nabanita/i.test(voiceName) ||
+    shouldMigrateMerchantVoiceId(voiceId) ||
+    resolved.provider === 'azure'
   ) {
+    voiceName = EPBX_PORTAL_MALE_CHIRP3;
+  }
+  // Soft-safety: if somehow female Chirp3 name landed on male path, still Algenib
+  if (/Achernar|Aoede|Kore|Leda/i.test(voiceName) && gender === 'male') {
     voiceName = EPBX_PORTAL_MALE_CHIRP3;
   }
   return {
