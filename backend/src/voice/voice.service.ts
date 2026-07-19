@@ -11,6 +11,7 @@ import {
 import { S3StorageService } from '../common/services/s3-storage.service';
 import { isWithinCallWindow } from '../common/utils/call-window.util';
 import { computeNextCallAt } from '../common/utils/call-schedule.util';
+import { VoiceSettingsService } from './voice-settings.service';
 
 @Injectable()
 export class VoiceService {
@@ -23,6 +24,7 @@ export class VoiceService {
     private notifications: NotificationsService,
     private providers: VoiceProviderFactory,
     private s3: S3StorageService,
+    private voiceSettings: VoiceSettingsService,
   ) {
     this.apiUrl =
       this.config.get('PUBLIC_API_URL') ||
@@ -419,5 +421,80 @@ export class VoiceService {
 
     this.logger.log(`Simulated call completed for order ${order.orderNumber}`);
     return call;
+  }
+
+  /**
+   * Admin test dial — uses real ePBX + Maskara Chirp3 path (no order required).
+   */
+  async initiateTestCall(phone: string, message?: string) {
+    const to = phone.replace(/\D/g, '');
+    if (to.length < 10) {
+      throw new Error('Valid BD phone required (01XXXXXXXXX)');
+    }
+
+    const provider = this.providers.getActiveProvider();
+    if (!provider || provider.name !== 'epbx') {
+      throw new Error('ePBX not configured as active voice provider');
+    }
+
+    const callId = `test_${Date.now()}`;
+    const result = await provider.initiateCall({
+      callId,
+      to: phone.trim(),
+      storeName: 'Maskara Test',
+      customerName: 'টেস্ট গ্রাহক',
+      orderNumber: 'TEST',
+      totalAmount: 0,
+      merchantId: 'test',
+      customGreeting:
+        message?.trim() ||
+        'আসসালামু আলাইকুম। এটি Maskara টেস্ট কল। আপনার অর্ডার নিশ্চিত করতে ১ চাপুন, বাতিল করতে ২ চাপুন। পুনরায় শুনতে ০ চাপুন।',
+      voiceId: DEFAULT_MERCHANT_VOICE_ID,
+    });
+
+    this.logger.log(
+      `Admin test call queued callId=${callId} to=${phone} providerId=${result.providerCallId}`,
+    );
+
+    return {
+      success: true,
+      callId,
+      providerCallId: result.providerCallId,
+      message: `Test call queued to ${phone}`,
+      details: result,
+    };
+  }
+
+  getEpbxProbe() {
+    const publicApi = (
+      this.voiceSettings.get('PUBLIC_API_URL') ||
+      this.config.get('PUBLIC_API_URL') ||
+      this.config.get('API_URL') ||
+      this.apiUrl
+    ).replace(/\/$/, '');
+
+    return {
+      apiUrl: (
+        this.voiceSettings.get('EPBX_API_URL') ||
+        this.config.get('EPBX_API_URL') ||
+        'https://maskara.epbx.bd/api/v1'
+      ).replace(/\/$/, ''),
+      apiKeySet: Boolean(
+        this.voiceSettings.get('EPBX_API_KEY') ||
+          this.config.get('EPBX_API_KEY'),
+      ),
+      customerId:
+        this.voiceSettings.get('EPBX_CUSTOMER_ID') ||
+        this.config.get('EPBX_CUSTOMER_ID') ||
+        null,
+      ivrId: null,
+      googleTts: this.voiceSettings.isGoogleTtsConfigured(),
+      webhooks: {
+        general: `${publicApi}/voice/webhook/epbx`,
+        dtmf: `${publicApi}/voice/webhook/epbx/dtmf`,
+        status: `${publicApi}/voice/webhook/epbx/status`,
+      },
+      note: 'IVR not used on Maskara dials — Chirp3 audio only',
+    };
   }
 }

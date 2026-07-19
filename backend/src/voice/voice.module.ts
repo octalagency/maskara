@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { VoiceWebhookGuard } from '../common/guards/voice-webhook.guard';
 import { TwilioWebhookGuard } from '../common/guards/twilio-webhook.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
 import { VoiceService } from './voice.service';
 import { VoiceController } from './voice.controller';
 import { VoiceWebhookService } from './voice-webhook.service';
@@ -23,6 +24,7 @@ import { GoogleTtsService } from './google-tts.service';
     VoiceWebhookService,
     VoiceWebhookGuard,
     TwilioWebhookGuard,
+    RolesGuard,
     TwilioProvider,
     EpbxProvider,
     IppbxProvider,

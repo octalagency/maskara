@@ -19,6 +19,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { VoiceWebhookGuard } from '../common/guards/voice-webhook.guard';
 import { TwilioWebhookGuard } from '../common/guards/twilio-webhook.guard';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 import { TtsPreviewService } from './tts-preview.service';
 import { GoogleTtsService } from './google-tts.service';
 import { VoiceSettingsService } from './voice-settings.service';
@@ -72,6 +74,32 @@ export class VoiceController {
     } catch (err) {
       throw new BadRequestException(
         err instanceof Error ? err.message : 'Preview failed',
+      );
+    }
+  }
+
+  @Get('epbx-probe')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'ePBX config + webhook URLs for admin' })
+  getEpbxProbe() {
+    return this.voiceService.getEpbxProbe();
+  }
+
+  @Post('test-call')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Admin test dial via ePBX + Maskara Chirp3' })
+  async testCall(@Body() body: { phone?: string; to?: string; message?: string }) {
+    const phone = (body.phone || body.to || '').trim();
+    if (!phone) throw new BadRequestException('phone required');
+    try {
+      return await this.voiceService.initiateTestCall(phone, body.message);
+    } catch (err) {
+      throw new BadRequestException(
+        err instanceof Error ? err.message : 'Test call failed',
       );
     }
   }
