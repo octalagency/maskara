@@ -15,11 +15,13 @@ import {
 } from './bangla-prompt';
 
 /**
- * ePBX.bd — outbound dial via Maskara Chirp3 audio.
+ * ePBX outbound dial — Maskara owns the voice.
  *
- * Always synthesize + host Maskara Google Chirp3 MP3 (required — no silent
- * portal eAI fallback). Send Bangla tts_text + Google Chirp3 fields so ePBX
- * accepts the originate API, while prefer_audio_url steers playback to Maskara.
+ * Single path (no Azure / portal WaveNet female):
+ * 1. Synthesize Bangla with Google Chirp3 (Algieba male by default).
+ * 2. Host MP3 on Maskara API (Redis/S3) and prove it is fetchable.
+ * 3. Dial ePBX with audio_url + Bangla tts_text + portal male Algenib fields.
+ * 4. Refuse the call if Maskara TTS/audio is missing (never fall to portal eAI).
  */
 @Injectable()
 export class EpbxProvider implements VoiceProvider {
@@ -37,7 +39,7 @@ export class EpbxProvider implements VoiceProvider {
 
   private get baseUrl(): string {
     return (
-      this.settings.get('EPBX_API_URL') || 'https://epbx.bd/api/v1'
+      this.settings.get('EPBX_API_URL') || 'https://maskara.epbx.bd/api/v1'
     ).replace(/\/$/, '');
   }
 
@@ -56,51 +58,12 @@ export class EpbxProvider implements VoiceProvider {
     return `${base}?secret=${encodeURIComponent(secret)}`;
   }
 
-  /** Loud voice-key dump — never include Authorization / API secrets. */
-  private logVoicePayload(
-    callId: string,
-    payload: Record<string, unknown>,
-  ): void {
-    const keys = [
-      'mode',
-      'provider',
-      'tts_provider',
-      'voice_gateway',
-      'google_tts_voice_id',
-      'voice_id',
-      'voice_gender',
-      'language',
-      'tts_language',
-      'skip_tts',
-      'use_audio_url',
-      'prefer_audio_url',
-      'audio_url',
-      'confirm_audio_url',
-      'cancel_audio_url',
-      'invalid_audio_url',
-      'maskara_voice',
-      'ivr_id',
-    ];
-    const snapshot: Record<string, unknown> = {};
-    for (const k of keys) {
-      if (payload[k] !== undefined) snapshot[k] = payload[k];
-    }
-    const tts = typeof payload.tts_text === 'string' ? payload.tts_text : '';
-    snapshot.tts_text_len = tts.length;
-    snapshot.tts_text_bangla = hasBanglaScript(tts);
-    snapshot.tts_text_preview = tts.slice(0, 48);
-    this.logger.log(
-      `[voice] ePBX FULL voice payload callId=${callId} ${JSON.stringify(snapshot)}`,
-    );
-  }
-
   async initiateCall(params: InitiateCallParams): Promise<InitiateCallResult> {
     const apiKey = this.settings.get('EPBX_API_KEY');
     if (!apiKey) throw new Error('EPBX_API_KEY not configured');
-
     if (!this.googleTts.isConfigured()) {
       throw new Error(
-        'Maskara TTS required: GOOGLE_TTS_API_KEY not configured — refusing ePBX dial (no portal eAI fallback)',
+        'GOOGLE_TTS_API_KEY missing — refusing dial (portal female eAI fallback blocked)',
       );
     }
 
@@ -117,15 +80,13 @@ export class EpbxProvider implements VoiceProvider {
       totalAmount: params.totalAmount,
       customGreeting: params.customGreeting,
     });
-
-    const banglaOk = hasBanglaScript(ttsText);
-    if (!banglaOk) {
+    if (!hasBanglaScript(ttsText)) {
       throw new Error(
-        'Refusing ePBX dial: TTS text has no Bangla script (would trigger English portal female)',
+        'Refusing dial: prompt has no Bangla script (English portal female risk)',
       );
     }
 
-    const voice = resolveLiveEpbxVoice(params.voiceId, true);
+    const maskaraVoice = resolveLiveEpbxVoice(params.voiceId, true);
     const portalVoice = epbxPortalGoogleVoice(params.voiceId);
     const speechRate = params.speechRate ?? DEFAULT_SPEECH_RATE;
 
@@ -134,78 +95,135 @@ export class EpbxProvider implements VoiceProvider {
     const invalidBn =
       'দয়া করে ১ চাপুন নিশ্চিত করতে, ২ চাপুন বাতিল করতে, পুনরায় শুনতে ০ চাপুন।';
 
-    let audioUrl: string;
-    let confirmAudioUrl: string | null = null;
-    let cancelAudioUrl: string | null = null;
-    let invalidAudioUrl: string | null = null;
-    let redisCached = false;
+    this.logger.log(
+      `[voice] synth start callId=${params.callId} maskara=${maskaraVoice.voiceId} portal=${portalVoice.voiceId} gender=${portalVoice.gender} chars=${ttsText.length}`,
+    );
 
+    const prompt = await this.synthAndHost(
+      ttsText,
+      maskaraVoice.voiceId,
+      speechRate,
+      `call-${params.callId}`,
+    );
+
+    let confirmUrl: string | null = null;
+    let cancelUrl: string | null = null;
+    let invalidUrl: string | null = null;
     try {
-      this.logger.log(
-        `[voice] Google synth start callId=${params.callId} language=bn-IN voiceId=${voice.id} googleVoice=${voice.voiceId} portalVoice=${portalVoice.voiceId} bangla_script=${banglaOk} chars=${ttsText.length}`,
-      );
-      const synth = await this.googleTts.synthesize(
-        ttsText,
-        voice.voiceId,
-        speechRate,
-      );
-      const hosted = await this.googleTts.hostAudio(
-        synth.buffer,
-        synth.mimeType,
-        `call-${params.callId}`,
-      );
-      audioUrl = hosted.url;
-      redisCached = hosted.redisCached;
-
-      const audioReachable =
-        (hosted.via === 's3' || hosted.redisCached) &&
-        (await this.isPublicAudioReachable(audioUrl));
-      if (!audioReachable) {
-        throw new Error(
-          `Maskara TTS audio URL not API-fetchable via=${hosted.via} redis_cached=${hosted.redisCached} url=${audioUrl}`,
-        );
-      }
-
-      try {
-        const [c, x, i] = await Promise.all([
-          this.googleTts.synthesize(confirmBn, voice.voiceId, speechRate),
-          this.googleTts.synthesize(cancelBn, voice.voiceId, speechRate),
-          this.googleTts.synthesize(invalidBn, voice.voiceId, speechRate),
-        ]);
-        const [okH, cxH, badH] = await Promise.all([
-          this.googleTts.hostAudio(c.buffer, c.mimeType, `ok-${params.callId}`),
-          this.googleTts.hostAudio(x.buffer, x.mimeType, `cx-${params.callId}`),
-          this.googleTts.hostAudio(i.buffer, i.mimeType, `bad-${params.callId}`),
-        ]);
-        if (okH.via === 's3' || okH.redisCached) confirmAudioUrl = okH.url;
-        if (cxH.via === 's3' || cxH.redisCached) cancelAudioUrl = cxH.url;
-        if (badH.via === 's3' || badH.redisCached) invalidAudioUrl = badH.url;
-        redisCached =
-          redisCached && okH.redisCached && cxH.redisCached && badH.redisCached;
-      } catch (dtmfErr) {
-        this.logger.warn(
-          `DTMF phrase TTS failed (prompt audio still used): ${dtmfErr instanceof Error ? dtmfErr.message : dtmfErr}`,
-        );
-      }
-
-      this.logger.log(
-        `[voice] Google TTS ready callId=${params.callId} language=bn-IN voiceId=${voice.id} googleVoice=${voice.voiceId} portalVoice=${portalVoice.voiceId} audio_url=${audioUrl} redis_cached=${redisCached}`,
-      );
+      const [c, x, i] = await Promise.all([
+        this.synthAndHost(confirmBn, maskaraVoice.voiceId, speechRate, `ok-${params.callId}`),
+        this.synthAndHost(cancelBn, maskaraVoice.voiceId, speechRate, `cx-${params.callId}`),
+        this.synthAndHost(invalidBn, maskaraVoice.voiceId, speechRate, `bad-${params.callId}`),
+      ]);
+      confirmUrl = c.url;
+      cancelUrl = x.url;
+      invalidUrl = i.url;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.logger.error(
-        `Maskara TTS required for dial — refusing ePBX call (no portal eAI fallback): ${msg}`,
+      this.logger.warn(
+        `DTMF clips failed (prompt still used): ${err instanceof Error ? err.message : err}`,
       );
-      throw new Error(`Maskara TTS required: ${msg}`);
     }
 
-    // Bangla script required by ePBX originate API; prefer Maskara audio_url for playback.
+    const payload = this.buildPayload({
+      dialPhone,
+      callerId,
+      callId: params.callId,
+      ttsText,
+      confirmBn,
+      cancelBn,
+      invalidBn,
+      speechRate,
+      maskaraVoiceId: maskaraVoice.voiceId,
+      portalVoice,
+      audioUrl: prompt.url,
+      confirmUrl,
+      cancelUrl,
+      invalidUrl,
+    });
+
+    this.logger.log(
+      `[voice] ePBX initiate callId=${params.callId} mode=${payload.mode} audio_url_sent=true voice_gender=${payload.voice_gender} portalVoice=${portalVoice.voiceId} maskara=${maskaraVoice.voiceId} redis_cached=${prompt.redisCached}`,
+    );
+    this.logVoicePayload(params.callId, payload);
+
+    return this.postOriginate(apiKey, payload, params.callId, dialPhone, {
+      portalVoiceId: portalVoice.voiceId,
+      maskaraVoiceId: maskaraVoice.voiceId,
+      redisCached: prompt.redisCached,
+    });
+  }
+
+  private async synthAndHost(
+    text: string,
+    voiceId: string,
+    speechRate: number,
+    key: string,
+  ): Promise<{ url: string; redisCached: boolean }> {
+    const synth = await this.googleTts.synthesize(text, voiceId, speechRate);
+    const hosted = await this.googleTts.hostAudio(
+      synth.buffer,
+      synth.mimeType,
+      key,
+    );
+    const ok =
+      (hosted.via === 's3' || hosted.redisCached) &&
+      (await this.isPublicAudioReachable(hosted.url));
+    if (!ok) {
+      throw new Error(
+        `TTS audio not API-fetchable via=${hosted.via} redis=${hosted.redisCached} url=${hosted.url}`,
+      );
+    }
+    return { url: hosted.url, redisCached: hosted.redisCached };
+  }
+
+  private buildPayload(args: {
+    dialPhone: string;
+    callerId: string;
+    callId: string;
+    ttsText: string;
+    confirmBn: string;
+    cancelBn: string;
+    invalidBn: string;
+    speechRate: number;
+    maskaraVoiceId: string;
+    portalVoice: {
+      voiceId: string;
+      shortName: string;
+      gender: 'male' | 'female';
+      languageCode: string;
+    };
+    audioUrl: string;
+    confirmUrl: string | null;
+    cancelUrl: string | null;
+    invalidUrl: string | null;
+  }): Record<string, unknown> {
+    const {
+      dialPhone,
+      callerId,
+      callId,
+      ttsText,
+      confirmBn,
+      cancelBn,
+      invalidBn,
+      speechRate,
+      maskaraVoiceId,
+      portalVoice,
+      audioUrl,
+      confirmUrl,
+      cancelUrl,
+      invalidUrl,
+    } = args;
+
+    // Honor merchant gender; default product path is male (Algieba→Algenib).
+    const gender = portalVoice.gender;
+
     const payload: Record<string, unknown> = {
       phone_number: dialPhone,
       caller_id: callerId,
       to: dialPhone,
       from: callerId,
 
+      // Bangla required by ePBX API — never English sandbox text
       custom_text: ttsText,
       tts_text: ttsText,
       message: ttsText,
@@ -231,8 +249,9 @@ export class EpbxProvider implements VoiceProvider {
       use_custom_text_only: true,
       disable_default_greeting: true,
       template: 'custom',
-      // Play Maskara MP3 — portal eAI/WaveNet female must not speak.
-      mode: 'play_audio',
+
+      // Prefer Maskara MP3; keep custom_tts so ePBX accepts Bangla text + voice ids
+      mode: 'custom_tts',
       dial_only: true,
 
       replay_digit: '0',
@@ -245,128 +264,165 @@ export class EpbxProvider implements VoiceProvider {
       confirm_digit: '1',
       cancel_digit: '2',
 
-      reference_id: params.callId,
-      external_id: params.callId,
+      reference_id: callId,
+      external_id: callId,
       webhook_url: this.webhookUrl('/voice/webhook/epbx'),
       status_callback: this.webhookUrl('/voice/webhook/epbx/status'),
       dtmf_webhook: this.webhookUrl('/voice/webhook/epbx/dtmf'),
       callback_url: this.webhookUrl('/voice/webhook/epbx'),
+
+      // Block portal female engines
+      use_eai: false,
+      eai: false,
+      eai_enabled: false,
+      use_elevenlabs: false,
+      elevenlabs: false,
+      use_wavenet: false,
+      wavenet: false,
+      use_azure: false,
+      azure_tts: false,
+      use_portal_default_voice: false,
+
+      // Google Chirp3 male (Algenib) if ePBX synthesizes instead of playing MP3
+      provider: 'google',
+      ai_tts_provider: 'google',
+      tts_provider: 'google',
+      tts_engine: 'chirp3',
+      speech_provider: 'google',
+      voice_gateway: 'google',
+      tts_gateway: 'google',
+      use_chirp3: true,
+      google_tts_model: 'chirp3-hd',
+      tts_model: 'chirp3-hd',
+
+      google_tts_voice_id: portalVoice.voiceId,
+      google_voice: portalVoice.voiceId,
+      google_voice_name: portalVoice.voiceId,
+      google_voice_id: portalVoice.voiceId,
+      chirp3_voice: portalVoice.voiceId,
+      voice_id: portalVoice.voiceId,
+      tts_voice: portalVoice.voiceId,
+      tts_voice_id: portalVoice.voiceId,
+      tts_voice_name: portalVoice.voiceId,
+      voice: portalVoice.voiceId,
+      voice_name: portalVoice.voiceId,
+      neural_voice: portalVoice.voiceId,
+      ai_voice: portalVoice.voiceId,
+      voice_label: portalVoice.shortName,
+      tts_voice_label: portalVoice.shortName,
+      voice_gender: gender,
+      tts_gender: gender,
+      gender,
+      google_voice_alias: 'bn-IN-Chirp3-HD-Algieba',
+      maskara_voice: maskaraVoiceId,
+      speech_rate: String(speechRate),
+      rate: String(speechRate),
+
+      // Play Maskara audio first
+      skip_tts: false,
+      disable_tts: false,
+      tts_enabled: true,
+      force_voice: true,
+      use_audio_url: true,
+      prefer_audio_url: true,
+      require_audio_url: true,
+
+      audio_url: audioUrl,
+      media_url: audioUrl,
+      play_url: audioUrl,
+      tts_audio_url: audioUrl,
+      greeting_audio_url: audioUrl,
+      prompt_audio_url: audioUrl,
+      audio: audioUrl,
+      media: audioUrl,
+      file_url: audioUrl,
+      mp3_url: audioUrl,
+      replay_audio_url: audioUrl,
+      repeat_audio_url: audioUrl,
     };
 
-    // Never eAI / ElevenLabs / WaveNet — portal Active Voice Gateway often defaults female.
-    payload.use_eai = false;
-    payload.eai = false;
-    payload.eai_enabled = false;
-    payload.use_elevenlabs = false;
-    payload.elevenlabs = false;
-    payload.eleven_labs = false;
-    payload.use_wavenet = false;
-    payload.wavenet = false;
-    payload.use_azure = false;
-    payload.azure_tts = false;
-
-    // If ePBX still synthesizes (ignores skip_tts), force male Google Chirp3 Algenib.
-    payload.provider = 'google';
-    payload.ai_tts_provider = 'google';
-    payload.tts_provider = 'google';
-    payload.tts_engine = 'chirp3';
-    payload.speech_provider = 'google';
-    payload.voice_gateway = 'google_chirp3';
-    payload.ai_tts_gateway = 'google_chirp3';
-    payload.tts_gateway = 'google_chirp3';
-    payload.google_tts_model = 'chirp3-hd';
-    payload.tts_model = 'chirp3-hd';
-    payload.model = 'chirp3-hd';
-    payload.active_voice_gateway = 'google_chirp3';
-    payload.use_chirp3 = true;
-
-    payload.google_tts_voice_id = portalVoice.voiceId;
-    payload.google_voice = portalVoice.voiceId;
-    payload.google_voice_name = portalVoice.voiceId;
-    payload.google_voice_id = portalVoice.voiceId;
-    payload.chirp3_voice = portalVoice.voiceId;
-    payload.chirp3_voice_id = portalVoice.voiceId;
-    payload.chirp3_voice_name = portalVoice.voiceId;
-    payload.voice_id = portalVoice.voiceId;
-    payload.tts_voice = portalVoice.voiceId;
-    payload.tts_voice_id = portalVoice.voiceId;
-    payload.tts_voice_name = portalVoice.voiceId;
-    payload.voice = portalVoice.voiceId;
-    payload.voice_name = portalVoice.voiceId;
-    payload.neural_voice = portalVoice.voiceId;
-    payload.ai_voice = portalVoice.voiceId;
-    payload.voice_label = portalVoice.shortName;
-    payload.tts_voice_label = portalVoice.shortName;
-    payload.voice_gender = 'male';
-    payload.tts_gender = 'male';
-    payload.gender = 'male';
-    payload.google_voice_alias = 'bn-IN-Chirp3-HD-Algieba';
-    payload.maskara_voice = voice.voiceId;
-    payload.speech_rate = String(speechRate);
-    payload.rate = String(speechRate);
-
-    // Prefer Maskara hosted MP3 over any portal TTS.
-    payload.skip_tts = true;
-    payload.disable_tts = true;
-    payload.tts_enabled = false;
-    payload.use_portal_default_voice = false;
-    payload.force_voice = true;
-    payload.use_audio_url = true;
-    payload.prefer_audio_url = true;
-    payload.require_audio_url = true;
-    payload.play_pre_recorded = true;
-    payload.audio_only = true;
-    payload.tts_mode = 'audio';
-
-    payload.audio_url = audioUrl;
-    payload.media_url = audioUrl;
-    payload.play_url = audioUrl;
-    payload.tts_audio_url = audioUrl;
-    payload.greeting_audio_url = audioUrl;
-    payload.prompt_audio_url = audioUrl;
-    payload.audio = audioUrl;
-    payload.media = audioUrl;
-    payload.file_url = audioUrl;
-    payload.voice_url = audioUrl;
-    payload.play_audio = audioUrl;
-    payload.audio_file = audioUrl;
-    payload.mp3_url = audioUrl;
-    payload.sound_url = audioUrl;
-    payload.announcement_url = audioUrl;
-    payload.recording_url = audioUrl;
-    payload.ivr_audio = audioUrl;
-    payload.ivr_audio_url = audioUrl;
-    payload.fixed_audio_url = audioUrl;
-    payload.fixed_audio = audioUrl;
-    payload.replay_audio_url = audioUrl;
-    payload.repeat_audio_url = audioUrl;
-
-    if (confirmAudioUrl) {
-      payload.confirm_audio_url = confirmAudioUrl;
-      payload.success_audio_url = confirmAudioUrl;
+    if (confirmUrl) {
+      payload.confirm_audio_url = confirmUrl;
+      payload.success_audio_url = confirmUrl;
     }
-    if (cancelAudioUrl) {
-      payload.cancel_audio_url = cancelAudioUrl;
-      payload.failure_audio_url = cancelAudioUrl;
+    if (cancelUrl) {
+      payload.cancel_audio_url = cancelUrl;
+      payload.failure_audio_url = cancelUrl;
     }
-    if (invalidAudioUrl) {
-      payload.invalid_audio_url = invalidAudioUrl;
+    if (invalidUrl) {
+      payload.invalid_audio_url = invalidUrl;
     }
 
-    const forceIvr = this.settings.get('EPBX_FORCE_IVR') === '1';
-    const ivrId = this.settings.get('EPBX_IVR_ID');
-    if (forceIvr && ivrId) {
+    // Never attach portal IVR unless explicitly forced
+    if (
+      this.settings.get('EPBX_FORCE_IVR') === '1' &&
+      this.settings.get('EPBX_IVR_ID')
+    ) {
       this.logger.warn(
-        `[voice] EPBX_FORCE_IVR=1 — attaching ivr_id=${ivrId} (may override Maskara audio)`,
+        `[voice] EPBX_FORCE_IVR=1 — ivr_id may override Maskara audio`,
       );
-      payload.ivr_id = ivrId;
+      payload.ivr_id = this.settings.get('EPBX_IVR_ID');
     }
 
-    this.logger.log(
-      `[voice] ePBX initiate callId=${params.callId} audio_url_sent=true skip_tts=true mode=play_audio merchantVoiceId=${params.voiceId || 'null'} resolved=${voice.id} googleVoice=${voice.voiceId} portalVoice=${portalVoice.voiceId} voice_gender=male redis_cached=${redisCached} ivr_forced=${forceIvr && Boolean(ivrId)} chars=${ttsText.length}`,
-    );
-    this.logVoicePayload(params.callId, payload);
+    return payload;
+  }
 
+  private logVoicePayload(
+    callId: string,
+    payload: Record<string, unknown>,
+  ): void {
+    const keys = [
+      'mode',
+      'provider',
+      'tts_provider',
+      'tts_engine',
+      'voice_gateway',
+      'google_tts_voice_id',
+      'google_voice',
+      'chirp3_voice',
+      'voice_id',
+      'voice_name',
+      'voice_gender',
+      'gender',
+      'tts_language',
+      'skip_tts',
+      'use_audio_url',
+      'prefer_audio_url',
+      'audio_url',
+      'confirm_audio_url',
+      'cancel_audio_url',
+      'invalid_audio_url',
+      'maskara_voice',
+      'google_voice_alias',
+      'use_azure',
+      'use_eai',
+      'use_wavenet',
+      'ivr_id',
+    ];
+    const snapshot: Record<string, unknown> = {};
+    for (const k of keys) {
+      if (payload[k] !== undefined) snapshot[k] = payload[k];
+    }
+    const tts = typeof payload.tts_text === 'string' ? payload.tts_text : '';
+    snapshot.tts_text_len = tts.length;
+    snapshot.tts_text_bangla = hasBanglaScript(tts);
+    snapshot.tts_text_preview = tts.slice(0, 48);
+    this.logger.log(
+      `[voice] ePBX FULL voice payload callId=${callId} ${JSON.stringify(snapshot)}`,
+    );
+  }
+
+  private async postOriginate(
+    apiKey: string,
+    payload: Record<string, unknown>,
+    callId: string,
+    dialPhone: string,
+    meta: {
+      portalVoiceId: string;
+      maskaraVoiceId: string;
+      redisCached: boolean;
+    },
+  ): Promise<InitiateCallResult> {
     const customerId = this.settings.get('EPBX_CUSTOMER_ID');
     const paths = customerId
       ? [
@@ -394,32 +450,32 @@ export class EpbxProvider implements VoiceProvider {
           (body as { call_id?: string }).call_id ||
           (body as { id?: string }).id ||
           (body as { data?: { id?: string } }).data?.id ||
-          params.callId;
+          callId;
 
         this.logger.log(
-          `[voice] ePBX OK ${path} callId=${params.callId} audio_url_sent=true voiceId=${voice.id} portalVoice=${portalVoice.voiceId} redis_cached=${redisCached} → ${dialPhone} providerId=${providerCallId}`,
+          `[voice] ePBX OK ${path} callId=${callId} portalVoice=${meta.portalVoiceId} maskara=${meta.maskaraVoiceId} redis_cached=${meta.redisCached} → ${dialPhone} providerId=${providerCallId}`,
         );
         return { providerCallId: String(providerCallId), status: 'RINGING' };
       }
 
-      const message =
+      lastError =
         (body as { message?: string }).message ||
         (body as { error?: string }).error ||
         `ePBX call failed (${res.status})`;
-      lastError = message;
       this.logger.error(
         `ePBX API error ${path}: ${res.status} ${JSON.stringify(body)}`,
       );
-
       if (res.status !== 404) break;
     }
 
-    if (/could not be found/i.test(lastError) || /route .* not found/i.test(lastError)) {
+    if (
+      /could not be found/i.test(lastError) ||
+      /route .* not found/i.test(lastError)
+    ) {
       throw new Error(
-        'ePBX call route missing — expected POST /api/v1/calls/initiate. Check Developer API Access on maskara.epbx.bd/portal/developer',
+        'ePBX call route missing — POST /api/v1/calls/initiate. Check maskara.epbx.bd/portal/developer',
       );
     }
-
     throw new Error(lastError);
   }
 
@@ -469,7 +525,9 @@ export class EpbxProvider implements VoiceProvider {
 
   private toLocalBdMobile(phone: string): string {
     const digits = phone.replace(/\D/g, '');
-    if (digits.startsWith('880') && digits.length >= 13) return `0${digits.slice(3)}`;
+    if (digits.startsWith('880') && digits.length >= 13) {
+      return `0${digits.slice(3)}`;
+    }
     if (digits.startsWith('0') && digits.length === 11) return digits;
     if (digits.length === 10) return `0${digits}`;
     return digits;
