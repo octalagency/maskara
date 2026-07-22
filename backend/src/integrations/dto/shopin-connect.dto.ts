@@ -3,11 +3,14 @@ import { ApiProperty } from '@nestjs/swagger';
 
 export class ShopInConnectDto {
   @ApiProperty({
+    required: false,
     example: 'cmq2aqs1v0002kv4jnd7appya',
-    description: 'ShopIn shop / store id (path segment in webhook URL)',
+    description:
+      'ShopIn shop id — optional if callbackUrl contains /webhooks/maskara/{shopId}',
   })
+  @IsOptional()
   @IsString()
-  shopId: string;
+  shopId?: string;
 
   @ApiProperty({ required: false, example: 'My Shopin Store' })
   @IsOptional()

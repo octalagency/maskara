@@ -24,6 +24,20 @@ export class ShopInController {
     return this.integrationsService.connectShopIn(merchant.id, dto);
   }
 
+  @Post('bind')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Dashboard: paste ShopIn webhook URL (…/webhooks/maskara/{shopId}) to bind callback',
+  })
+  bind(
+    @CurrentUser('merchantId') merchantId: string,
+    @Body() dto: ShopInConnectDto,
+  ) {
+    return this.integrationsService.connectShopIn(merchantId, dto);
+  }
+
   @Get('ping')
   @UseGuards(ApiKeyGuard)
   @ApiSecurity('api-key')

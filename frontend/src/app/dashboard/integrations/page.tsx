@@ -13,6 +13,10 @@ export default function IntegrationsPage() {
   const [woo, setWoo] = useState<WooCommerceStatus | null>(null);
   const [shopin, setShopin] = useState<ShopInStatus | null>(null);
   const [webhookSecret, setWebhookSecret] = useState('');
+  const [shopinCallbackUrl, setShopinCallbackUrl] = useState(
+    'https://api.shopin.bd/api/v1/webhooks/maskara/',
+  );
+  const [binding, setBinding] = useState(false);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState('');
   const [latestPluginVersion, setLatestPluginVersion] = useState<string | null>(null);
@@ -48,6 +52,13 @@ export default function IntegrationsPage() {
         setWoo(wooStatus);
         setShopin(shopinStatus);
         setWebhookSecret(secretRes.webhookSecret || '');
+        const bound =
+          shopinStatus.integration?.callbackUrl ||
+          shopinStatus.merchantWebhookUrl ||
+          '';
+        if (bound.includes('/webhooks/maskara/')) {
+          setShopinCallbackUrl(bound);
+        }
       })
       .finally(() => setLoading(false));
   }, []);
@@ -67,6 +78,29 @@ export default function IntegrationsPage() {
       copyText(res.webhookSecret, 'secret');
     } catch {
       alert('Secret regenerate failed');
+    }
+  }
+
+  async function bindShopInWebhook() {
+    const url = shopinCallbackUrl.trim();
+    if (!url.includes('/webhooks/maskara/')) {
+      alert('ShopIn Webhook URL পেস্ট করুন (…/webhooks/maskara/…)');
+      return;
+    }
+    setBinding(true);
+    try {
+      await api.bindShopIn({
+        callbackUrl: url,
+        shopId: url,
+        webhookSecret: webhookSecret || undefined,
+      });
+      const updated = await api.getShopInStatus();
+      setShopin(updated);
+      alert('ShopIn webhook Maskara-তে সেট হয়েছে');
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Bind failed');
+    } finally {
+      setBinding(false);
     }
   }
 
@@ -166,12 +200,38 @@ export default function IntegrationsPage() {
                   <RefreshCw className="h-3 w-3" /> নতুন
                 </button>
               </div>
-              <p className="mt-2 text-xs text-slate-500">
-                Callback:{' '}
-                <code className="rounded bg-white px-1">
-                  https://api.shopin.bd/api/v1/webhooks/maskara/&#123;shopId&#125;
-                </code>
+            </div>
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4 lg:col-span-2">
+              <h4 className="font-semibold text-slate-900">
+                Step 3: ShopIn Webhook URL (Maskara-তে বসান)
+              </h4>
+              <p className="mt-2 text-sm text-slate-600">
+                ShopIn → সংযোগ সেটিংস → Webhook URL কপি করে নিচে পেস্ট করুন → সংযুক্ত করুন
               </p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                <input
+                  className="input flex-1 font-mono text-xs"
+                  value={shopinCallbackUrl}
+                  onChange={(e) => setShopinCallbackUrl(e.target.value)}
+                  placeholder="https://api.shopin.bd/api/v1/webhooks/maskara/…"
+                />
+                <button
+                  onClick={bindShopInWebhook}
+                  disabled={binding}
+                  className="btn-primary whitespace-nowrap text-sm"
+                >
+                  {binding ? 'সেট হচ্ছে…' : 'সংযুক্ত করুন'}
+                </button>
+              </div>
+              {shopin?.merchantWebhookUrl?.includes('/webhooks/maskara/') ? (
+                <p className="mt-2 text-xs font-medium text-emerald-700">
+                  Bound: {shopin.merchantWebhookUrl}
+                </p>
+              ) : (
+                <p className="mt-2 text-xs text-amber-700">
+                  এখনো ShopIn callback বাঁধা নেই — উপরের URL পেস্ট করে সংযুক্ত করুন
+                </p>
+              )}
             </div>
             <div className="rounded-lg bg-slate-50 p-4 lg:col-span-2 space-y-2">
               <h4 className="font-semibold text-slate-900">Endpoints (ShopIn টিমের জন্য)</h4>

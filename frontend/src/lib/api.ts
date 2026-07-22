@@ -370,6 +370,13 @@ class ApiClient {
     return this.request('/integrations/shopin/disconnect', { method: 'DELETE' });
   }
 
+  bindShopIn(data: { shopId?: string; callbackUrl?: string; webhookSecret?: string; shopName?: string }) {
+    return this.request('/integrations/shopin/bind', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   getWebhookSecret() {
     return this.request<{ webhookSecret: string; webhookUrl?: string | null; created: boolean }>(
       '/merchants/me/webhook-secret',

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateIntegrationDto } from './dto/create-integration.dto';
@@ -184,8 +184,27 @@ export class IntegrationsService {
       storeUrl?: string;
     },
   ) {
-    const shopId = data.shopId.trim();
-    const callbackUrl = this.shopInCallbackUrl(shopId, data.callbackUrl);
+    let shopId = (data.shopId || '').trim();
+    let callbackUrl = data.callbackUrl?.trim();
+
+    // Allow pasting full ShopIn webhook URL as shopId or callbackUrl
+    const fromUrl = (callbackUrl || shopId).match(
+      /\/webhooks\/maskara\/([a-zA-Z0-9_-]+)/,
+    );
+    if (fromUrl?.[1]) {
+      shopId = fromUrl[1];
+      if (!callbackUrl || callbackUrl.includes('/webhooks/maskara/')) {
+        callbackUrl = this.shopInCallbackUrl(shopId, callbackUrl);
+      }
+    }
+
+    if (!shopId) {
+      throw new BadRequestException(
+        'shopId required — paste ShopIn webhook URL or shop id',
+      );
+    }
+
+    callbackUrl = this.shopInCallbackUrl(shopId, callbackUrl);
     const merchant = await this.prisma.merchant.findUnique({
       where: { id: merchantId },
     });
