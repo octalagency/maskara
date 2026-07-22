@@ -177,7 +177,7 @@ export class IntegrationsService {
   async connectShopIn(
     merchantId: string,
     data: {
-      shopId: string;
+      shopId?: string;
       shopName?: string;
       callbackUrl?: string;
       webhookSecret?: string;
