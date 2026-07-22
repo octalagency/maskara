@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateMerchantDto } from './dto/update-merchant.dto';
 import {
@@ -133,5 +134,54 @@ export class MerchantsService {
       where: { id: merchantId },
       data: { webhookUrl, webhookSecret },
     });
+  }
+
+  private makeWebhookSecret() {
+    return `whsec_${randomBytes(24).toString('hex')}`;
+  }
+
+  /** Return existing webhook secret, or create one if missing. */
+  async getOrCreateWebhookSecret(merchantId: string) {
+    const merchant = await this.prisma.merchant.findUnique({
+      where: { id: merchantId },
+    });
+    if (!merchant) throw new NotFoundException('Merchant not found');
+
+    if (merchant.webhookSecret) {
+      return {
+        webhookSecret: merchant.webhookSecret,
+        webhookUrl: merchant.webhookUrl,
+        created: false,
+      };
+    }
+
+    const webhookSecret = this.makeWebhookSecret();
+    const updated = await this.prisma.merchant.update({
+      where: { id: merchantId },
+      data: { webhookSecret },
+    });
+    return {
+      webhookSecret: updated.webhookSecret,
+      webhookUrl: updated.webhookUrl,
+      created: true,
+    };
+  }
+
+  async regenerateWebhookSecret(merchantId: string) {
+    const merchant = await this.prisma.merchant.findUnique({
+      where: { id: merchantId },
+    });
+    if (!merchant) throw new NotFoundException('Merchant not found');
+
+    const webhookSecret = this.makeWebhookSecret();
+    const updated = await this.prisma.merchant.update({
+      where: { id: merchantId },
+      data: { webhookSecret },
+    });
+    return {
+      webhookSecret: updated.webhookSecret,
+      webhookUrl: updated.webhookUrl,
+      created: true,
+    };
   }
 }

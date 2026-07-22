@@ -370,6 +370,19 @@ class ApiClient {
     return this.request('/integrations/shopin/disconnect', { method: 'DELETE' });
   }
 
+  getWebhookSecret() {
+    return this.request<{ webhookSecret: string; webhookUrl?: string | null; created: boolean }>(
+      '/merchants/me/webhook-secret',
+    );
+  }
+
+  regenerateWebhookSecret() {
+    return this.request<{ webhookSecret: string; webhookUrl?: string | null; created: boolean }>(
+      '/merchants/me/webhook-secret/regenerate',
+      { method: 'POST' },
+    );
+  }
+
   // Admin
   getAdminDashboard() {
     return this.request<AdminDashboard>('/admin/dashboard');

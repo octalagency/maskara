@@ -5,13 +5,14 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { PluginDownloadLink } from '@/components/PluginDownloadLink';
 import { api, ShopInStatus, WooCommerceStatus } from '@/lib/api';
 import { fetchPluginRelease } from '@/lib/plugin-release';
-import { Globe, ShoppingBag, Code, CheckCircle2, Copy, Link2, Unplug, Store } from 'lucide-react';
+import { Globe, ShoppingBag, Code, CheckCircle2, Copy, Link2, Unplug, Store, RefreshCw } from 'lucide-react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 export default function IntegrationsPage() {
   const [woo, setWoo] = useState<WooCommerceStatus | null>(null);
   const [shopin, setShopin] = useState<ShopInStatus | null>(null);
+  const [webhookSecret, setWebhookSecret] = useState('');
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState('');
   const [latestPluginVersion, setLatestPluginVersion] = useState<string | null>(null);
@@ -41,18 +42,32 @@ export default function IntegrationsPage() {
         pingUrl: `${API_URL}/integrations/shopin/ping`,
         merchantWebhookUrl: null,
       })),
+      api.getWebhookSecret().catch(() => ({ webhookSecret: '', created: false })),
     ])
-      .then(([wooStatus, shopinStatus]) => {
+      .then(([wooStatus, shopinStatus, secretRes]) => {
         setWoo(wooStatus);
         setShopin(shopinStatus);
+        setWebhookSecret(secretRes.webhookSecret || '');
       })
       .finally(() => setLoading(false));
   }, []);
 
   function copyText(text: string, label: string) {
+    if (!text) return;
     navigator.clipboard.writeText(text);
     setCopied(label);
     setTimeout(() => setCopied(''), 2000);
+  }
+
+  async function regenerateSecret() {
+    if (!confirm('নতুন Webhook Secret বানাবেন? ShopIn settings-এও আপডেট করতে হবে।')) return;
+    try {
+      const res = await api.regenerateWebhookSecret();
+      setWebhookSecret(res.webhookSecret);
+      copyText(res.webhookSecret, 'secret');
+    } catch {
+      alert('Secret regenerate failed');
+    }
   }
 
   async function disconnectWoo() {
@@ -89,7 +104,6 @@ export default function IntegrationsPage() {
           </p>
         </div>
 
-        {/* ShopIn */}
         <div className="card border-2 border-emerald-200">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex gap-4">
@@ -133,12 +147,27 @@ export default function IntegrationsPage() {
               </a>
             </div>
             <div className="rounded-lg bg-slate-50 p-4">
-              <h4 className="font-semibold text-slate-900">Step 2: ShopIn settings</h4>
+              <h4 className="font-semibold text-slate-900">Step 2: Webhook Secret</h4>
               <p className="mt-2 text-sm text-slate-600">
-                ShopIn → Maskara AI → Webhook Secret একই রাখুন → API টেস্ট → পেন্ডিং সিঙ্ক
+                নিচের secret কপি করে ShopIn → Maskara AI → Webhook Secret-এ পেস্ট করুন (একই রাখুন)
               </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <code className="min-w-0 flex-1 break-all rounded bg-white px-3 py-2 text-xs">
+                  {loading ? '…' : webhookSecret || 'লোড হচ্ছে / তৈরি হয়নি'}
+                </code>
+                <button
+                  onClick={() => copyText(webhookSecret, 'secret')}
+                  className="btn-secondary text-xs"
+                  disabled={!webhookSecret}
+                >
+                  <Copy className="h-3 w-3" /> {copied === 'secret' ? 'Copied!' : 'Copy'}
+                </button>
+                <button onClick={regenerateSecret} className="btn-secondary text-xs gap-1">
+                  <RefreshCw className="h-3 w-3" /> নতুন
+                </button>
+              </div>
               <p className="mt-2 text-xs text-slate-500">
-                Callback (Maskara → ShopIn):{' '}
+                Callback:{' '}
                 <code className="rounded bg-white px-1">
                   https://api.shopin.bd/api/v1/webhooks/maskara/&#123;shopId&#125;
                 </code>
@@ -170,7 +199,6 @@ export default function IntegrationsPage() {
           </div>
         </div>
 
-        {/* WooCommerce — main */}
         <div className="card border-2 border-brand-200">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex gap-4">
@@ -261,18 +289,29 @@ export default function IntegrationsPage() {
                     <Copy className="h-3 w-3" /> {copied === 'webhook' ? 'Copied!' : 'Webhook'}
                   </button>
                 </div>
+                {webhookSecret ? (
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 break-all rounded bg-white px-3 py-2 text-xs">{webhookSecret}</code>
+                    <button
+                      onClick={() => copyText(webhookSecret, 'woo-secret')}
+                      className="btn-secondary text-xs"
+                    >
+                      <Copy className="h-3 w-3" />{' '}
+                      {copied === 'woo-secret' ? 'Copied!' : 'Webhook Secret'}
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
 
-          {woo?.connected && woo.integration?.lastSyncAt && (
+          {woo?.connected && woo.integration?.lastSyncAt ? (
             <p className="mt-4 text-xs text-slate-500">
               Last order sync: {new Date(woo.integration.lastSyncAt).toLocaleString('bn-BD')}
             </p>
-          )}
+          ) : null}
         </div>
 
-        {/* Other integrations */}
         <div className="grid gap-6 md:grid-cols-2">
           <div className="card">
             <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-brand-50">

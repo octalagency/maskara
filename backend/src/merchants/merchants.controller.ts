@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Patch, Post, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { MerchantsService } from './merchants.service';
 import { UpdateMerchantDto } from './dto/update-merchant.dto';
@@ -39,5 +39,17 @@ export class MerchantsController {
       webhookUrl,
       webhookSecret,
     );
+  }
+
+  @Get('me/webhook-secret')
+  @ApiOperation({ summary: 'Get or create webhook secret for ShopIn / WooCommerce callbacks' })
+  getWebhookSecret(@CurrentUser('merchantId') merchantId: string) {
+    return this.merchantsService.getOrCreateWebhookSecret(merchantId);
+  }
+
+  @Post('me/webhook-secret/regenerate')
+  @ApiOperation({ summary: 'Regenerate webhook secret' })
+  regenerateWebhookSecret(@CurrentUser('merchantId') merchantId: string) {
+    return this.merchantsService.regenerateWebhookSecret(merchantId);
   }
 }
