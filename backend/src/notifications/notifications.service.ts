@@ -62,7 +62,7 @@ export class NotificationsService {
     });
   }
 
-  /** Push status to WooCommerce (verify, call count, courier stage). */
+  /** Push verification status to WooCommerce / ShopIn / merchant webhookUrl. */
   async pushOrderUpdate(
     merchant: Merchant,
     order: Order,
@@ -75,20 +75,46 @@ export class NotificationsService {
 
     const urls = new Set<string>();
 
-    const integration = await this.prisma.integration.findFirst({
-      where: { merchantId: merchant.id, type: 'WOOCOMMERCE', isActive: true },
+    const integrations = await this.prisma.integration.findMany({
+      where: {
+        merchantId: merchant.id,
+        isActive: true,
+      },
     });
-    const creds = (integration?.credentials || {}) as Record<string, string>;
-    const storeUrl = (creds.storeUrl || '').replace(/\/$/, '');
-    if (storeUrl) {
-      urls.add(`${storeUrl}/wp-json/maskara/v1/verification-result`);
+
+    for (const integration of integrations) {
+      const creds = (integration.credentials || {}) as Record<string, string>;
+      if (integration.type === 'WOOCOMMERCE') {
+        const storeUrl = (creds.storeUrl || '').replace(/\/$/, '');
+        if (storeUrl) {
+          urls.add(`${storeUrl}/wp-json/maskara/v1/verification-result`);
+        }
+      }
+      const isShopIn =
+        creds.provider === 'shopin' ||
+        (integration.webhookUrl || '').includes('/webhooks/maskara/') ||
+        (creds.callbackUrl || '').includes('/webhooks/maskara/') ||
+        (integration.name || '').startsWith('ShopIn');
+      if (isShopIn) {
+        const callback =
+          (creds.callbackUrl || integration.webhookUrl || '').replace(/\/$/, '');
+        if (callback) {
+          urls.add(callback);
+        } else if (creds.shopId) {
+          const base = (
+            this.config.get<string>('SHOPIN_API_BASE') || 'https://api.shopin.bd'
+          ).replace(/\/$/, '');
+          urls.add(`${base}/api/v1/webhooks/maskara/${creds.shopId}`);
+        }
+      }
     }
+
     if (merchant.webhookUrl) {
       urls.add(merchant.webhookUrl.replace(/\/$/, ''));
     }
 
     if (urls.size === 0) {
-      this.logger.warn(`No WooCommerce callback URL for merchant ${merchant.id}`);
+      this.logger.warn(`No verification callback URL for merchant ${merchant.id}`);
       return;
     }
 
@@ -108,17 +134,27 @@ export class NotificationsService {
     } = {},
   ) {
     const meta = (order.metadata || {}) as Record<string, unknown>;
-    const wooOrderId = order.externalId || meta.wooOrderId;
+    const externalId = order.externalId || meta.wooOrderId || meta.shopinOrderId;
+    const isShopIn =
+      url.includes('/webhooks/maskara/') ||
+      meta.provider === 'shopin' ||
+      Boolean(meta.shopId);
+    // ShopIn matches on orderNumber (ORD-…); strip leading # if any
+    const orderNumber = isShopIn
+      ? String(order.orderNumber || '').replace(/^#/, '')
+      : order.orderNumber;
+
     const secret =
       merchant.webhookSecret ||
       this.config.get<string>('WOOCOMMERCE_WEBHOOK_SECRET') ||
+      this.config.get<string>('SHOPIN_WEBHOOK_SECRET') ||
       '';
     const body = {
       event: 'order.verification.updated',
       orderId: order.id,
-      externalId: wooOrderId ? String(wooOrderId) : undefined,
-      wooOrderId: wooOrderId ? String(wooOrderId) : undefined,
-      orderNumber: order.orderNumber,
+      externalId: externalId ? String(externalId) : undefined,
+      wooOrderId: !isShopIn && externalId ? String(externalId) : undefined,
+      orderNumber,
       status: order.status,
       verifyStatus: extra.verifyStatus || order.status.toLowerCase(),
       outcome: extra.outcome,
@@ -150,6 +186,7 @@ export class NotificationsService {
         body: bodyJson,
       });
 
+      const label = isShopIn ? 'ShopIn' : 'Woo';
       await this.prisma.notification.create({
         data: {
           merchantId: merchant.id,
@@ -157,15 +194,15 @@ export class NotificationsService {
           type: 'WEBHOOK',
           status: response.ok ? 'SENT' : 'FAILED',
           recipient: url,
-          message: `Woo callback ${response.status} ${response.ok ? 'ok' : await response.text().catch(() => '')}`.slice(0, 500),
+          message: `${label} callback ${response.status} ${response.ok ? 'ok' : await response.text().catch(() => '')}`.slice(0, 500),
           sentAt: new Date(),
         },
       });
 
       if (!response.ok) {
-        this.logger.error(`WooCommerce callback failed ${response.status} → ${url}`);
+        this.logger.error(`${label} callback failed ${response.status} → ${url}`);
       } else {
-        this.logger.log(`WooCommerce order updated via ${url}`);
+        this.logger.log(`${label} order updated via ${url}`);
       }
     } catch (error) {
       this.logger.error(`Merchant webhook failed: ${error}`);

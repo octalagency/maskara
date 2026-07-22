@@ -41,6 +41,31 @@ export class OrdersService {
       },
     });
 
+    // ShopIn orders: bind merchant callback if shopId present and not yet set
+    const meta = (dto.metadata || {}) as Record<string, unknown>;
+    if (meta.provider === 'shopin' || meta.shopId) {
+      const shopId = String(meta.shopId || '');
+      if (shopId) {
+        const merchant = await this.prisma.merchant.findUnique({
+          where: { id: merchantId },
+        });
+        const base = (process.env.SHOPIN_API_BASE || 'https://api.shopin.bd').replace(
+          /\/$/,
+          '',
+        );
+        const callbackUrl = `${base}/api/v1/webhooks/maskara/${shopId}`;
+        if (
+          merchant &&
+          (!merchant.webhookUrl || !merchant.webhookUrl.includes('/webhooks/maskara/'))
+        ) {
+          await this.prisma.merchant.update({
+            where: { id: merchantId },
+            data: { webhookUrl: callbackUrl },
+          });
+        }
+      }
+    }
+
     await this.updateDailyUsage(merchantId, 'ordersReceived');
 
     // First verification call ASAP (≤20s; backup cron covers misses)

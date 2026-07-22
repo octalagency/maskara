@@ -362,6 +362,14 @@ class ApiClient {
     return this.request('/integrations/woocommerce/disconnect', { method: 'DELETE' });
   }
 
+  getShopInStatus() {
+    return this.request<ShopInStatus>('/integrations/shopin/status');
+  }
+
+  disconnectShopIn() {
+    return this.request('/integrations/shopin/disconnect', { method: 'DELETE' });
+  }
+
   // Admin
   getAdminDashboard() {
     return this.request<AdminDashboard>('/admin/dashboard');
@@ -786,6 +794,26 @@ export interface WooCommerceStatus {
   webhookUrl: string;
   connectUrl: string;
   pluginVersion: string;
+}
+
+export interface ShopInStatus {
+  connected: boolean;
+  integration: {
+    id?: string;
+    name?: string;
+    shopId?: string;
+    shopName?: string;
+    storeUrl?: string;
+    callbackUrl?: string;
+    connectedAt?: string;
+    lastSyncAt?: string;
+    isActive?: boolean;
+  } | null;
+  apiUrl: string;
+  inboundWebhookUrl: string;
+  connectUrl: string;
+  pingUrl: string;
+  merchantWebhookUrl: string | null;
 }
 
 export interface AdminMerchantDetail {

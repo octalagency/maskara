@@ -5,7 +5,6 @@ import {
   Param,
   Headers,
   UseGuards,
-  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiSecurity } from '@nestjs/swagger';
 import { WebhooksService } from './webhooks.service';
@@ -43,6 +42,20 @@ export class WebhooksController {
     @Body() payload: Record<string, unknown>,
   ) {
     return this.webhooksService.handleWooCommerceWebhook(merchant.id, payload);
+  }
+
+  @Post('shopin')
+  @UseGuards(ApiKeyGuard)
+  @ApiSecurity('api-key')
+  @ApiOperation({
+    summary:
+      'ShopIn order webhook — COD orders for AI call; results POST back to ShopIn /webhooks/maskara/{shopId}',
+  })
+  handleShopIn(
+    @CurrentUser() merchant: { id: string },
+    @Body() payload: Record<string, unknown>,
+  ) {
+    return this.webhooksService.handleShopInWebhook(merchant.id, payload);
   }
 
   @Post('custom')

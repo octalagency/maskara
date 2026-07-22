@@ -164,6 +164,193 @@ export class IntegrationsService {
     }
   }
 
+  /** Default ShopIn → Maskara verification callback URL. */
+  shopInCallbackUrl(shopId: string, override?: string) {
+    if (override) return override.replace(/\/$/, '');
+    const base = (
+      process.env.SHOPIN_API_BASE ||
+      'https://api.shopin.bd'
+    ).replace(/\/$/, '');
+    return `${base}/api/v1/webhooks/maskara/${shopId}`;
+  }
+
+  async connectShopIn(
+    merchantId: string,
+    data: {
+      shopId: string;
+      shopName?: string;
+      callbackUrl?: string;
+      webhookSecret?: string;
+      storeUrl?: string;
+    },
+  ) {
+    const shopId = data.shopId.trim();
+    const callbackUrl = this.shopInCallbackUrl(shopId, data.callbackUrl);
+    const merchant = await this.prisma.merchant.findUnique({
+      where: { id: merchantId },
+    });
+    const secret =
+      data.webhookSecret ||
+      merchant?.webhookSecret ||
+      process.env.SHOPIN_WEBHOOK_SECRET ||
+      '';
+
+    await this.prisma.merchant.update({
+      where: { id: merchantId },
+      data: {
+        webhookUrl: callbackUrl,
+        ...(secret ? { webhookSecret: secret } : {}),
+      },
+    });
+
+    const credentials = {
+      provider: 'shopin',
+      shopId,
+      shopName: data.shopName || shopId,
+      storeUrl: data.storeUrl || '',
+      callbackUrl,
+      connectedAt: new Date().toISOString(),
+    };
+
+    const existing = await this.prisma.integration.findFirst({
+      where: { merchantId, type: 'CUSTOM_API', name: { startsWith: 'ShopIn' } },
+    });
+
+    if (existing) {
+      const updated = await this.prisma.integration.update({
+        where: { id: existing.id },
+        data: {
+          isActive: true,
+          name: data.shopName ? `ShopIn ${data.shopName}` : existing.name,
+          credentials: credentials as Prisma.InputJsonValue,
+          webhookUrl: callbackUrl,
+          lastSyncAt: new Date(),
+        },
+      });
+      return { ...updated, webhookSecret: secret, callbackUrl };
+    }
+
+    const created = await this.prisma.integration.create({
+      data: {
+        merchantId,
+        type: 'CUSTOM_API',
+        name: data.shopName ? `ShopIn ${data.shopName}` : `ShopIn ${shopId}`,
+        credentials: credentials as Prisma.InputJsonValue,
+        webhookUrl: callbackUrl,
+        isActive: true,
+        lastSyncAt: new Date(),
+      },
+    });
+    return { ...created, webhookSecret: secret, callbackUrl };
+  }
+
+  async getShopInStatus(merchantId: string) {
+    const integration = await this.prisma.integration.findFirst({
+      where: {
+        merchantId,
+        OR: [
+          { type: 'CUSTOM_API', name: { startsWith: 'ShopIn' } },
+          { webhookUrl: { contains: '/webhooks/maskara/' } },
+        ],
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+    const merchant = await this.prisma.merchant.findUnique({
+      where: { id: merchantId },
+    });
+    const apiUrl = (
+      process.env.PUBLIC_API_URL ||
+      process.env.API_URL ||
+      'http://localhost:4000'
+    ).replace(/\/$/, '');
+    const creds = (integration?.credentials || {}) as Record<string, string>;
+
+    return {
+      connected: Boolean(integration?.isActive),
+      integration: integration
+        ? {
+            id: integration.id,
+            name: integration.name,
+            isActive: integration.isActive,
+            shopId: creds.shopId,
+            shopName: creds.shopName,
+            storeUrl: creds.storeUrl,
+            callbackUrl: creds.callbackUrl || integration.webhookUrl,
+            connectedAt: creds.connectedAt,
+            lastSyncAt: integration.lastSyncAt,
+          }
+        : null,
+      apiUrl,
+      inboundWebhookUrl: `${apiUrl}/webhooks/shopin`,
+      connectUrl: `${apiUrl}/integrations/shopin/connect`,
+      pingUrl: `${apiUrl}/integrations/shopin/ping`,
+      merchantWebhookUrl: merchant?.webhookUrl || null,
+    };
+  }
+
+  async disconnectShopIn(merchantId: string) {
+    const integration = await this.prisma.integration.findFirst({
+      where: {
+        merchantId,
+        OR: [
+          { type: 'CUSTOM_API', name: { startsWith: 'ShopIn' } },
+          { webhookUrl: { contains: '/webhooks/maskara/' } },
+        ],
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (!integration) throw new NotFoundException('ShopIn not connected');
+
+    return this.prisma.integration.update({
+      where: { id: integration.id },
+      data: { isActive: false },
+    });
+  }
+
+  async touchShopInSync(merchantId: string) {
+    await this.prisma.integration.updateMany({
+      where: {
+        merchantId,
+        isActive: true,
+        OR: [
+          { type: 'CUSTOM_API', name: { startsWith: 'ShopIn' } },
+          { webhookUrl: { contains: '/webhooks/maskara/' } },
+        ],
+      },
+      data: { lastSyncAt: new Date() },
+    });
+  }
+
+  /**
+   * Ensure merchant callback points at ShopIn webhook (used when orders arrive
+   * before an explicit connect, if shopId is present in the payload).
+   */
+  async ensureShopInCallback(
+    merchantId: string,
+    shopId: string,
+    webhookSecret?: string,
+  ) {
+    if (!shopId) return;
+    const existing = await this.prisma.integration.findFirst({
+      where: {
+        merchantId,
+        isActive: true,
+        OR: [
+          { type: 'CUSTOM_API', name: { startsWith: 'ShopIn' } },
+          { webhookUrl: { contains: '/webhooks/maskara/' } },
+        ],
+      },
+    });
+    if (existing) {
+      await this.touchShopInSync(merchantId);
+      return;
+    }
+    await this.connectShopIn(merchantId, {
+      shopId,
+      webhookSecret,
+    });
+  }
+
   getSetupGuide(type: string) {
     const guides: Record<string, object> = {
       SHOPIFY: {
@@ -187,6 +374,25 @@ export class IntegrationsService {
         connectUrl: '/integrations/woocommerce/connect',
         requiredFields: ['billing.phone', 'COD payment method'],
         pluginPath: 'wordpress-plugin/maskara-woocommerce',
+      },
+      SHOPIN: {
+        steps: [
+          'Maskara Dashboard → API Keys → Create Key',
+          'ShopIn → Maskara AI Call Center → API Key + Webhook Secret সেভ করুন',
+          'API টেস্ট চাপুন (GET /integrations/shopin/ping)',
+          'Connect (বা প্রথম sync) → Maskara callback = ShopIn /webhooks/maskara/{shopId}',
+          'পেন্ডিং সিঙ্ক / নতুন COD → Maskara কল → confirm হলে ShopIn Pathao deploy',
+        ],
+        webhookUrl: '/webhooks/shopin',
+        connectUrl: '/integrations/shopin/connect',
+        pingUrl: '/integrations/shopin/ping',
+        callbackPattern:
+          'https://api.shopin.bd/api/v1/webhooks/maskara/{shopId}',
+        requiredFields: [
+          'orderNumber (ORD-...)',
+          'customerPhone',
+          'totalAmount',
+        ],
       },
       CUSTOM_API: {
         steps: [
