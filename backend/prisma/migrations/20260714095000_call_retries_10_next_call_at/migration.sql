@@ -1,4 +1,4 @@
--- 10 attempts/day: ASAP + 2min + 8 staggered; call window 08:00–22:00 Asia/Dhaka
+-- Dual burst (2 ASAP) + 8 staggered follow-ups = 10 attempts/day (08:00–22:00 BD)
 ALTER TABLE "Merchant" ALTER COLUMN "maxCallRetries" SET DEFAULT 10;
 
 UPDATE "Merchant"
