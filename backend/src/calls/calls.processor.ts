@@ -4,8 +4,16 @@ import { Job } from 'bull';
 import { VoiceService } from '../voice/voice.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
-import { NotificationsService } from '../notifications/notifications.service';
-import { isWithinCallWindow } from '../common/utils/call-window.util';
+import {
+  isWithinCallWindow,
+  nextWindowOpenAt,
+} from '../common/utils/call-window.util';
+import {
+  countCallsTodayForOrder,
+  lifetimeLimitOf,
+  merchantDialConfig,
+} from '../common/utils/dial-merchant.util';
+import { computeFirstCallAt } from '../common/utils/call-schedule.util';
 
 interface CallJobData {
   orderId: string;
@@ -21,7 +29,6 @@ export class CallsProcessor {
     private voiceService: VoiceService,
     private prisma: PrismaService,
     private subscriptions: SubscriptionsService,
-    private notifications: NotificationsService,
   ) {}
 
   @Process('initiate-call')
@@ -39,16 +46,56 @@ export class CallsProcessor {
       return;
     }
 
-    if (order.callAttempts >= order.merchant.maxCallRetries) {
-      this.logger.warn(`Max call attempts reached for ${order.orderNumber}`);
-      await this.notifications.autoCancelAfterMaxAttempts(merchantId, orderId);
+    const lifetime = lifetimeLimitOf(order.merchant);
+    if (order.callAttempts >= lifetime) {
+      this.logger.warn(
+        `Lifetime dial cap reached for ${order.orderNumber} — awaiting manual cancel`,
+      );
+      await this.prisma.order.update({
+        where: { id: orderId },
+        data: { nextCallAt: null },
+      });
       return;
     }
 
-    if (!isWithinCallWindow(order.merchant.timezone || 'Asia/Dhaka')) {
+    const cfg = merchantDialConfig(order.merchant);
+    if (
+      !isWithinCallWindow(
+        cfg.timezone,
+        cfg.callWindowStartMin,
+        cfg.callWindowEndMin,
+      )
+    ) {
+      const openAt = computeFirstCallAt(cfg);
       this.logger.log(
-        `Outside call window (${order.merchant.timezone || 'Asia/Dhaka'}) — retry later for ${order.orderNumber}`,
+        `Outside call window — defer ${order.orderNumber} to ${openAt.toISOString()}`,
       );
+      await this.prisma.order.update({
+        where: { id: orderId },
+        data: { nextCallAt: openAt },
+      });
+      return;
+    }
+
+    const callsToday = await countCallsTodayForOrder(
+      this.prisma,
+      orderId,
+      order.merchant,
+    );
+    if (callsToday >= (cfg.dailyCallLimit ?? 10)) {
+      const openAt = nextWindowOpenAt(
+        cfg.timezone,
+        cfg.callWindowStartMin,
+        cfg.callWindowEndMin,
+        new Date(Date.now() + 60_000),
+      );
+      this.logger.log(
+        `Daily dial cap for ${order.orderNumber} — resume ${openAt.toISOString()}`,
+      );
+      await this.prisma.order.update({
+        where: { id: orderId },
+        data: { nextCallAt: openAt },
+      });
       return;
     }
 
@@ -60,6 +107,5 @@ export class CallsProcessor {
 
     const attemptNumber = order.callAttempts + 1;
     await this.voiceService.initiateCall(orderId, merchantId, attemptNumber);
-    // Quota is consumed only when order is confirmed OR cancelled — not on dial
   }
 }

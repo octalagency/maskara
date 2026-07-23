@@ -28,12 +28,15 @@ export default function OrdersPage() {
   const [period, setPeriod] = useState<Period>('today');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [maxCallRetries, setMaxCallRetries] = useState(10);
+  const [lifetimeCallLimit, setLifetimeCallLimit] = useState(20);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
     api
       .getMerchant()
-      .then((m) => setMaxCallRetries(m.maxCallRetries ?? 10))
+      .then((m) =>
+        setLifetimeCallLimit(m.lifetimeCallLimit ?? m.maxCallRetries ?? 20),
+      )
       .catch(() => undefined);
   }, []);
 
@@ -68,11 +71,29 @@ export default function OrdersPage() {
   }
 
   async function handleRetry(orderId: string) {
+    setBusyId(orderId);
     try {
       await api.retryCall(orderId);
-      loadOrders();
+      await loadOrders();
     } catch {
       setError('Retry call ব্যর্থ হয়েছে।');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleManualCancel(orderId: string) {
+    if (!confirm('এই অর্ডারটি ম্যানুয়ালি ক্যান্সেল করবেন? ওয়েবসাইটেও বাতিল যাবে।')) {
+      return;
+    }
+    setBusyId(orderId);
+    try {
+      await api.updateOrderStatus(orderId, 'CANCELLED');
+      await loadOrders();
+    } catch {
+      setError('ক্যান্সেল ব্যর্থ হয়েছে।');
+    } finally {
+      setBusyId(null);
     }
   }
 
@@ -170,6 +191,10 @@ export default function OrdersPage() {
                 )}
                 {orders.map((order) => {
                   const lastCall = order.calls?.[0];
+                  const attempts = order.callAttempts ?? 0;
+                  const atLifetime =
+                    attempts >= lifetimeCallLimit &&
+                    ['PENDING', 'FAILED', 'CALLING'].includes(order.status);
                   return (
                     <tr key={order.id} className="hover:bg-slate-50/80">
                       <td className="px-5 py-4 font-semibold text-slate-900">{order.orderNumber}</td>
@@ -198,8 +223,8 @@ export default function OrdersPage() {
                       <td className="px-5 py-4 text-slate-600">
                         <div className="flex items-center gap-1.5">
                           <PhoneCall className="h-3.5 w-3.5 text-slate-400" />
-                          {order.callAttempts ?? 0}
-                          <span className="text-slate-400">/{maxCallRetries}</span>
+                          {attempts}
+                          <span className="text-slate-400">/{lifetimeCallLimit}</span>
                           {lastCall?.outcome && (
                             <span className="ml-1 text-xs text-slate-400">({lastCall.outcome})</span>
                           )}
@@ -207,14 +232,29 @@ export default function OrdersPage() {
                       </td>
                       <td className="px-5 py-4 text-slate-500">{formatDate(order.createdAt)}</td>
                       <td className="px-5 py-4">
-                        {['PENDING', 'FAILED', 'CALLING'].includes(order.status) && (
-                          <button
-                            onClick={() => handleRetry(order.id)}
-                            className="inline-flex items-center gap-1 text-sm font-semibold text-brand-600 hover:text-brand-700"
-                          >
-                            <RefreshCw className="h-4 w-4" /> আবার কল
-                          </button>
-                        )}
+                        <div className="flex flex-col items-start gap-1.5">
+                          {atLifetime ? (
+                            <button
+                              type="button"
+                              disabled={busyId === order.id}
+                              onClick={() => handleManualCancel(order.id)}
+                              className="inline-flex items-center gap-1 text-sm font-semibold text-red-600 hover:text-red-700 disabled:opacity-50"
+                            >
+                              ম্যানুয়াল ক্যান্সেল
+                            </button>
+                          ) : (
+                            ['PENDING', 'FAILED', 'CALLING'].includes(order.status) && (
+                              <button
+                                type="button"
+                                disabled={busyId === order.id}
+                                onClick={() => handleRetry(order.id)}
+                                className="inline-flex items-center gap-1 text-sm font-semibold text-brand-600 hover:text-brand-700 disabled:opacity-50"
+                              >
+                                <RefreshCw className="h-4 w-4" /> আবার কল
+                              </button>
+                            )
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

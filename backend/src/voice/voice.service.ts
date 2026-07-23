@@ -12,6 +12,11 @@ import {
 import { S3StorageService } from '../common/services/s3-storage.service';
 import { isWithinCallWindow } from '../common/utils/call-window.util';
 import { computeNextCallAt } from '../common/utils/call-schedule.util';
+import {
+  countCallsTodayForOrder,
+  lifetimeLimitOf,
+  merchantDialConfig,
+} from '../common/utils/dial-merchant.util';
 import { VoiceSettingsService } from './voice-settings.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
@@ -61,14 +66,33 @@ export class VoiceService {
       return;
     }
 
-    if (!isWithinCallWindow(merchant.timezone || 'Asia/Dhaka')) {
+    const cfg = merchantDialConfig(merchant);
+    if (
+      !isWithinCallWindow(
+        cfg.timezone,
+        cfg.callWindowStartMin,
+        cfg.callWindowEndMin,
+      )
+    ) {
       this.logger.log(`Outside call window — skipping call for ${order.orderNumber}`);
       return;
     }
 
-    if (order.callAttempts >= merchant.maxCallRetries) {
-      this.logger.warn(`Max call attempts reached for ${order.orderNumber}`);
-      await this.notifications.autoCancelAfterMaxAttempts(merchantId, orderId);
+    const lifetime = lifetimeLimitOf(merchant);
+    if (order.callAttempts >= lifetime) {
+      this.logger.warn(
+        `Lifetime dial cap reached for ${order.orderNumber} — awaiting manual cancel`,
+      );
+      await this.prisma.order.update({
+        where: { id: orderId },
+        data: { nextCallAt: null },
+      });
+      return;
+    }
+
+    const callsToday = await countCallsTodayForOrder(this.prisma, orderId, merchant);
+    if (callsToday >= (cfg.dailyCallLimit ?? 10)) {
+      this.logger.log(`Daily dial cap — skipping call for ${order.orderNumber}`);
       return;
     }
 
@@ -92,7 +116,12 @@ export class VoiceService {
       where: { id: orderId },
       data: { status: 'CALLING', callAttempts: { increment: 1 } },
     });
-    await this.setNextCallAt(updatedOrder.id, updatedOrder.callAttempts, merchant);
+    await this.setNextCallAt(
+      updatedOrder.id,
+      updatedOrder.callAttempts,
+      merchant,
+      order.createdAt,
+    );
     await this.notifications.pushOrderUpdate(merchant, updatedOrder, {
       verifyStatus: 'calling',
     });
@@ -179,23 +208,37 @@ export class VoiceService {
         where: { id: orderId },
         data: { status: 'FAILED' },
       });
-      await this.setNextCallAt(failedOrder.id, failedOrder.callAttempts, merchant);
+      await this.setNextCallAt(
+        failedOrder.id,
+        failedOrder.callAttempts,
+        merchant,
+        order.createdAt,
+      );
       throw error;
     }
   }
 
-  /** Schedule the next staggered follow-up (or clear when exhausted). */
+  /** Schedule the next follow-up (or clear when lifetime exhausted). */
   private async setNextCallAt(
     orderId: string,
     completedAttempts: number,
-    merchant: { maxCallRetries: number; retryIntervalMin: number; timezone?: string | null },
+    merchant: Parameters<typeof merchantDialConfig>[0] & {
+      timezone?: string | null;
+    },
+    orderCreatedAt?: Date | null,
   ) {
+    const cfg = merchantDialConfig(merchant);
+    const callsToday = await countCallsTodayForOrder(
+      this.prisma,
+      orderId,
+      merchant,
+    );
     const nextCallAt = computeNextCallAt({
       orderId,
       completedAttempts,
-      maxAttempts: merchant.maxCallRetries,
-      minSpacingMin: merchant.retryIntervalMin,
-      timezone: merchant.timezone || 'Asia/Dhaka',
+      merchant: cfg,
+      callsToday,
+      orderCreatedAt: orderCreatedAt ?? undefined,
     });
     await this.prisma.order.update({
       where: { id: orderId },
@@ -331,16 +374,17 @@ export class VoiceService {
         include: { merchant: true },
       });
       if (!call) return;
-      if (call.attemptNumber < call.merchant.maxCallRetries) {
+      if (call.attemptNumber < lifetimeLimitOf(call.merchant)) {
         await this.prisma.order.update({
           where: { id: call.orderId },
           data: { status: 'PENDING' },
         });
       } else {
-        await this.notifications.autoCancelAfterMaxAttempts(
-          call.merchantId,
-          call.orderId,
-        );
+        // Lifetime exhausted — leave pending for manual cancel; clear schedule
+        await this.prisma.order.update({
+          where: { id: call.orderId },
+          data: { status: 'PENDING', nextCallAt: null },
+        });
       }
     }
   }

@@ -15,6 +15,7 @@ import {
   Menu,
   X,
   CreditCard,
+  Clock,
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -23,6 +24,7 @@ const navItems = [
   { href: '/dashboard', label: 'ড্যাশবোর্ড', icon: LayoutDashboard },
   { href: '/dashboard/orders', label: 'অর্ডার', icon: ShoppingCart },
   { href: '/dashboard/calls', label: 'কল হিস্ট্রি', icon: Phone },
+  { href: '/dashboard/call-system', label: 'কল সিস্টেম', icon: Clock },
   { href: '/dashboard/reports', label: 'রিপোর্ট', icon: BarChart3 },
   { href: '/dashboard/integrations', label: 'ইন্টিগ্রেশন', icon: Plug },
   { href: '/dashboard/subscription', label: 'সাবস্ক্রিপশন', icon: CreditCard },

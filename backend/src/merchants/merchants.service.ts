@@ -67,6 +67,15 @@ export class MerchantsService {
 
   async update(merchantId: string, dto: UpdateMerchantDto) {
     const { voiceId, speechRate, ...rest } = dto;
+
+    // Keep legacy maxCallRetries in sync with lifetimeCallLimit
+    if (rest.lifetimeCallLimit != null && rest.maxCallRetries == null) {
+      rest.maxCallRetries = rest.lifetimeCallLimit;
+    }
+    if (rest.maxCallRetries != null && rest.lifetimeCallLimit == null) {
+      rest.lifetimeCallLimit = rest.maxCallRetries;
+    }
+
     const merchant = await this.prisma.merchant.update({
       where: { id: merchantId },
       data: rest,

@@ -3,9 +3,16 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { PrismaService } from '../prisma/prisma.service';
-import { NotificationsService } from '../notifications/notifications.service';
-import { isWithinCallWindow } from '../common/utils/call-window.util';
+import {
+  isWithinCallWindow,
+  nextWindowOpenAt,
+} from '../common/utils/call-window.util';
 import { SECOND_CALL_DELAY_MS } from '../common/utils/call-schedule.util';
+import {
+  countCallsTodayForOrder,
+  lifetimeLimitOf,
+  merchantDialConfig,
+} from '../common/utils/dial-merchant.util';
 
 const RETRYABLE_CALL_STATUSES = ['NO_ANSWER', 'BUSY', 'FAILED', 'RINGING', 'QUEUED'];
 
@@ -16,14 +23,11 @@ export class CallsRetryScheduler {
   constructor(
     private prisma: PrismaService,
     @InjectQueue('calls') private callsQueue: Queue,
-    private notifications: NotificationsService,
   ) {}
 
   /** First call within ~20s of order if the create-queue job was missed. */
   @Cron('*/20 * * * * *')
   async enqueueFirstCalls() {
-    if (!isWithinCallWindow()) return;
-
     const pending = await this.prisma.order.findMany({
       where: {
         status: 'PENDING',
@@ -40,7 +44,16 @@ export class CallsRetryScheduler {
 
     for (const order of pending) {
       if (order.calls.length > 0) continue;
-      if (!isWithinCallWindow(order.merchant.timezone || 'Asia/Dhaka')) continue;
+      const cfg = merchantDialConfig(order.merchant);
+      if (
+        !isWithinCallWindow(
+          cfg.timezone,
+          cfg.callWindowStartMin,
+          cfg.callWindowEndMin,
+        )
+      ) {
+        continue;
+      }
 
       this.logger.log(`First-call enqueue (≤20s backup) for ${order.orderNumber}`);
       await this.queueCall(order.id, order.merchantId, false, `call-first-${order.id}`);
@@ -64,23 +77,66 @@ export class CallsRetryScheduler {
     });
 
     for (const order of pendingOrders) {
-      if (order.callAttempts >= order.merchant.maxCallRetries) {
-        if (!['CANCELLED', 'VERIFIED'].includes(order.status)) {
-          await this.notifications.autoCancelAfterMaxAttempts(
-            order.merchantId,
-            order.id,
-          );
+      const cfg = merchantDialConfig(order.merchant);
+      const lifetime = lifetimeLimitOf(order.merchant);
+
+      // Lifetime exhausted — stop dialing (manual cancel in UI); no auto-cancel
+      if (order.callAttempts >= lifetime) {
+        if (order.nextCallAt != null) {
+          await this.prisma.order.update({
+            where: { id: order.id },
+            data: { nextCallAt: null },
+          });
         }
         continue;
       }
 
-      const tz = order.merchant.timezone || 'Asia/Dhaka';
-      if (!isWithinCallWindow(tz)) continue;
+      if (
+        !isWithinCallWindow(
+          cfg.timezone,
+          cfg.callWindowStartMin,
+          cfg.callWindowEndMin,
+        )
+      ) {
+        // Park until next window open if nextCallAt is missing or already due
+        const openAt = nextWindowOpenAt(
+          cfg.timezone,
+          cfg.callWindowStartMin,
+          cfg.callWindowEndMin,
+          now,
+        );
+        if (!order.nextCallAt || order.nextCallAt.getTime() < openAt.getTime()) {
+          await this.prisma.order.update({
+            where: { id: order.id },
+            data: { nextCallAt: openAt },
+          });
+        }
+        continue;
+      }
+
+      const callsToday = await countCallsTodayForOrder(
+        this.prisma,
+        order.id,
+        order.merchant,
+        now,
+      );
+      if (callsToday >= (cfg.dailyCallLimit ?? 10)) {
+        const openAt = nextWindowOpenAt(
+          cfg.timezone,
+          cfg.callWindowStartMin,
+          cfg.callWindowEndMin,
+          new Date(now.getTime() + 60_000),
+        );
+        await this.prisma.order.update({
+          where: { id: order.id },
+          data: { nextCallAt: openAt },
+        });
+        continue;
+      }
 
       const lastCall = order.calls[0];
       const minSpacingMs = Math.max(order.merchant.retryIntervalMin, 30) * 60 * 1000;
 
-      // First call: create queue + 20s cron
       if (order.callAttempts === 0) {
         if (!lastCall && order.status === 'PENDING') {
           await this.queueCall(order.id, order.merchantId, false, `call-first-${order.id}`);
@@ -105,13 +161,11 @@ export class CallsRetryScheduler {
       const dueBySchedule =
         order.nextCallAt != null && order.nextCallAt.getTime() <= now.getTime();
 
-      // Attempt 2: 2 minutes after first if nextCallAt missing (legacy / missed set)
       const dueSecondCall =
         order.callAttempts === 1 &&
         order.nextCallAt == null &&
         timeSinceLastCall >= SECOND_CALL_DELAY_MS;
 
-      // Day follow-ups (3+): min spacing fallback when nextCallAt unset
       const dueBySpacing =
         order.callAttempts >= 2 &&
         order.nextCallAt == null &&
@@ -121,7 +175,7 @@ export class CallsRetryScheduler {
 
       const nextAttempt = order.callAttempts + 1;
       this.logger.log(
-        `Retry ${nextAttempt}/${order.merchant.maxCallRetries} for ${order.orderNumber}`,
+        `Retry ${nextAttempt}/${lifetime} for ${order.orderNumber}`,
       );
       await this.queueCall(
         order.id,

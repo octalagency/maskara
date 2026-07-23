@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { lifetimeLimitOf } from '../common/utils/dial-merchant.util';
 
 @Injectable()
 export class VoiceWebhookService {
@@ -314,7 +315,7 @@ export class VoiceWebhookService {
         return { ok: true };
       }
 
-      if (call.attemptNumber < call.merchant.maxCallRetries) {
+      if (call.attemptNumber < lifetimeLimitOf(call.merchant)) {
         const pending = await this.prisma.order.update({
           where: { id: call.orderId },
           data: { status: 'PENDING' },
@@ -323,11 +324,14 @@ export class VoiceWebhookService {
           verifyStatus: 'pending',
         });
       } else {
-        // Max retries exhausted → cancel on Maskara + website (ShopIn/Woo)
-        await this.notifications.autoCancelAfterMaxAttempts(
-          call.merchantId,
-          call.orderId,
-        );
+        // Lifetime exhausted — stop auto-dial; merchant cancels manually
+        const pending = await this.prisma.order.update({
+          where: { id: call.orderId },
+          data: { status: 'PENDING', nextCallAt: null },
+        });
+        await this.notifications.pushOrderUpdate(call.merchant, pending, {
+          verifyStatus: 'pending',
+        });
       }
     }
 

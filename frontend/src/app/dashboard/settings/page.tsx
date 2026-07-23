@@ -67,8 +67,13 @@ export default function SettingsPage() {
               customGreeting: m.customGreeting?.trim() || DEFAULT_SCRIPT,
               voiceId,
               speechRate,
-              maxCallRetries: m.maxCallRetries ?? 10,
+              maxCallRetries: m.maxCallRetries ?? m.lifetimeCallLimit ?? 20,
+              lifetimeCallLimit: m.lifetimeCallLimit ?? m.maxCallRetries ?? 20,
               retryIntervalMin: m.retryIntervalMin ?? 90,
+              dailyCallLimit: m.dailyCallLimit ?? 10,
+              callWindowStartMin: m.callWindowStartMin ?? 580,
+              callWindowEndMin: m.callWindowEndMin ?? 1320,
+              firstHourCallLimit: m.firstHourCallLimit ?? 3,
             })
             .catch(() => undefined);
         }
@@ -152,8 +157,13 @@ export default function SettingsPage() {
         customGreeting: next.customGreeting?.trim() || DEFAULT_SCRIPT,
         voiceId: normalizeVoiceId(next.voiceId) || DEFAULT_VOICE,
         speechRate: clampSpeechRate(next.speechRate),
-        maxCallRetries: next.maxCallRetries ?? 10,
+        maxCallRetries: next.maxCallRetries ?? next.lifetimeCallLimit ?? 20,
+        lifetimeCallLimit: next.lifetimeCallLimit ?? next.maxCallRetries ?? 20,
         retryIntervalMin: next.retryIntervalMin ?? 90,
+        dailyCallLimit: next.dailyCallLimit ?? 10,
+        callWindowStartMin: next.callWindowStartMin ?? 580,
+        callWindowEndMin: next.callWindowEndMin ?? 1320,
+        firstHourCallLimit: next.firstHourCallLimit ?? 3,
       });
       setMerchant({
         ...updated,
@@ -429,39 +439,13 @@ export default function SettingsPage() {
 
           <section className="card space-y-4">
             <h3 className="section-title">কল রিট্রাই</h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="label-muted">দিনে সর্বোচ্চ কল</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={10}
-                  className="input mt-1"
-                  value={merchant.maxCallRetries ?? 10}
-                  onChange={(e) =>
-                    setMerchant({
-                      ...merchant,
-                      maxCallRetries: Math.min(10, Math.max(1, +e.target.value)),
-                    })
-                  }
-                />
-              </div>
-              <div>
-                <label className="label-muted">রিট্রাই ইন্টারভাল (মিনিট)</label>
-                <input
-                  type="number"
-                  min={5}
-                  className="input mt-1"
-                  value={merchant.retryIntervalMin ?? 90}
-                  onChange={(e) =>
-                    setMerchant({
-                      ...merchant,
-                      retryIntervalMin: Math.max(5, +e.target.value),
-                    })
-                  }
-                />
-              </div>
-            </div>
+            <p className="text-sm text-slate-500">
+              ডায়াল উইন্ডো, দৈনিক/মোট কল লিমিট ও রিট্রাই এখন{' '}
+              <a href="/dashboard/call-system" className="font-semibold text-brand-600 hover:underline">
+                কল সিস্টেম
+              </a>{' '}
+              মেনু থেকে কন্ট্রোল করুন। সব স্টোরে একই সিডিউল চলে।
+            </p>
           </section>
 
           <button type="submit" className="btn-primary w-full sm:w-auto" disabled={saving}>

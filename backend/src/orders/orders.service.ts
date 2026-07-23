@@ -4,6 +4,7 @@ import { Queue } from 'bull';
 import { Prisma, OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import {
@@ -17,6 +18,7 @@ export class OrdersService {
   constructor(
     private prisma: PrismaService,
     private subscriptions: SubscriptionsService,
+    private notifications: NotificationsService,
     @InjectQueue('calls') private callsQueue: Queue,
   ) {}
 
@@ -283,6 +285,14 @@ export class OrdersService {
     } else if (dto.status === 'CANCELLED') {
       await this.updateDailyUsage(merchantId, 'ordersCancelled');
       await this.subscriptions.consumeOrderQuota(merchantId, order.id);
+    }
+
+    const merchant = await this.prisma.merchant.findUnique({ where: { id: merchantId } });
+    if (merchant && (dto.status === 'VERIFIED' || dto.status === 'CANCELLED')) {
+      await this.notifications.pushOrderUpdate(merchant, updated, {
+        outcome: dto.status === 'VERIFIED' ? 'CONFIRMED' : 'CANCELLED',
+        verifyStatus: dto.status === 'VERIFIED' ? 'verified' : 'cancelled',
+      });
     }
 
     return updated;

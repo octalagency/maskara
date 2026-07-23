@@ -319,6 +319,13 @@ class ApiClient {
     return this.request(`/orders/${orderId}/retry-call`, { method: 'POST' });
   }
 
+  updateOrderStatus(orderId: string, status: string) {
+    return this.request(`/orders/${orderId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+  }
+
   // Calls
   getCalls(params?: Record<string, string>) {
     const query = params ? '?' + new URLSearchParams(params).toString() : '';
@@ -713,6 +720,11 @@ export interface Merchant {
   voiceLanguage?: string;
   maxCallRetries?: number;
   retryIntervalMin?: number;
+  callWindowStartMin?: number;
+  callWindowEndMin?: number;
+  dailyCallLimit?: number;
+  lifetimeCallLimit?: number;
+  firstHourCallLimit?: number;
 }
 
 export interface ApiKey {

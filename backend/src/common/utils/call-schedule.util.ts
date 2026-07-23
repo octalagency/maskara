@@ -1,19 +1,29 @@
 /**
  * Call schedule:
- * 1) Attempt 1 — ASAP (queue on create + 20s backup cron), any hour
- * 2) Attempt 2 — 2 minutes later if still unanswered
- * 3) Attempts 3–10 — 8 slots staggered across the calendar day with per-order jitter
+ * 1) Attempt 1 — ASAP within call window (~20s backup cron)
+ * 2) Attempt 2 — 2 minutes later
+ * 3) Attempt 3 — within first hour (~15–20 min after attempt 2)
+ * 4) Attempts 4..dailyCap — staggered until window end
+ * 5) Next day resumes at window open until lifetime cap (manual cancel, no auto-cancel)
  */
 
+import {
+  DEFAULT_WINDOW_END_MIN,
+  DEFAULT_WINDOW_START_MIN,
+  nextWindowOpenAt,
+  windowBoundsForDay,
+  zonedWallTimeToUtc,
+} from './call-window.util';
+
 const DEFAULT_TZ = 'Asia/Dhaka';
-/** Full day — no 8 AM / 10 PM gate. */
-const DEFAULT_START_HOUR = 0;
-const DEFAULT_END_HOUR = 24;
 
 /** Delay between first and second call. */
 export const SECOND_CALL_DELAY_MS = 2 * 60 * 1000;
 
-/** Floor spacing between day follow-ups (merchant retryIntervalMin may be higher). */
+/** Delay between second and third call (still inside first hour). */
+export const THIRD_CALL_DELAY_MS = 18 * 60 * 1000;
+
+/** Floor spacing between day follow-ups. */
 export const MIN_FOLLOW_UP_GAP_MIN = 45;
 
 function hashOrderId(orderId: string): number {
@@ -49,56 +59,43 @@ function zonedParts(date: Date, timezone: string) {
   };
 }
 
-/** Wall-clock time in `timezone` → UTC Date (accurate for Asia/Dhaka). */
-export function zonedWallTimeToUtc(
-  year: number,
-  month: number,
-  day: number,
-  hour: number,
-  minute: number,
-  timezone: string,
-): Date {
-  let utc = Date.UTC(year, month - 1, day, hour, minute, 0);
-  for (let i = 0; i < 3; i++) {
-    const p = zonedParts(new Date(utc), timezone);
-    const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
-    const targetAsUtc = Date.UTC(year, month - 1, day, hour, minute, 0);
-    utc += targetAsUtc - asUtc;
-  }
-  return new Date(utc);
-}
-
-function windowBoundsForDay(
-  ref: Date,
-  timezone: string,
-  startHour: number,
-  endHour: number,
-): { start: Date; end: Date } {
-  const p = zonedParts(ref, timezone);
-  return {
-    start: zonedWallTimeToUtc(p.year, p.month, p.day, startHour, 0, timezone),
-    end: zonedWallTimeToUtc(p.year, p.month, p.day, endHour, 0, timezone),
-  };
-}
-
 function addCalendarDays(ref: Date, days: number, timezone: string): Date {
   const p = zonedParts(ref, timezone);
   const noon = zonedWallTimeToUtc(p.year, p.month, p.day, 12, 0, timezone);
   return new Date(noon.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
+export interface DialMerchantConfig {
+  timezone?: string | null;
+  retryIntervalMin?: number;
+  callWindowStartMin?: number;
+  callWindowEndMin?: number;
+  dailyCallLimit?: number;
+  lifetimeCallLimit?: number;
+  maxCallRetries?: number;
+  firstHourCallLimit?: number;
+}
+
+export function resolveLifetimeLimit(m: DialMerchantConfig): number {
+  return Math.max(1, m.lifetimeCallLimit ?? m.maxCallRetries ?? 20);
+}
+
+export function resolveDailyLimit(m: DialMerchantConfig): number {
+  return Math.max(1, Math.min(20, m.dailyCallLimit ?? 10));
+}
+
 export interface FollowUpScheduleOptions {
   orderId: string;
   from?: Date;
   timezone?: string;
-  startHour?: number;
-  endHour?: number;
+  startMin?: number;
+  endMin?: number;
   followUpCount?: number;
   minGapMinutes?: number;
 }
 
 /**
- * Up to `followUpCount` Date slots (attempts 3..N), spread across the call window
+ * Up to `followUpCount` Date slots spread across the call window
  * with per-order phase so different customers get different times.
  */
 export function computeFollowUpSchedule(opts: FollowUpScheduleOptions): Date[] {
@@ -106,9 +103,9 @@ export function computeFollowUpSchedule(opts: FollowUpScheduleOptions): Date[] {
     orderId,
     from = new Date(),
     timezone = DEFAULT_TZ,
-    startHour = DEFAULT_START_HOUR,
-    endHour = DEFAULT_END_HOUR,
-    followUpCount = 8,
+    startMin = DEFAULT_WINDOW_START_MIN,
+    endMin = DEFAULT_WINDOW_END_MIN,
+    followUpCount = 7,
     minGapMinutes = MIN_FOLLOW_UP_GAP_MIN,
   } = opts;
 
@@ -116,18 +113,18 @@ export function computeFollowUpSchedule(opts: FollowUpScheduleOptions): Date[] {
 
   const gapMs = Math.max(minGapMinutes, MIN_FOLLOW_UP_GAP_MIN) * 60 * 1000;
   const hash = hashOrderId(orderId);
-  const phaseMs = (hash % 90) * 60 * 1000; // 0–89 min phase
+  const phaseMs = (hash % 40) * 60 * 1000; // 0–39 min phase
 
   const slots: Date[] = [];
   let dayOffset = 0;
 
-  while (slots.length < followUpCount && dayOffset <= 3) {
+  while (slots.length < followUpCount && dayOffset <= 14) {
     const dayRef = dayOffset === 0 ? from : addCalendarDays(from, dayOffset, timezone);
     const { start: winStart, end: winEnd } = windowBoundsForDay(
       dayRef,
       timezone,
-      startHour,
-      endHour,
+      startMin,
+      endMin,
     );
 
     let earliest =
@@ -142,12 +139,12 @@ export function computeFollowUpSchedule(opts: FollowUpScheduleOptions): Date[] {
 
     const remaining = followUpCount - slots.length;
     const windowLeft = winEnd.getTime() - earliest;
-    const step = Math.max(gapMs, Math.floor(windowLeft / remaining));
+    const step = Math.max(gapMs, Math.floor(windowLeft / Math.max(remaining, 1)));
 
     for (let i = 0; i < remaining; i++) {
-      const micro = (((hash + slots.length * 17) % 15) - 7) * 60 * 1000;
+      const micro = (((hash + slots.length * 17) % 11) - 5) * 60 * 1000;
       let t = earliest + i * step + micro;
-      if (t < winStart.getTime()) t = winStart.getTime() + ((hash + i) % 20) * 60 * 1000;
+      if (t < winStart.getTime()) t = winStart.getTime() + ((hash + i) % 15) * 60 * 1000;
       if (t >= winEnd.getTime()) break;
       if (slots.length && t < slots[slots.length - 1].getTime() + gapMs) {
         t = slots[slots.length - 1].getTime() + gapMs;
@@ -163,51 +160,116 @@ export function computeFollowUpSchedule(opts: FollowUpScheduleOptions): Date[] {
   return slots;
 }
 
+function clampIntoWindowOrNextOpen(
+  candidate: Date,
+  timezone: string,
+  startMin: number,
+  endMin: number,
+): Date {
+  const { start, end } = windowBoundsForDay(candidate, timezone, startMin, endMin);
+  if (candidate.getTime() < start.getTime()) return start;
+  if (candidate.getTime() >= end.getTime()) {
+    return nextWindowOpenAt(timezone, startMin, endMin, new Date(end.getTime() + 60_000));
+  }
+  return candidate;
+}
+
 /**
  * After an attempt is counted (`completedAttempts` / callAttempts), when should the next run?
- * - After 1st: +2 minutes (second call)
- * - After 2nd+: staggered day slots for attempts 3–max
  */
 export function computeNextCallAt(opts: {
   orderId: string;
-  /** callAttempts after the attempt just started / finished. */
   completedAttempts: number;
-  maxAttempts: number;
   from?: Date;
-  timezone?: string;
-  /** Merchant retryIntervalMin — used as follow-up min gap. */
-  minSpacingMin?: number;
-  minGapMinutes?: number;
+  merchant: DialMerchantConfig;
+  /** Calls already placed for this order today (in merchant TZ). */
+  callsToday?: number;
+  orderCreatedAt?: Date;
 }): Date | null {
   const {
     orderId,
     completedAttempts,
-    maxAttempts,
     from = new Date(),
-    timezone = DEFAULT_TZ,
+    merchant,
+    callsToday = completedAttempts,
+    orderCreatedAt,
   } = opts;
 
-  const minGapMinutes =
-    opts.minGapMinutes ?? opts.minSpacingMin ?? MIN_FOLLOW_UP_GAP_MIN;
+  const timezone = merchant.timezone || DEFAULT_TZ;
+  const startMin = merchant.callWindowStartMin ?? DEFAULT_WINDOW_START_MIN;
+  const endMin = merchant.callWindowEndMin ?? DEFAULT_WINDOW_END_MIN;
+  const lifetime = resolveLifetimeLimit(merchant);
+  const daily = resolveDailyLimit(merchant);
+  const firstHourCap = Math.max(1, Math.min(10, merchant.firstHourCallLimit ?? 3));
+  const minGapMinutes = Math.max(
+    MIN_FOLLOW_UP_GAP_MIN,
+    merchant.retryIntervalMin ?? MIN_FOLLOW_UP_GAP_MIN,
+  );
 
-  if (completedAttempts >= maxAttempts) return null;
+  if (completedAttempts >= lifetime) return null;
 
-  // Attempt 2: exactly 2 minutes after the first call was initiated
-  if (completedAttempts === 1) {
-    return new Date(from.getTime() + SECOND_CALL_DELAY_MS);
+  // Hit daily cap → resume next window open
+  if (callsToday >= daily) {
+    return nextWindowOpenAt(
+      timezone,
+      startMin,
+      endMin,
+      new Date(from.getTime() + 60_000),
+    );
   }
 
-  // Attempts 3..max: staggered across remaining call window
-  const followUpsNeeded = Math.max(0, maxAttempts - 2);
+  // Attempt 2: +2 minutes
+  if (completedAttempts === 1) {
+    return clampIntoWindowOrNextOpen(
+      new Date(from.getTime() + SECOND_CALL_DELAY_MS),
+      timezone,
+      startMin,
+      endMin,
+    );
+  }
+
+  // Attempt 3 (and any remaining first-hour slots): within first hour of order
+  if (completedAttempts >= 2 && completedAttempts < firstHourCap) {
+    const base = orderCreatedAt ?? from;
+    const hourEnd = new Date(base.getTime() + 60 * 60 * 1000);
+    let candidate = new Date(from.getTime() + THIRD_CALL_DELAY_MS);
+    if (candidate.getTime() > hourEnd.getTime()) {
+      candidate = new Date(Math.min(hourEnd.getTime() - 60_000, from.getTime() + 5 * 60 * 1000));
+    }
+    if (candidate.getTime() <= from.getTime()) {
+      candidate = new Date(from.getTime() + 5 * 60 * 1000);
+    }
+    return clampIntoWindowOrNextOpen(candidate, timezone, startMin, endMin);
+  }
+
+  // Remaining attempts for today (up to daily), then spill to next days until lifetime
+  const remainingLifetime = lifetime - completedAttempts;
+  const remainingTodayBudget = Math.max(0, daily - callsToday);
+  // Schedule enough slots across days for remaining lifetime (capped)
+  const followUpsNeeded = Math.min(remainingLifetime, Math.max(remainingTodayBudget, daily) + daily * 2);
   const schedule = computeFollowUpSchedule({
     orderId,
     from,
     timezone,
-    followUpCount: followUpsNeeded,
+    startMin,
+    endMin,
+    followUpCount: Math.max(1, followUpsNeeded),
     minGapMinutes,
   });
 
-  // completedAttempts=2 → schedule[0] (attempt 3); =3 → schedule[1], …
-  const idx = completedAttempts - 2;
-  return schedule[idx] ?? null;
+  return schedule[0] ?? nextWindowOpenAt(timezone, startMin, endMin, from);
+}
+
+/** First dial time for a brand-new order (attempt 0 → 1). */
+export function computeFirstCallAt(
+  merchant: DialMerchantConfig,
+  now = new Date(),
+): Date {
+  const timezone = merchant.timezone || DEFAULT_TZ;
+  const startMin = merchant.callWindowStartMin ?? DEFAULT_WINDOW_START_MIN;
+  const endMin = merchant.callWindowEndMin ?? DEFAULT_WINDOW_END_MIN;
+  const open = nextWindowOpenAt(timezone, startMin, endMin, now);
+  // If already inside window, dial ASAP (caller may enqueue immediately)
+  if (open.getTime() <= now.getTime() + 1000) return now;
+  return open;
 }

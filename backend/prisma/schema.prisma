@@ -166,9 +166,14 @@ model Merchant {
   webhookUrl       String?
   webhookSecret    String?
 
-  // Retry settings — ASAP + 2min retry + 8 staggered/day (08:00–22:00 BD)
-  maxCallRetries   Int @default(10)
-  retryIntervalMin Int @default(90)
+  // Dial schedule — first hour burst + daily window + lifetime cap (manual cancel)
+  maxCallRetries      Int @default(20) // legacy alias; prefer lifetimeCallLimit
+  retryIntervalMin    Int @default(90)
+  callWindowStartMin  Int @default(580)  // 09:40 Asia/Dhaka
+  callWindowEndMin    Int @default(1320) // 22:00
+  dailyCallLimit      Int @default(10)
+  lifetimeCallLimit   Int @default(20)
+  firstHourCallLimit  Int @default(3)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
