@@ -3,7 +3,7 @@
  * Plugin Name: Maskara Order Verification
  * Plugin URI: https://maskara.bd
  * Description: WooCommerce COD order verification via Maskara AI voice. Confirm sets Completed + Pathao deploy; miss/cancel sets Cancelled.
- * Version: 1.5.14
+ * Version: 1.5.15
  * Author: Maskara
  * Author URI: https://maskara.bd
  * Text Domain: maskara-woocommerce
@@ -18,9 +18,29 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('MASKARA_VERSION', '1.5.14');
+define('MASKARA_VERSION', '1.5.15');
 define('MASKARA_PLUGIN_FILE', __FILE__);
 define('MASKARA_PLUGIN_DIR', plugin_dir_path(__FILE__));
+
+/**
+ * Declare WooCommerce feature compatibility (HPOS / Cart-Checkout blocks).
+ * Prevents the admin “incompatible plugins” banner for Maskara.
+ */
+add_action('before_woocommerce_init', function () {
+    if (!class_exists(\Automattic\WooCommerce\Utilities\FeaturesUtil::class)) {
+        return;
+    }
+    \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility(
+        'custom_order_tables',
+        MASKARA_PLUGIN_FILE,
+        true
+    );
+    \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility(
+        'cart_checkout_blocks',
+        MASKARA_PLUGIN_FILE,
+        true
+    );
+});
 
 add_filter('maskara_sslverify', function ($verify) {
     $url = get_option('maskara_api_url', '');
@@ -63,11 +83,11 @@ function maskara_init() {
         new Maskara_Order_Columns();
     }
 
-    if (get_option('maskara_db_version') !== '1.5.14') {
+    if (get_option('maskara_db_version') !== '1.5.15') {
         Maskara_Shipments::create_table();
         Maskara_Shipments::backfill_collected_amounts();
         Maskara_Sync::schedule();
-        update_option('maskara_db_version', '1.5.14');
+        update_option('maskara_db_version', '1.5.15');
     }
 }
 add_action('plugins_loaded', 'maskara_init', 20);

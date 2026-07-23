@@ -52,7 +52,7 @@ manifest = {
     "tested": "6.7",
     "requires_php": "7.4",
     "description": "AI voice order verification for WooCommerce. Confirm sets Completed + Pathao auto-deploy. Miss/cancel sets Cancelled.",
-    "changelog": f"<h4>{version}</h4><ul><li>Collected Amount + Delivery Charges KPI ঠিক (delivered COD fallback)</li><li>Courier dashboard UI: alignment, sizing, professional cards</li><li>Pathao sync preserves delivery fee; Sync now backfills money fields</li></ul><h4>1.5.13</h4><ul><li>Website Completed → Maskara Manual Complete + stop calls</li></ul><h4>1.5.12</h4><ul><li>WP Dashboard খুললেই Maskara Dashboard panel</li></ul>",
+    "changelog": f"<h4>{version}</h4><ul><li>WooCommerce HPOS + Cart/Checkout Blocks compatibility declared (incompatible banner fix)</li></ul><h4>1.5.14</h4><ul><li>Collected Amount + Delivery Charges KPI ঠিক</li><li>Courier dashboard UI polish</li></ul><h4>1.5.13</h4><ul><li>Website Completed → Maskara Manual Complete + stop calls</li></ul>",
 }
 update_json.parent.mkdir(parents=True, exist_ok=True)
 update_json.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
@@ -88,7 +88,7 @@ cp -f "$DOWNLOADS_DIR/maskara-woocommerce.zip" "$PUBLIC_DIR/maskara-woocommerce.
 cp -f "$DOWNLOADS_DIR/maskara-woocommerce.zip" "$PUBLIC_DIR/maskara-woocommerce-$VERSION.zip"
 
 # Keep legacy URLs serving the latest full package.
-for legacy in 1.1.0 1.2.0 1.4.0 1.5.0 1.5.1 1.5.2 1.5.3 1.5.4 1.5.5 1.5.6 1.5.7 1.5.8 1.5.9 1.5.10 1.5.11 1.5.12 1.5.13; do
+for legacy in 1.1.0 1.2.0 1.4.0 1.5.0 1.5.1 1.5.2 1.5.3 1.5.4 1.5.5 1.5.6 1.5.7 1.5.8 1.5.9 1.5.10 1.5.11 1.5.12 1.5.13 1.5.14; do
   cp -f "$DOWNLOADS_DIR/maskara-woocommerce.zip" "$PUBLIC_DIR/maskara-woocommerce-$legacy.zip"
 done
 

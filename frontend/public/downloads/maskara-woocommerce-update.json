@@ -1,12 +1,12 @@
 {
   "name": "Maskara Order Verification",
   "slug": "maskara-woocommerce",
-  "version": "1.5.14",
+  "version": "1.5.15",
   "download_url": "https://app.maskara.bd/downloads/maskara-woocommerce.zip",
   "homepage": "https://maskara.bd",
   "requires": "5.8",
   "tested": "6.7",
   "requires_php": "7.4",
   "description": "AI voice order verification for WooCommerce. Confirm sets Completed + Pathao auto-deploy. Miss/cancel sets Cancelled.",
-  "changelog": "<h4>1.5.14</h4><ul><li>Collected Amount + Delivery Charges KPI \u09a0\u09bf\u0995 (delivered COD fallback)</li><li>Courier dashboard UI: alignment, sizing, professional cards</li><li>Pathao sync preserves delivery fee; Sync now backfills money fields</li></ul><h4>1.5.13</h4><ul><li>Website Completed \u2192 Maskara Manual Complete + stop calls</li></ul><h4>1.5.12</h4><ul><li>WP Dashboard \u0996\u09c1\u09b2\u09b2\u09c7\u0987 Maskara Dashboard panel</li></ul>"
+  "changelog": "<h4>1.5.15</h4><ul><li>WooCommerce HPOS + Cart/Checkout Blocks compatibility declared (incompatible banner fix)</li></ul><h4>1.5.14</h4><ul><li>Collected Amount + Delivery Charges KPI \u09a0\u09bf\u0995</li><li>Courier dashboard UI polish</li></ul><h4>1.5.13</h4><ul><li>Website Completed \u2192 Maskara Manual Complete + stop calls</li></ul>"
 }
