@@ -95,7 +95,7 @@ export class EpbxProvider implements VoiceProvider {
       'দয়া করে ১ চাপুন নিশ্চিত করতে, ২ চাপুন বাতিল করতে, পুনরায় শুনতে ০ চাপুন।';
 
     this.logger.log(
-      `[voice] synth start callId=${params.callId} maskara=${maskaraVoice.voiceId} portal=${portalVoice.voiceId} gender=${portalVoice.gender} chars=${ttsText.length}`,
+      `[voice] synth start callId=${params.callId} maskara=${maskaraVoice.voiceId} portal=${portalVoice.voiceId} gender=${portalVoice.gender} chars=${ttsText.length} products=${(params.productNames || []).join('|') || 'none'} preview=${ttsText.slice(0, 80)}`,
     );
 
     const prompt = await this.synthAndHost(

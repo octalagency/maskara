@@ -130,6 +130,19 @@ describe('buildOrderVerificationPrompt', () => {
     expect(two).toContain('হেয়ার অয়েল এবং ফেসওয়াশ');
     expect(two).toContain('২৫০০');
   });
+
+  it('keeps product names after sanitize (regression: Latin PRODUCTS token was stripped)', () => {
+    const text = buildOrderVerificationPrompt({
+      storeName: 'ফিলো বাংলাদেশ',
+      totalAmount: 650,
+      customGreeting:
+        'আসসালামু আলাইকুম। {{storeName}} থেকে আপনি {{products}} অর্ডার করেছেন। আপনার মোট বিল {{amount}} টাকা।',
+      productNames: ['ফিলো ব্লক হাউস সেট (১৫০ পিস)'],
+    });
+    expect(text).toContain('ফিলো ব্লক হাউস সেট');
+    expect(text).not.toContain('⟦পণ্যতালিকা⟧');
+    expect(text).not.toMatch(/PRODUCTS/i);
+  });
 });
 
 describe('formatProductNamesBangla', () => {

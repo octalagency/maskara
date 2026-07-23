@@ -50,13 +50,20 @@ export function extractProductNamesFromItems(items: unknown): string[] {
   for (const raw of items) {
     if (!raw || typeof raw !== 'object') continue;
     const o = raw as Record<string, unknown>;
+    const nested =
+      o.product && typeof o.product === 'object'
+        ? (o.product as Record<string, unknown>)
+        : null;
     const name = String(
       o.name ||
         o.title ||
         o.product_name ||
         o.productName ||
-        o.product ||
         o.item_name ||
+        o.itemName ||
+        (typeof o.product === 'string' ? o.product : '') ||
+        nested?.name ||
+        nested?.title ||
         '',
     ).trim();
     if (name) names.push(name);
@@ -104,20 +111,22 @@ export function buildOrderVerificationPrompt(params: {
     (params.products || '').trim() ||
     formatProductNamesBangla(params.productNames || []);
 
-  // Fill everything except products first, sanitize, then inject products
-  // so English/Banglish product titles are not stripped by sanitizeBanglaSpeech.
+  // Bangla-only sentinel — MUST NOT contain Latin letters, or sanitizeBanglaSpeech
+  // strips the token and product names never get injected (live calls said "একটি পণ্য"/blank).
+  const PRODUCTS_TOKEN = '⟦পণ্যতালিকা⟧';
+
   const fillBase = (template: string) =>
     template
       .replace(/\{\{\s*storeName\s*\}\}/gi, store)
       .replace(/\{\{\s*customerName\s*\}\}/gi, name || 'মাননীয় গ্রাহক')
       .replace(/\{\{\s*orderNumber\s*\}\}/gi, orderNumber)
       .replace(/\{\{\s*amount\s*\}\}/gi, amount)
-      .replace(/\{\{\s*products?\s*\}\}/gi, '\u0000PRODUCTS\u0000')
-      .replace(/\{\{\s*items?\s*\}\}/gi, '\u0000PRODUCTS\u0000')
-      .replace(/\{\{\s*productNames?\s*\}\}/gi, '\u0000PRODUCTS\u0000');
+      .replace(/\{\{\s*products?\s*\}\}/gi, PRODUCTS_TOKEN)
+      .replace(/\{\{\s*items?\s*\}\}/gi, PRODUCTS_TOKEN)
+      .replace(/\{\{\s*productNames?\s*\}\}/gi, PRODUCTS_TOKEN);
 
   const injectProducts = (text: string) =>
-    text.split('\u0000PRODUCTS\u0000').join(products);
+    text.split(PRODUCTS_TOKEN).join(products);
 
   let template = params.customGreeting?.trim() || DEFAULT_CALL_SCRIPT;
   // Custom English/Banglish scripts → force default Bangla (never synth English)
