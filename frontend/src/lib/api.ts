@@ -79,6 +79,14 @@ class ApiClient {
 
     if (!res.ok) {
       const error = await res.json().catch(() => ({ message: 'Request failed' }));
+      if (res.status === 401 && typeof window !== 'undefined') {
+        this.setToken(null);
+        const path = window.location.pathname || '';
+        if (!path.startsWith('/login') && !path.startsWith('/register')) {
+          window.location.href = `/login?next=${encodeURIComponent(path)}`;
+        }
+        throw new Error('সেশন শেষ — আবার লগইন করুন');
+      }
       throw new Error(error.message || `HTTP ${res.status}`);
     }
 

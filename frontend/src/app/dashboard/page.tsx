@@ -101,7 +101,7 @@ export default function DashboardPage() {
     ]).then(([s, r]) => {
       setStats(s);
       setReport(Array.isArray(r) ? r : []);
-      if (!s) setError('স্ট্যাটস লোড হয়নি। API চালু আছে কিনা চেক করুন।');
+      if (!s) setError('স্ট্যাটস লোড হয়নি। লগআউট করে আবার লগইন করুন, বা API চালু আছে কিনা চেক করুন।');
       else setError('');
       setLoading(false);
     });
