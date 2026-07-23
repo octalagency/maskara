@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  resolveOrderStore,
+  storeKeyToPrismaFilter,
+} from '../orders/order-store.util';
 
 /** Dhaka calendar day YYYY-MM-DD */
 export function dayKey(d: Date): string {
@@ -51,6 +55,7 @@ export class ReportsService {
     days = 30,
     from?: string,
     to?: string,
+    store?: string,
   ) {
     let startDate: Date;
     let endDate: Date;
@@ -69,11 +74,25 @@ export class ReportsService {
       startDate.setDate(startDate.getDate() - (dayCount - 1));
     }
 
-    const [orders, calls] = await Promise.all([
+    const storeFilter = storeKeyToPrismaFilter(store);
+
+    const integrations = await this.prisma.integration.findMany({
+      where: { merchantId, isActive: true },
+      select: {
+        id: true,
+        type: true,
+        name: true,
+        credentials: true,
+        webhookUrl: true,
+      },
+    });
+
+    const [ordersRaw, calls] = await Promise.all([
       this.prisma.order.findMany({
         where: {
           merchantId,
           excludedFromStats: false,
+          ...(storeFilter || {}),
           OR: [
             { createdAt: { gte: startDate, lte: endDate } },
             { verifiedAt: { gte: startDate, lte: endDate } },
@@ -86,7 +105,8 @@ export class ReportsService {
           verifiedAt: true,
           cancelledAt: true,
           metadata: true,
-          manualComplete: true,
+          source: true,
+          orderNumber: true,
         },
       }),
       this.prisma.call.findMany({
@@ -97,6 +117,16 @@ export class ReportsService {
         select: { status: true, outcome: true, createdAt: true },
       }),
     ]);
+
+    const matchesStore = (key: string) => {
+      if (!store || store === 'all') return true;
+      if (store === 'shopin') return key === 'shopin' || key.startsWith('shopin:');
+      return key === store;
+    };
+
+    const orders = ordersRaw.filter((o) =>
+      matchesStore(resolveOrderStore(o, integrations).key),
+    );
 
     const byDay: Record<
       string,

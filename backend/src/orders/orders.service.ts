@@ -6,6 +6,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import {
+  connectedStoreBuckets,
+  resolveOrderStore,
+  storeKeyToPrismaFilter,
+} from './order-store.util';
 
 @Injectable()
 export class OrdersService {
@@ -171,6 +176,7 @@ export class OrdersService {
       search?: string;
       from?: string;
       to?: string;
+      store?: string;
     },
   ) {
     const page = params.page || 1;
@@ -187,11 +193,14 @@ export class OrdersService {
       if (!Number.isNaN(to.getTime())) createdAt.lte = to;
     }
 
+    const storeFilter = storeKeyToPrismaFilter(params.store);
+
     const where: Prisma.OrderWhereInput = {
       merchantId,
       excludedFromStats: false,
       ...(params.status && { status: params.status }),
       ...(Object.keys(createdAt).length > 0 && { createdAt }),
+      ...(storeFilter || {}),
       ...(params.search && {
         OR: [
           { orderNumber: { contains: params.search, mode: 'insensitive' } },
@@ -200,6 +209,17 @@ export class OrdersService {
         ],
       }),
     };
+
+    const integrations = await this.prisma.integration.findMany({
+      where: { merchantId, isActive: true },
+      select: {
+        id: true,
+        type: true,
+        name: true,
+        credentials: true,
+        webhookUrl: true,
+      },
+    });
 
     const [orders, total] = await Promise.all([
       this.prisma.order.findMany({
@@ -212,7 +232,19 @@ export class OrdersService {
       this.prisma.order.count({ where }),
     ]);
 
-    return { orders, total, page, limit, totalPages: Math.ceil(total / limit) };
+    const withStore = orders.map((o) => {
+      const store = resolveOrderStore(o, integrations);
+      return { ...o, storeKey: store.key, storeLabel: store.label };
+    });
+
+    return {
+      orders: withStore,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      stores: connectedStoreBuckets(integrations),
+    };
   }
 
   async findOne(merchantId: string, orderId: string) {
@@ -279,7 +311,7 @@ export class OrdersService {
 
   async getStats(
     merchantId: string,
-    opts?: { from?: string; to?: string },
+    opts?: { from?: string; to?: string; store?: string },
   ) {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -292,52 +324,118 @@ export class OrdersService {
       };
     }
 
-    const orderWhere = {
-      merchantId,
-      excludedFromStats: false,
-      ...(createdFilter ? { createdAt: createdFilter } : {}),
+    const integrations = await this.prisma.integration.findMany({
+      where: { merchantId, isActive: true },
+      select: {
+        id: true,
+        type: true,
+        name: true,
+        credentials: true,
+        webhookUrl: true,
+      },
+    });
+
+    const orders = await this.prisma.order.findMany({
+      where: {
+        merchantId,
+        excludedFromStats: false,
+        ...(createdFilter ? { createdAt: createdFilter } : {}),
+      },
+      select: {
+        status: true,
+        source: true,
+        metadata: true,
+        orderNumber: true,
+        createdAt: true,
+        manualComplete: true,
+      },
+    });
+
+    const buckets = connectedStoreBuckets(integrations);
+    const byStoreMap = new Map<
+      string,
+      {
+        key: string;
+        label: string;
+        source: string;
+        totalOrders: number;
+        verifiedOrders: number;
+        cancelledOrders: number;
+        pendingOrders: number;
+        manualCompleteOrders: number;
+      }
+    >();
+    for (const b of buckets) {
+      byStoreMap.set(b.key, {
+        key: b.key,
+        label: b.label,
+        source: b.source,
+        totalOrders: 0,
+        verifiedOrders: 0,
+        cancelledOrders: 0,
+        pendingOrders: 0,
+        manualCompleteOrders: 0,
+      });
+    }
+
+    const matchesStore = (key: string, selected?: string) => {
+      if (!selected || selected === 'all') return true;
+      if (selected === 'shopin') return key === 'shopin' || key.startsWith('shopin:');
+      return key === selected;
     };
 
-    const [
-      total,
-      verified,
-      cancelled,
-      pending,
-      todayOrders,
-      calls,
-      manualComplete,
-    ] = await Promise.all([
-      this.prisma.order.count({ where: orderWhere }),
-      this.prisma.order.count({
-        where: { ...orderWhere, status: 'VERIFIED' },
-      }),
-      this.prisma.order.count({
-        where: { ...orderWhere, status: 'CANCELLED' },
-      }),
-      this.prisma.order.count({
-        where: {
-          ...orderWhere,
-          status: { in: ['PENDING', 'CALLING'] },
-        },
-      }),
-      this.prisma.order.count({
-        where: {
-          merchantId,
-          excludedFromStats: false,
-          createdAt: { gte: todayStart },
-        },
-      }),
-      this.prisma.call.findMany({
-        where: {
-          merchantId,
-          ...(createdFilter ? { createdAt: createdFilter } : {}),
-        },
-        select: { status: true, outcome: true },
-      }),
-      this.prisma.order.count({
-        where: { ...orderWhere, manualComplete: true },
-      }),
-    ]);
+    for (const o of orders) {
+      const store = resolveOrderStore(o, integrations);
+      let row = byStoreMap.get(store.key);
+      if (!row) {
+        row = {
+          key: store.key,
+          label: store.label,
+          source: store.source,
+          totalOrders: 0,
+          verifiedOrders: 0,
+          cancelledOrders: 0,
+          pendingOrders: 0,
+          manualCompleteOrders: 0,
+        };
+        byStoreMap.set(store.key, row);
+      }
+      row.totalOrders++;
+      if (o.status === 'VERIFIED') row.verifiedOrders++;
+      if (o.status === 'CANCELLED') row.cancelledOrders++;
+      if (o.status === 'PENDING' || o.status === 'CALLING') row.pendingOrders++;
+      if (o.manualComplete) row.manualCompleteOrders++;
+    }
+
+    const byStore = [...byStoreMap.values()]
+      .map((s) => ({
+        ...s,
+        orderConfirmRate:
+          s.totalOrders > 0
+            ? Math.round((s.verifiedOrders / s.totalOrders) * 100)
+            : 0,
+      }))
+      .sort((a, b) => b.totalOrders - a.totalOrders);
+
+    const scoped = orders.filter((o) =>
+      matchesStore(resolveOrderStore(o, integrations).key, opts?.store),
+    );
+
+    const total = scoped.length;
+    const verified = scoped.filter((o) => o.status === 'VERIFIED').length;
+    const cancelled = scoped.filter((o) => o.status === 'CANCELLED').length;
+    const pending = scoped.filter((o) =>
+      ['PENDING', 'CALLING'].includes(o.status),
+    ).length;
+    const manualComplete = scoped.filter((o) => o.manualComplete).length;
+    const todayOrders = scoped.filter((o) => o.createdAt >= todayStart).length;
+
+    const calls = await this.prisma.call.count({
+      where: {
+        merchantId,
+        ...(createdFilter ? { createdAt: createdFilter } : {}),
+      },
+    });
 
     const orderConfirmRate =
       total > 0 ? Math.round((verified / total) * 100) : 0;
@@ -351,7 +449,9 @@ export class OrdersService {
       manualCompleteOrders: manualComplete,
       orderConfirmRate,
       callSuccessRate: orderConfirmRate,
-      totalCalls: calls.length,
+      totalCalls: calls,
+      byStore,
+      stores: buckets,
     };
   }
 

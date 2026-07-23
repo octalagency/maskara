@@ -15,7 +15,7 @@ import {
   Mic2,
   Sparkles,
 } from 'lucide-react';
-import { api, OrderStats, DailyReport, Merchant } from '@/lib/api';
+import { api, OrderStats, DailyReport, Merchant, StoreStat } from '@/lib/api';
 import { voiceShort } from '@/lib/voice';
 import { cn } from '@/lib/utils';
 import {
@@ -79,6 +79,7 @@ export default function DashboardPage() {
   const [range, setRange] = useState<DashRange>('week');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
+  const [storeKey, setStoreKey] = useState('all');
 
   const dateWindow = useMemo(
     () => rangeToFromTo(range, customFrom, customTo),
@@ -93,9 +94,9 @@ export default function DashboardPage() {
     if (range === 'custom' && (!customFrom || !customTo)) return;
     setLoading(true);
     Promise.all([
-      api.getOrderStats(dateWindow.from, dateWindow.to).catch(() => null),
+      api.getOrderStats(dateWindow.from, dateWindow.to, storeKey).catch(() => null),
       api
-        .getDailyReport(dateWindow.days, dateWindow.from, dateWindow.to)
+        .getDailyReport(dateWindow.days, dateWindow.from, dateWindow.to, storeKey)
         .catch(() => [] as DailyReport[]),
     ]).then(([s, r]) => {
       setStats(s);
@@ -104,7 +105,7 @@ export default function DashboardPage() {
       else setError('');
       setLoading(false);
     });
-  }, [dateWindow.from, dateWindow.to, dateWindow.days, range, customFrom, customTo]);
+  }, [dateWindow.from, dateWindow.to, dateWindow.days, range, customFrom, customTo, storeKey]);
 
   const chartData = useMemo(
     () => fillDailyReport(report, dateWindow.days),
@@ -113,6 +114,12 @@ export default function DashboardPage() {
   const period = useMemo(() => sumDailyReport(chartData), [chartData]);
   const hasAny =
     period.received > 0 || period.verified > 0 || period.cancelled > 0;
+
+  const storeRows: StoreStat[] = stats?.byStore || [];
+  const storeChips = [
+    { key: 'all', label: 'সব স্টোর' },
+    ...storeRows.map((s) => ({ key: s.key, label: s.label })),
+  ];
 
   const s = stats || {
     totalOrders: 0,
@@ -211,6 +218,23 @@ export default function DashboardPage() {
           )}
         </div>
 
+        {storeChips.length > 1 && (
+          <div className="flex flex-wrap gap-2">
+            {storeChips.map((chip) => (
+              <button
+                key={chip.key}
+                type="button"
+                onClick={() => setStoreKey(chip.key)}
+                className={cn(
+                  storeKey === chip.key ? 'period-chip-active' : 'period-chip-idle',
+                )}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {error && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[14px] text-amber-800">
             {error}
@@ -249,6 +273,41 @@ export default function DashboardPage() {
                 hint={`${s.verifiedOrders}/${s.totalOrders || 0} নিশ্চিত`}
               />
             </section>
+
+            {storeRows.length > 0 && (
+              <section className="card">
+                <div className="mb-4">
+                  <h3 className="section-title">স্টোর অনুযায়ী Confirm Ratio</h3>
+                  <p className="page-subtitle">
+                    ShopIn ও WordPress আলাদা — কোন স্টোরে কনফার্ম রেট বেশি সহজে দেখুন
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {storeRows.map((row) => (
+                    <button
+                      key={row.key}
+                      type="button"
+                      onClick={() => setStoreKey(row.key)}
+                      className={cn(
+                        'rounded-2xl border px-4 py-4 text-left transition',
+                        storeKey === row.key
+                          ? 'border-brand-500 bg-brand-50/80 ring-1 ring-brand-200'
+                          : 'border-slate-200/80 bg-white hover:border-slate-300',
+                      )}
+                    >
+                      <p className="text-[13px] font-semibold text-slate-700">{row.label}</p>
+                      <p className="mt-2 font-latin text-[28px] font-bold tracking-tight text-slate-900">
+                        {row.orderConfirmRate}%
+                      </p>
+                      <p className="mt-1 text-[12px] text-slate-500">
+                        {row.verifiedOrders}/{row.totalOrders} নিশ্চিত · বাতিল {row.cancelledOrders} ·
+                        পেন্ডিং {row.pendingOrders}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
 
             <section className="card overflow-hidden">
               <div className="mb-5 flex flex-wrap items-start justify-between gap-3">

@@ -23,6 +23,8 @@ export default function OrdersPage() {
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [storeFilter, setStoreFilter] = useState('');
+  const [stores, setStores] = useState<{ key: string; label: string }[]>([]);
   const [period, setPeriod] = useState<Period>('today');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -37,7 +39,7 @@ export default function OrdersPage() {
 
   useEffect(() => {
     loadOrders();
-  }, [statusFilter, period]);
+  }, [statusFilter, period, storeFilter]);
 
   async function loadOrders() {
     setLoading(true);
@@ -46,12 +48,16 @@ export default function OrdersPage() {
       const range = dateRangeForPeriod(period);
       const params: Record<string, string> = { limit: '50' };
       if (statusFilter) params.status = statusFilter;
+      if (storeFilter) params.store = storeFilter;
       if (search) params.search = search;
       if (range.from) params.from = range.from;
       if (range.to) params.to = range.to;
       const res = await api.getOrders(params);
       setOrders(res.orders || []);
       setTotal(res.total || 0);
+      if (Array.isArray((res as any).stores)) {
+        setStores((res as any).stores);
+      }
     } catch {
       setOrders([]);
       setTotal(0);
@@ -117,6 +123,18 @@ export default function OrdersPage() {
             <option value="CANCELLED">Cancelled</option>
             <option value="FAILED">Failed</option>
           </select>
+          <select
+            className="input w-full sm:w-52"
+            value={storeFilter}
+            onChange={(e) => setStoreFilter(e.target.value)}
+          >
+            <option value="">সব স্টোর</option>
+            {stores.map((s) => (
+              <option key={s.key} value={s.key}>
+                {s.label}
+              </option>
+            ))}
+          </select>
           <button onClick={loadOrders} className="btn-secondary gap-2">
             <RefreshCw className="h-4 w-4" /> রিফ্রেশ
           </button>
@@ -132,6 +150,7 @@ export default function OrdersPage() {
               <thead className="border-b border-slate-100 bg-slate-50/80">
                 <tr>
                   <th className="px-5 py-3.5 font-semibold text-slate-500">অর্ডার</th>
+                  <th className="px-5 py-3.5 font-semibold text-slate-500">স্টোর</th>
                   <th className="px-5 py-3.5 font-semibold text-slate-500">কাস্টমার</th>
                   <th className="px-5 py-3.5 font-semibold text-slate-500">ফোন</th>
                   <th className="px-5 py-3.5 font-semibold text-slate-500">এমাউন্ট</th>
@@ -144,7 +163,7 @@ export default function OrdersPage() {
               <tbody className="divide-y divide-slate-100">
                 {!loading && orders.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-5 py-16 text-center text-slate-500">
+                    <td colSpan={9} className="px-5 py-16 text-center text-slate-500">
                       এই সময়সীমায় কোনো অর্ডার নেই।
                     </td>
                   </tr>
@@ -154,6 +173,14 @@ export default function OrdersPage() {
                   return (
                     <tr key={order.id} className="hover:bg-slate-50/80">
                       <td className="px-5 py-4 font-semibold text-slate-900">{order.orderNumber}</td>
+                      <td className="px-5 py-4 text-[13px] text-slate-600">
+                        {order.storeLabel ||
+                          (order.source === 'WOOCOMMERCE'
+                            ? 'WordPress'
+                            : order.orderNumber?.startsWith('ORD-')
+                              ? 'ShopIn'
+                              : order.source || '—')}
+                      </td>
                       <td className="px-5 py-4 text-slate-700">{order.customerName}</td>
                       <td className="px-5 py-4 text-slate-600">{order.customerPhone}</td>
                       <td className="px-5 py-4 font-medium text-slate-800">

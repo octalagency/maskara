@@ -18,12 +18,14 @@ export class ReportsController {
     @Query('days') days?: number,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('store') store?: string,
   ) {
     return this.reportsService.getDailyReport(
       merchantId,
       days ? Number(days) : 30,
       from,
       to,
+      store,
     );
   }
 

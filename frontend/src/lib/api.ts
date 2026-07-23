@@ -286,14 +286,21 @@ class ApiClient {
   // Orders
   getOrders(params?: Record<string, string>) {
     const query = params ? '?' + new URLSearchParams(params).toString() : '';
-    return this.request<{ orders: Order[]; total: number }>(`/orders${query}`);
+    return this.request<{
+      orders: Order[];
+      total: number;
+      stores?: { key: string; label: string; source: string }[];
+    }>(`/orders${query}`);
   }
 
-  getOrderStats(from?: string, to?: string) {
-    const q =
-      from && to
-        ? `?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
-        : '';
+  getOrderStats(from?: string, to?: string, store?: string) {
+    const params = new URLSearchParams();
+    if (from && to) {
+      params.set('from', from);
+      params.set('to', to);
+    }
+    if (store && store !== 'all') params.set('store', store);
+    const q = params.toString() ? `?${params}` : '';
     return this.request<OrderStats>(`/orders/stats${q}`);
   }
 
@@ -320,13 +327,16 @@ class ApiClient {
   }
 
   // Reports
-  getDailyReport(days = 30, from?: string, to?: string) {
+  getDailyReport(days = 30, from?: string, to?: string, store?: string) {
+    const params = new URLSearchParams();
     if (from && to) {
-      return this.request<DailyReport[]>(
-        `/reports/daily?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
-      );
+      params.set('from', from);
+      params.set('to', to);
+    } else {
+      params.set('days', String(days));
     }
-    return this.request<DailyReport[]>(`/reports/daily?days=${days}`);
+    if (store && store !== 'all') params.set('store', store);
+    return this.request<DailyReport[]>(`/reports/daily?${params}`);
   }
 
   getReportSummary() {
@@ -597,11 +607,14 @@ export interface Order {
   customerPhone: string;
   totalAmount: number;
   status: string;
+  source?: string;
   callAttempts?: number;
   paymentMethod?: string;
   createdAt: string;
   manualComplete?: boolean;
   excludedFromStats?: boolean;
+  storeKey?: string;
+  storeLabel?: string;
   metadata?: Record<string, unknown>;
   calls?: Call[];
 }
@@ -624,6 +637,18 @@ export interface Call {
   order?: Partial<Order>;
 }
 
+export interface StoreStat {
+  key: string;
+  label: string;
+  source: string;
+  totalOrders: number;
+  verifiedOrders: number;
+  cancelledOrders: number;
+  pendingOrders: number;
+  manualCompleteOrders?: number;
+  orderConfirmRate: number;
+}
+
 export interface OrderStats {
   totalOrders: number;
   verifiedOrders: number;
@@ -634,6 +659,8 @@ export interface OrderStats {
   orderConfirmRate?: number;
   callSuccessRate: number;
   totalCalls: number;
+  byStore?: StoreStat[];
+  stores?: { key: string; label: string; source: string }[];
 }
 
 export interface DailyReport {

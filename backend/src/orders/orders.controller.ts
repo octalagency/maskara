@@ -45,6 +45,7 @@ export class OrdersController {
     @Query('search') search?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('store') store?: string,
   ) {
     return this.ordersService.findAll(merchantId, {
       status,
@@ -53,19 +54,21 @@ export class OrdersController {
       search,
       from,
       to,
+      store,
     });
   }
 
   @Get('stats')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get order statistics (optional from/to YYYY-MM-DD)' })
+  @ApiOperation({ summary: 'Get order statistics (optional from/to/store)' })
   getStats(
     @CurrentUser('merchantId') merchantId: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('store') store?: string,
   ) {
-    return this.ordersService.getStats(merchantId, { from, to });
+    return this.ordersService.getStats(merchantId, { from, to, store });
   }
 
   @Get(':id')
