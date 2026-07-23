@@ -307,7 +307,13 @@ export function speakBangla(
 
 export function fillVoiceScript(
   script: string,
-  vars: { storeName?: string; customerName?: string; amount?: string; orderNumber?: string },
+  vars: {
+    storeName?: string;
+    customerName?: string;
+    amount?: string;
+    orderNumber?: string;
+    products?: string;
+  },
 ) {
   const bn = (v?: string) =>
     String(v || '')
@@ -319,6 +325,11 @@ export function fillVoiceScript(
     .replace(/\{\{\s*customerName\s*\}\}/gi, vars.customerName || 'সাকিব')
     .replace(/\{\{\s*amount\s*\}\}/gi, bn(vars.amount) || '১২০০')
     .replace(/\{\{\s*orderNumber\s*\}\}/gi, bn(vars.orderNumber) || '১১৩৮০')
+    .replace(
+      /\{\{\s*products?\s*\}\}/gi,
+      vars.products || 'হেয়ার অয়েল',
+    )
+    .replace(/\{\{\s*items?\s*\}\}/gi, vars.products || 'হেয়ার অয়েল')
     .replace(/কনফার্ম/gi, 'নিশ্চিত');
 }
 

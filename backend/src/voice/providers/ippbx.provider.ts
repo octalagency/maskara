@@ -53,6 +53,7 @@ export class IppbxProvider implements VoiceProvider {
       orderNumber: params.orderNumber,
       totalAmount: params.totalAmount,
       customGreeting: params.customGreeting,
+      productNames: params.productNames,
     });
 
     const payload = {

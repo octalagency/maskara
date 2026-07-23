@@ -20,7 +20,7 @@ import { Pause, Play, Volume2, Check, User } from 'lucide-react';
 
 const DEFAULT_VOICE = 'google:bn-IN-Chirp3-HD-Algieba';
 const DEFAULT_SCRIPT =
-  'হ্যালো {{customerName}}... আপনি {{storeName}}-এ অর্ডার করেছেন। আপনার মোট বিল {{amount}} টাকা। অর্ডারটি নিশ্চিত করার জন্য ১ চাপুন, অথবা বাতিল করার জন্য ২ চাপুন। আমরা ঢাকার বাইরে ২ থেকে ৩ দিনের ডেলিভারি দিয়ে থাকি, এবং ঢাকার মধ্যে ১ থেকে ২ দিনের মধ্যে ডেলিভারি দেওয়া হয়। আমাদের সাথে থাকার জন্য ধন্যবাদ। পুনরায় শুনতে ০ চাপুন।';
+  'আসসালামু আলাইকুম। {{storeName}} থেকে আপনি {{products}} অর্ডার করেছেন। আপনার মোট বিল {{amount}} টাকা। অর্ডারটি কনফার্ম করতে ১ চাপুন এবং বাতিল করতে ২ চাপুন। আমরা সারা বাংলাদেশ ক্যাশ অন ডেলিভারি দিয়ে থাকি। ডেলিভারির সময় ঢাকার মধ্যে ১ থেকে ২ দিন, ঢাকার বাইরে ২ থেকে ৩ দিন।';
 
 export default function SettingsPage() {
   const [merchant, setMerchant] = useState<Partial<Merchant>>({});
@@ -105,6 +105,7 @@ export default function SettingsPage() {
       customerName: 'রহিম',
       amount: '১২০০',
       orderNumber: '#11380',
+      products: 'হেয়ার অয়েল এবং ফেসওয়াশ',
     });
 
     stopPreview();
@@ -186,6 +187,7 @@ export default function SettingsPage() {
       customerName: 'রহিম',
       amount: '১২০০',
       orderNumber: '#11380',
+      products: 'হেয়ার অয়েল এবং ফেসওয়াশ',
     },
   );
 
@@ -246,9 +248,11 @@ export default function SettingsPage() {
               <p className="page-subtitle">
                 যা লিখবেন, প্রিভিউতে সেটাই পড়ে শোনাবে। Placeholder:{' '}
                 <code className="rounded bg-slate-100 px-1 text-[12px]">{'{{storeName}}'}</code>{' '}
-                <code className="rounded bg-slate-100 px-1 text-[12px]">{'{{customerName}}'}</code>{' '}
+                <code className="rounded bg-slate-100 px-1 text-[12px]">{'{{products}}'}</code>{' '}
                 <code className="rounded bg-slate-100 px-1 text-[12px]">{'{{amount}}'}</code>{' '}
+                <code className="rounded bg-slate-100 px-1 text-[12px]">{'{{customerName}}'}</code>{' '}
                 <code className="rounded bg-slate-100 px-1 text-[12px]">{'{{orderNumber}}'}</code>
+                {' '}— ShopIn / WooCommerce / Shopify সব একই।
               </p>
             </div>
             <textarea

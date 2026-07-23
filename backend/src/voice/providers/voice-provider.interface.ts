@@ -8,6 +8,8 @@ export interface InitiateCallParams {
   orderNumber: string;
   totalAmount: number;
   merchantId: string;
+  /** Product names from order line items (ShopIn / Woo / Shopify) */
+  productNames?: string[];
   /** Merchant custom call script (optional) */
   customGreeting?: string | null;
   /** Merchant TTS voice preference, e.g. azure:bn-BD-NabanitaNeural */

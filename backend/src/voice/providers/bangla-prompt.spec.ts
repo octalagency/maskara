@@ -3,6 +3,8 @@ import {
   EPBX_PORTAL_MALE_CHIRP3,
   azureTwinForMerchantVoice,
   epbxPortalGoogleVoice,
+  extractProductNamesFromItems,
+  formatProductNamesBangla,
   hasBanglaScript,
   merchantVoiceGender,
   resolveLiveEpbxVoice,
@@ -108,6 +110,39 @@ describe('buildOrderVerificationPrompt', () => {
     expect(hasBanglaScript(text)).toBe(true);
     expect(text.toLowerCase()).not.toMatch(/\bpress\b/);
     expect(text.toLowerCase()).not.toMatch(/\bconfirm\b/);
+  });
+
+  it('fills products + amount for single and multiple items', () => {
+    const one = buildOrderVerificationPrompt({
+      storeName: 'ফিলো বাংলাদেশ',
+      totalAmount: 1200,
+      productNames: ['হেয়ার অয়েল'],
+    });
+    expect(one).toContain('হেয়ার অয়েল');
+    expect(one).toContain('১২০০');
+    expect(one).toContain('আসসালামু আলাইকুম');
+
+    const two = buildOrderVerificationPrompt({
+      storeName: 'ফিলো বাংলাদেশ',
+      totalAmount: 2500,
+      productNames: ['হেয়ার অয়েল', 'ফেসওয়াশ'],
+    });
+    expect(two).toContain('হেয়ার অয়েল এবং ফেসওয়াশ');
+    expect(two).toContain('২৫০০');
+  });
+});
+
+describe('formatProductNamesBangla', () => {
+  it('joins with এবং', () => {
+    expect(formatProductNamesBangla(['A'])).toBe('A');
+    expect(formatProductNamesBangla(['A', 'B'])).toBe('A এবং B');
+    expect(formatProductNamesBangla(['A', 'B', 'C'])).toBe('A, B এবং C');
+    expect(
+      extractProductNamesFromItems([
+        { name: 'হেয়ার অয়েল' },
+        { title: 'ফেসওয়াশ' },
+      ]),
+    ).toEqual(['হেয়ার অয়েল', 'ফেসওয়াশ']);
   });
 });
 

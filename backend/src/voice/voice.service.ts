@@ -6,6 +6,7 @@ import { VoiceProviderFactory } from './providers/voice-provider.factory';
 import {
   DEFAULT_MERCHANT_VOICE_ID,
   buildOrderVerificationPrompt,
+  extractProductNamesFromItems,
   shouldMigrateMerchantVoiceId,
 } from './providers/bangla-prompt';
 import { S3StorageService } from '../common/services/s3-storage.service';
@@ -145,6 +146,7 @@ export class VoiceService {
         orderNumber: order.orderNumber,
         totalAmount: Number(order.totalAmount),
         merchantId,
+        productNames: extractProductNamesFromItems(order.items),
         customGreeting: merchant.customGreeting,
         voiceId: merchantVoiceId,
         speechRate,
@@ -206,6 +208,7 @@ export class VoiceService {
       orderNumber?: string;
       totalAmount?: number;
       customGreeting?: string | null;
+      productNames?: string[];
     },
   ): string {
     const greeting = buildOrderVerificationPrompt({
@@ -214,6 +217,7 @@ export class VoiceService {
       orderNumber: params.orderNumber,
       totalAmount: params.totalAmount,
       customGreeting: params.customGreeting,
+      productNames: params.productNames,
     });
     const gatherUrl = `${this.apiUrl}/voice/gather/${callId}`;
 

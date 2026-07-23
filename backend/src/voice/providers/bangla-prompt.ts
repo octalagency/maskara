@@ -37,13 +37,42 @@ export function sanitizeBanglaSpeech(text: string): string {
 
 /**
  * Default merchant call script (কল স্ক্রিপ্ট).
- * Placeholders: {{customerName}}, {{storeName}}, {{amount}}, {{orderNumber}}.
- * No {{items}}/{{productName}} support yet — wording uses store + amount.
- * Ends with “০ চাপুন” so DTMF 0 can replay the prompt.
- * Punctuation is tuned for Chirp3 call-center warmth (ellipsis, light commas).
+ * Placeholders: {{storeName}}, {{products}}, {{amount}}, {{customerName}}, {{orderNumber}}.
+ * Works for ShopIn / WooCommerce / Shopify — same merchant setting.
  */
 export const DEFAULT_CALL_SCRIPT =
-  'হ্যালো {{customerName}}... আপনি {{storeName}}-এ অর্ডার করেছেন। আপনার মোট বিল {{amount}} টাকা। অর্ডারটি নিশ্চিত করার জন্য ১ চাপুন, অথবা বাতিল করার জন্য ২ চাপুন। আমরা ঢাকার বাইরে ২ থেকে ৩ দিনের ডেলিভারি দিয়ে থাকি, এবং ঢাকার মধ্যে ১ থেকে ২ দিনের মধ্যে ডেলিভারি দেওয়া হয়। আমাদের সাথে থাকার জন্য ধন্যবাদ। পুনরায় শুনতে ০ চাপুন।';
+  'আসসালামু আলাইকুম। {{storeName}} থেকে আপনি {{products}} অর্ডার করেছেন। আপনার মোট বিল {{amount}} টাকা। অর্ডারটি কনফার্ম করতে ১ চাপুন এবং বাতিল করতে ২ চাপুন। আমরা সারা বাংলাদেশ ক্যাশ অন ডেলিভারি দিয়ে থাকি। ডেলিভারির সময় ঢাকার মধ্যে ১ থেকে ২ দিন, ঢাকার বাইরে ২ থেকে ৩ দিন।';
+
+/** Pull product titles from Woo / Shopify / ShopIn line-item JSON. */
+export function extractProductNamesFromItems(items: unknown): string[] {
+  if (!Array.isArray(items)) return [];
+  const names: string[] = [];
+  for (const raw of items) {
+    if (!raw || typeof raw !== 'object') continue;
+    const o = raw as Record<string, unknown>;
+    const name = String(
+      o.name ||
+        o.title ||
+        o.product_name ||
+        o.productName ||
+        o.product ||
+        o.item_name ||
+        '',
+    ).trim();
+    if (name) names.push(name);
+  }
+  return names;
+}
+
+/** Bangla list: A | A এবং B | A, B এবং C */
+export function formatProductNamesBangla(names: string[]): string {
+  const clean = names.map((n) => n.trim()).filter(Boolean);
+  if (clean.length === 0) return 'একটি পণ্য';
+  if (clean.length === 1) return clean[0];
+  if (clean.length === 2) return `${clean[0]} এবং ${clean[1]}`;
+  const last = clean[clean.length - 1];
+  return `${clean.slice(0, -1).join(', ')} এবং ${last}`;
+}
 
 /** True when Latin letters dominate over Bangla — would make Chirp3/ePBX speak English. */
 export function isMostlyLatinScript(text: string): boolean {
@@ -59,6 +88,9 @@ export function buildOrderVerificationPrompt(params: {
   orderNumber?: string;
   totalAmount?: number;
   customGreeting?: string | null;
+  /** Product names from order line items (ShopIn / Woo / Shopify). */
+  productNames?: string[] | null;
+  products?: string | null;
 }): string {
   const store = params.storeName || 'স্টোর';
   const name = params.customerName || '';
@@ -68,22 +100,33 @@ export function buildOrderVerificationPrompt(params: {
   const amount = toBanglaDigits(
     params.totalAmount != null ? String(Math.round(Number(params.totalAmount))) : '',
   );
+  const products =
+    (params.products || '').trim() ||
+    formatProductNamesBangla(params.productNames || []);
 
-  const fill = (template: string) =>
+  // Fill everything except products first, sanitize, then inject products
+  // so English/Banglish product titles are not stripped by sanitizeBanglaSpeech.
+  const fillBase = (template: string) =>
     template
       .replace(/\{\{\s*storeName\s*\}\}/gi, store)
       .replace(/\{\{\s*customerName\s*\}\}/gi, name || 'মাননীয় গ্রাহক')
       .replace(/\{\{\s*orderNumber\s*\}\}/gi, orderNumber)
-      .replace(/\{\{\s*amount\s*\}\}/gi, amount);
+      .replace(/\{\{\s*amount\s*\}\}/gi, amount)
+      .replace(/\{\{\s*products?\s*\}\}/gi, '\u0000PRODUCTS\u0000')
+      .replace(/\{\{\s*items?\s*\}\}/gi, '\u0000PRODUCTS\u0000')
+      .replace(/\{\{\s*productNames?\s*\}\}/gi, '\u0000PRODUCTS\u0000');
+
+  const injectProducts = (text: string) =>
+    text.split('\u0000PRODUCTS\u0000').join(products);
 
   let template = params.customGreeting?.trim() || DEFAULT_CALL_SCRIPT;
   // Custom English/Banglish scripts → force default Bangla (never synth English)
   if (isMostlyLatinScript(template)) {
     template = DEFAULT_CALL_SCRIPT;
   }
-  let filled = sanitizeBanglaSpeech(fill(template));
-  if (!filled || isMostlyLatinScript(filled)) {
-    filled = sanitizeBanglaSpeech(fill(DEFAULT_CALL_SCRIPT));
+  let filled = injectProducts(sanitizeBanglaSpeech(fillBase(template)));
+  if (!filled || isMostlyLatinScript(filled.replace(products, ''))) {
+    filled = injectProducts(sanitizeBanglaSpeech(fillBase(DEFAULT_CALL_SCRIPT)));
   }
   return filled;
 }

@@ -24,6 +24,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { TtsPreviewService } from './tts-preview.service';
 import { GoogleTtsService } from './google-tts.service';
 import { VoiceSettingsService } from './voice-settings.service';
+import { extractProductNamesFromItems } from './providers/bangla-prompt';
 
 @ApiTags('Voice')
 @Controller('voice')
@@ -125,6 +126,7 @@ export class VoiceController {
             ? Number(call.order.totalAmount)
             : undefined,
         customGreeting: call?.merchant.customGreeting,
+        productNames: extractProductNamesFromItems(call?.order?.items),
       }),
     );
   }

@@ -77,6 +77,7 @@ export class EpbxProvider implements VoiceProvider {
       orderNumber: params.orderNumber,
       totalAmount: params.totalAmount,
       customGreeting: params.customGreeting,
+      productNames: params.productNames,
     });
     if (!hasBanglaScript(ttsText)) {
       throw new Error(
