@@ -1,7 +1,28 @@
+'use client';
+
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Phone } from 'lucide-react';
+import { api, type PublicContact } from '@/lib/api';
+
+const DEFAULT_CONTACT: PublicContact = {
+  email: 'support@maskara.bd',
+  phone: '+880 1XXX-XXXXXX',
+  location: 'Dhaka, Bangladesh',
+};
 
 export function Footer() {
+  const [contact, setContact] = useState<PublicContact>(DEFAULT_CONTACT);
+
+  useEffect(() => {
+    api
+      .getPublicContact()
+      .then(setContact)
+      .catch(() => {});
+  }, []);
+
+  const phoneHref = `tel:${contact.phone.replace(/[^\d+]/g, '')}`;
+
   return (
     <footer className="border-t border-slate-200 bg-white">
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
@@ -40,9 +61,17 @@ export function Footer() {
           <div>
             <h4 className="font-semibold text-slate-900">Contact</h4>
             <ul className="mt-3 space-y-2 text-sm text-slate-500">
-              <li>support@maskara.bd</li>
-              <li>+880 1XXX-XXXXXX</li>
-              <li>Dhaka, Bangladesh</li>
+              <li>
+                <a href={`mailto:${contact.email}`} className="hover:text-brand-600">
+                  {contact.email}
+                </a>
+              </li>
+              <li>
+                <a href={phoneHref} className="hover:text-brand-600">
+                  {contact.phone}
+                </a>
+              </li>
+              <li>{contact.location}</li>
             </ul>
           </div>
         </div>

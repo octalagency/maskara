@@ -15,6 +15,23 @@ export class HealthController {
     return { status: 'ok', service: 'maskara-api' };
   }
 
+  /** Public site footer / contact block (editable from Super Admin → Settings). */
+  @Get('public/contact')
+  async publicContact() {
+    const row = await this.prisma.systemSetting.findUnique({
+      where: { key: 'contact' },
+    });
+    const value =
+      row?.value && typeof row.value === 'object' && !Array.isArray(row.value)
+        ? (row.value as Record<string, unknown>)
+        : {};
+    return {
+      email: String(value.email || 'support@maskara.bd'),
+      phone: String(value.phone || '+880 1XXX-XXXXXX'),
+      location: String(value.location || 'Dhaka, Bangladesh'),
+    };
+  }
+
   @Get('health')
   async health() {
     const checks: Record<string, string> = { api: 'ok' };

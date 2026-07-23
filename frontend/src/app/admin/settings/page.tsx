@@ -12,6 +12,9 @@ interface SettingsForm {
   twilioEnabled: boolean;
   smsEnabled: boolean;
   whatsappEnabled: boolean;
+  contactEmail: string;
+  contactPhone: string;
+  contactLocation: string;
 }
 
 interface AccountForm {
@@ -32,6 +35,9 @@ const DEFAULT: SettingsForm = {
   twilioEnabled: true,
   smsEnabled: true,
   whatsappEnabled: false,
+  contactEmail: 'support@maskara.bd',
+  contactPhone: '+880 1XXX-XXXXXX',
+  contactLocation: 'Dhaka, Bangladesh',
 };
 
 export default function AdminSettingsPage() {
@@ -73,6 +79,11 @@ export default function AdminSettingsPage() {
           if ('twilio' in val) merged.twilioEnabled = Boolean(val.twilio);
           if ('sms' in val) merged.smsEnabled = Boolean(val.sms);
           if ('whatsapp' in val) merged.whatsappEnabled = Boolean(val.whatsapp);
+        }
+        if (row.key === 'contact') {
+          if (val.email) merged.contactEmail = String(val.email);
+          if (val.phone) merged.contactPhone = String(val.phone);
+          if (val.location) merged.contactLocation = String(val.location);
         }
       }
       setSettings(merged);
@@ -126,6 +137,11 @@ export default function AdminSettingsPage() {
           twilio: settings.twilioEnabled,
           sms: settings.smsEnabled,
           whatsapp: settings.whatsappEnabled,
+        }),
+        api.updateSystemSetting('contact', {
+          email: settings.contactEmail.trim(),
+          phone: settings.contactPhone.trim(),
+          location: settings.contactLocation.trim(),
         }),
       ]);
       setSaved(true);
@@ -382,6 +398,46 @@ export default function AdminSettingsPage() {
         <div>
           <label className="block text-sm font-medium text-slate-700">Platform Name</label>
           <input className="input mt-1" value={settings.platformName} onChange={(e) => setSettings({ ...settings, platformName: e.target.value })} />
+        </div>
+
+        <div className="rounded-lg border border-slate-200 p-4 space-y-4">
+          <div>
+            <p className="font-medium text-slate-900">Website Contact</p>
+            <p className="text-sm text-slate-500">
+              Homepage footer-এর Contact section (email, phone, location)
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700">Email Address</label>
+            <input
+              type="email"
+              className="input mt-1"
+              value={settings.contactEmail}
+              onChange={(e) => setSettings({ ...settings, contactEmail: e.target.value })}
+              placeholder="support@maskara.bd"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700">Phone Number</label>
+            <input
+              className="input mt-1"
+              value={settings.contactPhone}
+              onChange={(e) => setSettings({ ...settings, contactPhone: e.target.value })}
+              placeholder="+880 1XXX-XXXXXX"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700">Location</label>
+            <input
+              className="input mt-1"
+              value={settings.contactLocation}
+              onChange={(e) => setSettings({ ...settings, contactLocation: e.target.value })}
+              placeholder="Dhaka, Bangladesh"
+              required
+            />
+          </div>
         </div>
 
         <div className="flex items-center justify-between rounded-lg border border-slate-200 p-4">

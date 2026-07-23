@@ -52,6 +52,15 @@ export const DEMO_SYSTEM_SETTINGS: SystemSetting[] = [
   { id: '2', key: 'maintenance', value: { enabled: false } },
   { id: '3', key: 'voice', value: { language: 'bn-BD', maxRetries: 3, retryIntervalMin: 30 } },
   { id: '4', key: 'channels', value: { twilio: true, sms: true, whatsapp: false } },
+  {
+    id: '5',
+    key: 'contact',
+    value: {
+      email: 'support@maskara.bd',
+      phone: '+880 1XXX-XXXXXX',
+      location: 'Dhaka, Bangladesh',
+    },
+  },
 ];
 
 export const OFFLINE_ADMIN = {

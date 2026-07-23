@@ -141,6 +141,13 @@ class ApiClient {
     }
     if (path.startsWith('/admin/analytics/calls')) return DEMO_CALL_ANALYTICS as T;
     if (path === '/admin/settings') return DEMO_SYSTEM_SETTINGS as T;
+    if (path === '/public/contact') {
+      return {
+        email: 'support@maskara.bd',
+        phone: '+880 1XXX-XXXXXX',
+        location: 'Dhaka, Bangladesh',
+      } as T;
+    }
     if (path.startsWith('/admin/settings/') && method === 'PATCH') {
       return { ok: true } as T;
     }
@@ -447,6 +454,10 @@ class ApiClient {
 
   getSystemSettings() {
     return this.request<SystemSetting[]>('/admin/settings');
+  }
+
+  getPublicContact() {
+    return this.request<PublicContact>('/public/contact');
   }
 
   updateSystemSetting(key: string, value: unknown) {
@@ -1001,4 +1012,10 @@ export interface SystemSetting {
   id: string;
   key: string;
   value: Record<string, unknown>;
+}
+
+export interface PublicContact {
+  email: string;
+  phone: string;
+  location: string;
 }
