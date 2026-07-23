@@ -21,8 +21,8 @@ const config: Config = {
       },
       fontFamily: {
         sans: ['Noto Sans Bengali', 'Hind Siliguri', 'system-ui', 'sans-serif'],
-        display: ['Noto Sans Bengali', 'Hind Siliguri', 'system-ui', 'sans-serif'],
-        latin: ['ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        display: ['Sora', 'Noto Sans Bengali', 'Hind Siliguri', 'sans-serif'],
+        latin: ['Sora', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
     },
   },

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Noto+Sans+Bengali:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Noto+Sans+Bengali:wght@400;500;600;700&family=Sora:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -18,17 +18,128 @@
     line-height: 1.7;
   }
 
-  h1, h2, h3, h4, .font-display {
+  h1, h2, h3, h4 {
     font-family: 'Noto Sans Bengali', 'Hind Siliguri', system-ui, sans-serif;
     line-height: 1.35;
     letter-spacing: 0;
     font-weight: 700;
   }
 
+  .font-display {
+    font-family: Sora, 'Noto Sans Bengali', 'Hind Siliguri', sans-serif;
+  }
+
   /* Latin-only brand bits stay clean */
   .font-latin {
-    font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-family: Sora, ui-sans-serif, system-ui, sans-serif;
     letter-spacing: -0.02em;
+  }
+}
+
+/* ── Landing page atmosphere ── */
+.landing-root {
+  font-family: Sora, 'Noto Sans Bengali', 'Hind Siliguri', sans-serif;
+}
+
+.land-grid {
+  background-image:
+    linear-gradient(rgba(26, 130, 245, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26, 130, 245, 0.06) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 70% 55% at 50% 35%, #000 20%, transparent 75%);
+}
+
+.land-grid-dark {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+.land-wave-bar {
+  transform-origin: center bottom;
+  animation: land-wave 1.8s ease-in-out infinite;
+}
+
+.land-wave-line {
+  stroke-dasharray: 12 10;
+  animation: land-dash 18s linear infinite;
+}
+
+.land-mini-bar {
+  display: inline-block;
+  transform-origin: bottom;
+  animation: land-wave 1.4s ease-in-out infinite;
+}
+
+.land-pulse {
+  animation: land-node 3.2s ease-in-out infinite;
+}
+
+.land-pulse-delay {
+  animation-delay: 0.9s;
+}
+
+.land-pulse-delay-2 {
+  animation-delay: 1.7s;
+}
+
+.land-fade-up {
+  animation: land-rise 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.land-fade-delay {
+  animation-delay: 0.15s;
+}
+
+@keyframes land-wave {
+  0%,
+  100% {
+    transform: scaleY(0.55);
+    opacity: 0.65;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+@keyframes land-dash {
+  to {
+    stroke-dashoffset: -400;
+  }
+}
+
+@keyframes land-node {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.6);
+  }
+}
+
+@keyframes land-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .land-wave-bar,
+  .land-wave-line,
+  .land-mini-bar,
+  .land-pulse,
+  .land-fade-up {
+    animation: none !important;
   }
 }
 
