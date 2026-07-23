@@ -13,6 +13,7 @@ import {
   TrendingUp,
   ArrowRight,
   Mic2,
+  Sparkles,
 } from 'lucide-react';
 import { api, OrderStats, DailyReport, Merchant } from '@/lib/api';
 import { voiceShort } from '@/lib/voice';
@@ -106,32 +107,57 @@ export default function DashboardPage() {
 
   const storeName = merchant?.storeNameBangla || merchant?.name || 'আপনার স্টোর';
   const voice = voiceShort(merchant?.voiceId);
-  const verifyPct =
+  const lifetimeBase = s.verifiedOrders + s.cancelledOrders;
+  const lifetimeVerifyPct =
+    lifetimeBase > 0 ? Math.round((s.verifiedOrders / lifetimeBase) * 100) : 0;
+  const periodVerifyPct =
     period.received > 0 ? Math.round((period.verified / period.received) * 100) : 0;
 
   return (
     <DashboardLayout>
       <div className="mx-auto max-w-6xl space-y-6">
-        <section className="overflow-hidden rounded-2xl bg-slate-900 p-5 text-white sm:p-7">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+        <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-brand-950 p-5 text-white sm:p-7">
+          <div
+            className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-brand-500/25 blur-3xl"
+            aria-hidden
+          />
+          <div
+            className="pointer-events-none absolute -bottom-24 left-1/3 h-48 w-48 rounded-full bg-sky-400/15 blur-3xl"
+            aria-hidden
+          />
+          <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div className="max-w-2xl">
-              <p className="text-[13px] font-medium text-brand-200">আজকের সারাংশ</p>
-              <h2 className="mt-1 text-[26px] font-bold leading-snug sm:text-[30px]">{storeName}</h2>
-              <p className="mt-2 text-[14px] leading-relaxed text-slate-300">
-                কাস্টমার যে ভয়েস শুনছে: <span className="font-semibold text-white">{voice}</span>।
-                নতুন অর্ডার এলে AI বাংলায় কল করে ভেরিফাই করে।
+              <p className="inline-flex items-center gap-1.5 text-[13px] font-medium text-brand-200">
+                <Sparkles className="h-3.5 w-3.5" />
+                আজকের সারাংশ
               </p>
+              <h2 className="mt-1.5 text-[26px] font-bold leading-snug sm:text-[30px]">
+                {storeName}
+              </h2>
+              <p className="mt-2 text-[14px] leading-relaxed text-slate-300">
+                কাস্টমার যে ভয়েস শুনছে:{' '}
+                <span className="font-semibold text-white">{voice}</span>। নতুন
+                অর্ডার এলে AI বাংলায় কল করে ভেরিফাই করে।
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2 text-[12px]">
+                <span className="rounded-full bg-white/10 px-3 py-1 font-medium text-white/90 ring-1 ring-white/10">
+                  নিশ্চিতকরণ রেট {lifetimeVerifyPct}%
+                </span>
+                <span className="rounded-full bg-white/10 px-3 py-1 font-medium text-white/90 ring-1 ring-white/10">
+                  আজ {s.todayOrders} অর্ডার
+                </span>
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
               <Link
                 href="/dashboard/orders"
-                className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-[14px] font-semibold text-slate-900"
+                className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-[14px] font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50"
               >
                 অর্ডার দেখুন <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
                 href="/dashboard/settings"
-                className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/5 px-4 py-2.5 text-[14px] font-semibold text-white hover:bg-white/10"
+                className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/5 px-4 py-2.5 text-[14px] font-semibold text-white transition hover:bg-white/10"
               >
                 <Mic2 className="h-4 w-4" /> ভয়েস সেটআপ
               </Link>
@@ -147,8 +173,20 @@ export default function DashboardPage() {
 
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <StatCard title="মোট অর্ডার" value={s.totalOrders} icon={ShoppingCart} color="blue" />
-          <StatCard title="ভেরিফাইড" value={s.verifiedOrders} icon={CheckCircle} color="green" />
-          <StatCard title="বাতিল" value={s.cancelledOrders} icon={XCircle} color="red" />
+          <StatCard
+            title="ভেরিফাইড"
+            value={s.verifiedOrders}
+            icon={CheckCircle}
+            color="green"
+            hint="AI কল দিয়ে নিশ্চিত"
+          />
+          <StatCard
+            title="বাতিল"
+            value={s.cancelledOrders}
+            icon={XCircle}
+            color="red"
+            hint="শুধু কল দিয়ে বাতিল"
+          />
           <StatCard title="পেন্ডিং" value={s.pendingOrders} icon={Clock} color="amber" />
           <StatCard title="আজকের অর্ডার" value={s.todayOrders} icon={TrendingUp} color="brand" />
           <StatCard
@@ -156,7 +194,7 @@ export default function DashboardPage() {
             value={`${s.callSuccessRate}%`}
             icon={Phone}
             color="green"
-            hint={`${s.totalCalls} টি কল`}
+            hint={`${s.totalCalls.toLocaleString('bn-BD')} টি কল`}
           />
         </section>
 
@@ -165,7 +203,7 @@ export default function DashboardPage() {
             <div>
               <h3 className="section-title">শেষ ১৪ দিনের অর্ডার ট্রেন্ড</h3>
               <p className="page-subtitle mt-0.5">
-                প্রতিদিন কত অর্ডার এসেছে, কত নিশ্চিত হয়েছে, কত বাতিল হয়েছে
+                ওয়েবসাইট থেকে ম্যানুয়াল বাতিল এখানে দেখানো হয় না — শুধু Maskara কলের ফলাফল
               </p>
             </div>
             <Link
@@ -177,31 +215,35 @@ export default function DashboardPage() {
           </div>
 
           <div className="mb-5 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl bg-blue-50/80 px-4 py-3 ring-1 ring-blue-100">
+            <div className="rounded-2xl bg-gradient-to-br from-blue-50 to-white px-4 py-3.5 ring-1 ring-blue-100">
               <div className="flex items-center gap-2">
                 <span className="h-2.5 w-2.5 rounded-full bg-blue-600" />
                 <p className="text-[12px] font-semibold text-blue-700">রিসিভড</p>
               </div>
-              <p className="mt-1 text-[22px] font-bold text-slate-900">{period.received}</p>
-              <p className="text-[12px] text-slate-500">অর্ডার এসেছে</p>
+              <p className="mt-1 font-latin text-[24px] font-bold tracking-tight text-slate-900">
+                {period.received}
+              </p>
+              <p className="text-[12px] text-slate-500">১৪ দিনে অর্ডার এসেছে</p>
             </div>
-            <div className="rounded-xl bg-emerald-50/80 px-4 py-3 ring-1 ring-emerald-100">
+            <div className="rounded-2xl bg-gradient-to-br from-emerald-50 to-white px-4 py-3.5 ring-1 ring-emerald-100">
               <div className="flex items-center gap-2">
                 <span className="h-2.5 w-2.5 rounded-full bg-emerald-600" />
                 <p className="text-[12px] font-semibold text-emerald-700">ভেরিফাইড</p>
               </div>
-              <p className="mt-1 text-[22px] font-bold text-slate-900">{period.verified}</p>
-              <p className="text-[12px] text-slate-500">
-                নিশ্চিত · {verifyPct}% রেট
+              <p className="mt-1 font-latin text-[24px] font-bold tracking-tight text-slate-900">
+                {period.verified}
               </p>
+              <p className="text-[12px] text-slate-500">নিশ্চিত · {periodVerifyPct}% রেট</p>
             </div>
-            <div className="rounded-xl bg-rose-50/80 px-4 py-3 ring-1 ring-rose-100">
+            <div className="rounded-2xl bg-gradient-to-br from-rose-50 to-white px-4 py-3.5 ring-1 ring-rose-100">
               <div className="flex items-center gap-2">
                 <span className="h-2.5 w-2.5 rounded-full bg-rose-600" />
                 <p className="text-[12px] font-semibold text-rose-700">বাতিল</p>
               </div>
-              <p className="mt-1 text-[22px] font-bold text-slate-900">{period.cancelled}</p>
-              <p className="text-[12px] text-slate-500">কাস্টমার বাতিল করেছে</p>
+              <p className="mt-1 font-latin text-[24px] font-bold tracking-tight text-slate-900">
+                {period.cancelled}
+              </p>
+              <p className="text-[12px] text-slate-500">কল দিয়ে কাস্টমার বাতিল</p>
             </div>
           </div>
 
@@ -225,7 +267,8 @@ export default function DashboardPage() {
               <div className="flex h-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-center">
                 <p className="text-[14px] font-medium text-slate-600">এখনো অর্ডার ডেটা নেই</p>
                 <p className="max-w-sm text-[13px] text-slate-400">
-                  অর্ডার আসলে এখানে ১৪ দিনের ট্রেন্ড দেখাবে — কোন দিন কত এসেছে ও কত ভেরিফাই হয়েছে।
+                  অর্ডার আসলে এখানে ১৪ দিনের ট্রেন্ড দেখাবে — কোন দিন কত এসেছে ও কত ভেরিফাই
+                  হয়েছে।
                 </p>
               </div>
             ) : (

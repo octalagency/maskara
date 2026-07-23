@@ -202,6 +202,17 @@ export class OrdersService {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    // Website/store admin cancels (cancelledFromWebsite) excluded from "বাতিল"
+    const maskaraCancelled = {
+      status: 'CANCELLED' as const,
+      NOT: {
+        metadata: {
+          path: ['cancelledFromWebsite'],
+          equals: true,
+        },
+      },
+    };
+
     const [total, verified, cancelled, pending, todayOrders, calls] =
       await Promise.all([
         this.prisma.order.count({ where: { merchantId } }),
@@ -209,7 +220,7 @@ export class OrdersService {
           where: { merchantId, status: 'VERIFIED' },
         }),
         this.prisma.order.count({
-          where: { merchantId, status: 'CANCELLED' },
+          where: { merchantId, ...maskaraCancelled },
         }),
         this.prisma.order.count({
           where: { merchantId, status: { in: ['PENDING', 'CALLING'] } },
@@ -223,11 +234,14 @@ export class OrdersService {
         }),
       ]);
 
-    const completedCalls = calls.filter((c) => c.status === 'COMPLETED');
+    const answered = calls.filter(
+      (c) =>
+        c.status === 'COMPLETED' ||
+        c.outcome === 'CONFIRMED' ||
+        c.outcome === 'CANCELLED',
+    );
     const successRate =
-      calls.length > 0
-        ? Math.round((completedCalls.length / calls.length) * 100)
-        : 0;
+      calls.length > 0 ? Math.round((answered.length / calls.length) * 100) : 0;
 
     return {
       totalOrders: total,

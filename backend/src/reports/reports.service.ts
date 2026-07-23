@@ -1,83 +1,72 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+
+/** Dhaka calendar day YYYY-MM-DD */
+function dayKey(d: Date): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Dhaka',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+}
+
+function isWebsiteCancel(metadata: unknown): boolean {
+  return Boolean(
+    metadata &&
+      typeof metadata === 'object' &&
+      !Array.isArray(metadata) &&
+      (metadata as Record<string, unknown>).cancelledFromWebsite === true,
+  );
+}
+
+/** Prisma filter: CANCELLED via Maskara (call/DTMF), not store-admin cancel */
+export const maskaraCancelledWhere: Prisma.OrderWhereInput = {
+  status: 'CANCELLED',
+  NOT: {
+    metadata: {
+      path: ['cancelledFromWebsite'],
+      equals: true,
+    },
+  },
+};
 
 @Injectable()
 export class ReportsService {
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * Always compute from live Order + Call rows.
+   * UsageRecord is incomplete (only ordersReceived is written on create).
+   * Website manual cancels (cancelledFromWebsite) are excluded from cancelled counts.
+   */
   async getDailyReport(merchantId: string, days = 30) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - (days - 1));
     startDate.setHours(0, 0, 0, 0);
 
-    const records = await this.prisma.usageRecord.findMany({
-      where: { merchantId, date: { gte: startDate } },
-      orderBy: { date: 'asc' },
-    });
-
-    if (records.length > 0) {
-      const byDate = new Map(
-        records.map((r) => [
-          r.date.toISOString().split('T')[0],
-          {
-            ordersReceived: r.ordersReceived,
-            ordersVerified: r.ordersVerified,
-            ordersCancelled: r.ordersCancelled,
-            callsMade: r.callsMade,
-            callsSuccess: r.callsSuccess,
-            smsSent: r.smsSent,
-          },
-        ]),
-      );
-
-      // Always return a continuous day range (zeros for empty days)
-      const filled: Array<{
-        date: string;
-        ordersReceived: number;
-        ordersVerified: number;
-        ordersCancelled: number;
-        callsMade: number;
-        callsSuccess: number;
-        smsSent: number;
-        verificationRate: number;
-        callSuccessRate: number;
-      }> = [];
-
-      for (let i = 0; i < days; i++) {
-        const d = new Date(startDate);
-        d.setDate(startDate.getDate() + i);
-        const key = d.toISOString().split('T')[0];
-        const r = byDate.get(key) || {
-          ordersReceived: 0,
-          ordersVerified: 0,
-          ordersCancelled: 0,
-          callsMade: 0,
-          callsSuccess: 0,
-          smsSent: 0,
-        };
-        filled.push({
-          date: key,
-          ...r,
-          verificationRate:
-            r.ordersReceived > 0
-              ? Math.round((r.ordersVerified / r.ordersReceived) * 100)
-              : 0,
-          callSuccessRate:
-            r.callsMade > 0 ? Math.round((r.callsSuccess / r.callsMade) * 100) : 0,
-        });
-      }
-      return filled;
-    }
-
-    // Fallback: compute live from orders + calls (usageRecord may be empty)
     const [orders, calls] = await Promise.all([
       this.prisma.order.findMany({
-        where: { merchantId, createdAt: { gte: startDate } },
-        select: { status: true, createdAt: true },
+        where: {
+          merchantId,
+          OR: [
+            { createdAt: { gte: startDate } },
+            { verifiedAt: { gte: startDate } },
+            { cancelledAt: { gte: startDate } },
+          ],
+        },
+        select: {
+          status: true,
+          createdAt: true,
+          verifiedAt: true,
+          cancelledAt: true,
+          metadata: true,
+        },
       }),
       this.prisma.call.findMany({
         where: { merchantId, createdAt: { gte: startDate } },
-        select: { status: true, createdAt: true },
+        select: { status: true, outcome: true, createdAt: true },
       }),
     ]);
 
@@ -95,7 +84,7 @@ export class ReportsService {
     for (let i = 0; i < days; i++) {
       const d = new Date(startDate);
       d.setDate(startDate.getDate() + i);
-      byDay[d.toISOString().split('T')[0]] = {
+      byDay[dayKey(d)] = {
         ordersReceived: 0,
         ordersVerified: 0,
         ordersCancelled: 0,
@@ -105,17 +94,31 @@ export class ReportsService {
     }
 
     for (const o of orders) {
-      const day = o.createdAt.toISOString().split('T')[0];
-      if (!byDay[day]) continue;
-      byDay[day].ordersReceived++;
-      if (o.status === 'VERIFIED') byDay[day].ordersVerified++;
-      if (o.status === 'CANCELLED') byDay[day].ordersCancelled++;
+      const recvDay = dayKey(o.createdAt);
+      if (byDay[recvDay]) byDay[recvDay].ordersReceived++;
+
+      if (o.status === 'VERIFIED') {
+        const vDay = dayKey(o.verifiedAt || o.createdAt);
+        if (byDay[vDay]) byDay[vDay].ordersVerified++;
+      }
+
+      if (o.status === 'CANCELLED' && !isWebsiteCancel(o.metadata)) {
+        const cDay = dayKey(o.cancelledAt || o.createdAt);
+        if (byDay[cDay]) byDay[cDay].ordersCancelled++;
+      }
     }
+
     for (const c of calls) {
-      const day = c.createdAt.toISOString().split('T')[0];
+      const day = dayKey(c.createdAt);
       if (!byDay[day]) continue;
       byDay[day].callsMade++;
-      if (c.status === 'COMPLETED') byDay[day].callsSuccess++;
+      if (
+        c.status === 'COMPLETED' ||
+        c.outcome === 'CONFIRMED' ||
+        c.outcome === 'CANCELLED'
+      ) {
+        byDay[day].callsSuccess++;
+      }
     }
 
     return Object.entries(byDay)
@@ -138,17 +141,40 @@ export class ReportsService {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     thirtyDaysAgo.setHours(0, 0, 0, 0);
 
-    const [usage, orders, calls, recentCalls] = await Promise.all([
-      this.prisma.usageRecord.aggregate({
-        where: { merchantId, date: { gte: thirtyDaysAgo } },
-        _sum: {
-          ordersReceived: true,
-          ordersVerified: true,
-          ordersCancelled: true,
-          callsMade: true,
-          callsSuccess: true,
-          smsSent: true,
+    const [
+      ordersReceived,
+      ordersVerified,
+      ordersCancelled,
+      recentCalls,
+      ordersByStatus,
+      callsByOutcome,
+    ] = await Promise.all([
+      this.prisma.order.count({
+        where: { merchantId, createdAt: { gte: thirtyDaysAgo } },
+      }),
+      this.prisma.order.count({
+        where: {
+          merchantId,
+          status: 'VERIFIED',
+          OR: [
+            { verifiedAt: { gte: thirtyDaysAgo } },
+            { verifiedAt: null, createdAt: { gte: thirtyDaysAgo } },
+          ],
         },
+      }),
+      this.prisma.order.count({
+        where: {
+          merchantId,
+          ...maskaraCancelledWhere,
+          OR: [
+            { cancelledAt: { gte: thirtyDaysAgo } },
+            { cancelledAt: null, createdAt: { gte: thirtyDaysAgo } },
+          ],
+        },
+      }),
+      this.prisma.call.findMany({
+        where: { merchantId, createdAt: { gte: thirtyDaysAgo } },
+        select: { status: true, outcome: true, duration: true },
       }),
       this.prisma.order.groupBy({
         by: ['status'],
@@ -160,54 +186,37 @@ export class ReportsService {
         where: { merchantId, outcome: { not: null } },
         _count: true,
       }),
-      this.prisma.call.findMany({
-        where: { merchantId, createdAt: { gte: thirtyDaysAgo } },
-        select: { status: true, outcome: true, duration: true },
-      }),
     ]);
 
-    const liveOrders = await this.prisma.order.count({
-      where: { merchantId, createdAt: { gte: thirtyDaysAgo } },
-    });
-    const liveVerified = await this.prisma.order.count({
-      where: {
-        merchantId,
-        status: 'VERIFIED',
-        createdAt: { gte: thirtyDaysAgo },
-      },
-    });
+    const callsSuccess = recentCalls.filter(
+      (c) =>
+        c.status === 'COMPLETED' ||
+        c.outcome === 'CONFIRMED' ||
+        c.outcome === 'CANCELLED',
+    ).length;
 
-    const last30 =
-      (usage._sum.ordersReceived || 0) > 0
-        ? usage._sum
-        : {
-            ordersReceived: liveOrders,
-            ordersVerified: liveVerified,
-            ordersCancelled: await this.prisma.order.count({
-              where: {
-                merchantId,
-                status: 'CANCELLED',
-                createdAt: { gte: thirtyDaysAgo },
-              },
-            }),
-            callsMade: recentCalls.length,
-            callsSuccess: recentCalls.filter((c) => c.status === 'COMPLETED').length,
-            smsSent: 0,
-          };
+    const withDuration = recentCalls.filter((c) => c.duration && c.duration > 0);
 
     return {
-      last30Days: last30,
-      ordersByStatus: orders.map((o) => ({
+      last30Days: {
+        ordersReceived,
+        ordersVerified,
+        ordersCancelled,
+        callsMade: recentCalls.length,
+        callsSuccess,
+        smsSent: 0,
+      },
+      ordersByStatus: ordersByStatus.map((o) => ({
         status: o.status,
         count: o._count,
       })),
-      callsByOutcome: calls.map((c) => ({
+      callsByOutcome: callsByOutcome.map((c) => ({
         outcome: c.outcome,
         count: c._count,
       })),
       avgCallDuration: Math.round(
-        recentCalls.filter((c) => c.duration).reduce((s, c) => s + (c.duration || 0), 0) /
-          (recentCalls.filter((c) => c.duration).length || 1),
+        withDuration.reduce((s, c) => s + (c.duration || 0), 0) /
+          (withDuration.length || 1),
       ),
     };
   }

@@ -19,6 +19,11 @@ const BN_WEEKDAYS = ['রবি', 'সোম', 'মঙ্গল', 'বুধ', '
 
 /** Fill missing calendar days so charts always show a full range. */
 export function fillDailyReport(rows: DailyReport[], days: number): DailyReport[] {
+  // Backend already returns a continuous range — use as-is to avoid UTC/local day skew
+  if (Array.isArray(rows) && rows.length === days) {
+    return rows;
+  }
+
   const byDate = new Map(rows.map((r) => [r.date.slice(0, 10), r]));
   const start = new Date();
   start.setHours(12, 0, 0, 0);
@@ -28,7 +33,10 @@ export function fillDailyReport(rows: DailyReport[], days: number): DailyReport[
   for (let i = 0; i < days; i++) {
     const d = new Date(start);
     d.setDate(start.getDate() + i);
-    const key = d.toISOString().slice(0, 10);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const key = `${y}-${m}-${day}`;
     const existing = byDate.get(key);
     out.push(
       existing || {

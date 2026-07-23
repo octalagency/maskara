@@ -96,24 +96,19 @@ export default function ReportsPage() {
   const period = useMemo(() => sumDailyReport(chartData), [chartData]);
 
   const totals = useMemo(() => {
-    const s = summary?.last30Days;
-    const usePeriod = days !== 30;
+    // Always use selected-range daily report (live Order/Call), not stale usageRecord summary
     return {
-      orders: usePeriod ? period.received : s?.ordersReceived ?? period.received,
-      verified: usePeriod ? period.verified : s?.ordersVerified ?? period.verified,
-      cancelled: usePeriod ? period.cancelled : s?.ordersCancelled ?? period.cancelled,
-      calls: usePeriod ? period.calls : s?.callsMade ?? period.calls,
-      callSuccess: s?.callsSuccess ?? 0,
+      orders: period.received,
+      verified: period.verified,
+      cancelled: period.cancelled,
+      calls: period.calls,
+      callSuccess: chartData.reduce((n, d) => n + (d.callsSuccess || 0), 0),
       verifyRate:
-        (usePeriod ? period.received : s?.ordersReceived || period.received) > 0
-          ? Math.round(
-              ((usePeriod ? period.verified : s?.ordersVerified ?? period.verified) /
-                (usePeriod ? period.received : s?.ordersReceived || period.received)) *
-                100,
-            )
+        period.received > 0
+          ? Math.round((period.verified / period.received) * 100)
           : 0,
     };
-  }, [period, summary, days]);
+  }, [period, chartData]);
 
   const hasFlow = period.received + period.verified + period.cancelled > 0;
 
@@ -124,7 +119,7 @@ export default function ReportsPage() {
           <div>
             <h2 className="page-title">রিপোর্ট</h2>
             <p className="page-subtitle">
-              কত অর্ডার এসেছে, কত ভেরিফাই হয়েছে, কত কল হয়েছে — সহজে বোঝার মতো সারাংশ
+              নির্বাচিত সময়ের হিসাব — ওয়েবসাইট ম্যানুয়াল বাতিল বাদ, শুধু Maskara কলের ফলাফল
             </p>
           </div>
           <div className="flex gap-2">
@@ -150,7 +145,13 @@ export default function ReportsPage() {
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
           <StatCard title="অর্ডার এসেছে" value={totals.orders} icon={ShoppingCart} color="blue" />
           <StatCard title="ভেরিফাইড" value={totals.verified} icon={CheckCircle} color="green" />
-          <StatCard title="বাতিল" value={totals.cancelled} icon={XCircle} color="red" />
+          <StatCard
+            title="বাতিল"
+            value={totals.cancelled}
+            icon={XCircle}
+            color="red"
+            hint="কল দিয়ে বাতিল"
+          />
           <StatCard title="মোট কল" value={totals.calls} icon={Phone} color="brand" />
           <StatCard title="ভেরিফিকেশন রেট" value={`${totals.verifyRate}%`} icon={Percent} color="amber" />
           <StatCard

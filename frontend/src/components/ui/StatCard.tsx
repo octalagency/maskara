@@ -23,7 +23,7 @@ export function StatCard({ title, value, icon: Icon, change, trend, color = 'bra
   };
 
   return (
-    <div className="card p-4 sm:p-5">
+    <div className="card group p-4 transition hover:border-slate-300/80 hover:shadow-md sm:p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="label-muted">{title}</p>
@@ -42,7 +42,7 @@ export function StatCard({ title, value, icon: Icon, change, trend, color = 'bra
           )}
           {hint && <p className="mt-1.5 text-[12px] text-slate-400">{hint}</p>}
         </div>
-        <div className={cn('rounded-xl p-2.5', colorMap[color])}>
+        <div className={cn('rounded-xl p-2.5 ring-1 ring-black/[0.03]', colorMap[color])}>
           <Icon className="h-5 w-5" />
         </div>
       </div>
