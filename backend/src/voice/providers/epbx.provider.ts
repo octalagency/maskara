@@ -17,11 +17,12 @@ import {
 /**
  * ePBX `/calls/verify` owns the live speak path.
  *
- * Important: maskara.epbx.bd never fetches Maskara `audio_url` (confirmed via
- * nginx — zero ePBX User-Agents). Portal synthesizes from Bangla `tts_text`
- * using the voice_* fields we send. So merchant Aoede/Algieba must be in
- * voice_name / google_voice / voice_gender — do NOT set skip_tts (that made
- * the portal ignore our voice and fall back to its Active Profile Algenib).
+ * maskara.epbx.bd Active Voice Model has no Chirp3 option (only WaveNet,
+ * Azure, ElevenLabs, eAI, Fixed Audio). Portal never fetches our audio_url
+ * while WaveNet is active — customer hears WaveNet, not Maskara Aoede.
+ *
+ * Path for true Maskara Chirp3 on phone: portal Active Model = Fixed Audio
+ * Upload, and we send pre-synthesized MP3 URLs with skip_tts.
  */
 @Injectable()
 export class EpbxProvider implements VoiceProvider {
@@ -230,7 +231,7 @@ export class EpbxProvider implements VoiceProvider {
       invalidUrl,
     } = args;
 
-    // Portal TTS speaks portalVoice (female=Aoede/…; male=Algenib). Maskara MP3 is unused by ePBX.
+    // Speak voice for portal metadata; Fixed Audio plays Maskara MP3 (maskaraVoiceId).
     const speakVoiceId = portalVoice.voiceId;
     const gender =
       portalVoice.gender === 'female' &&
@@ -245,7 +246,7 @@ export class EpbxProvider implements VoiceProvider {
       to: dialPhone,
       from: callerId,
 
-      // Required: Bangla script so /calls/verify never uses English default
+      // Keep Bangla text as fallback if portal ignores fixed audio
       custom_text: ttsText,
       tts_text: ttsText,
       message: ttsText,
@@ -271,7 +272,13 @@ export class EpbxProvider implements VoiceProvider {
       use_custom_text_only: true,
       disable_default_greeting: true,
       template: 'custom',
-      mode: 'custom_tts',
+
+      // Fixed Audio path — portal Active Model must be "Fixed Audio Upload"
+      mode: 'fixed_audio',
+      tts_mode: 'fixed_audio',
+      voice_mode: 'fixed_audio',
+      audio_mode: 'fixed',
+      speak_mode: 'fixed_audio',
 
       replay_digit: '0',
       repeat_digit: '0',
@@ -300,18 +307,21 @@ export class EpbxProvider implements VoiceProvider {
       use_azure: false,
       azure_tts: false,
       use_portal_default_voice: false,
+      use_google: false,
+      google_tts: false,
 
-      // Portal Google Chirp3 — these fields are what the customer actually hears
-      provider: 'google',
-      ai_tts_provider: 'google',
-      tts_provider: 'google',
-      tts_engine: 'chirp3',
-      speech_provider: 'google',
-      voice_gateway: 'google',
-      tts_gateway: 'google',
-      use_chirp3: true,
+      // Metadata for logs / portal fallback if Fixed Audio not active
+      provider: 'fixed_audio',
+      ai_tts_provider: 'fixed_audio',
+      tts_provider: 'fixed_audio',
+      tts_engine: 'fixed_audio',
+      speech_provider: 'fixed_audio',
+      voice_gateway: 'fixed_audio',
+      tts_gateway: 'fixed_audio',
+      active_voice_model: 'fixed_audio',
+      use_chirp3: false,
       google_tts_model: 'chirp3-hd',
-      tts_model: 'chirp3-hd',
+      tts_model: 'fixed_audio',
 
       google_tts_voice_id: speakVoiceId,
       google_voice: speakVoiceId,
@@ -336,16 +346,19 @@ export class EpbxProvider implements VoiceProvider {
       speech_rate: String(speechRate),
       rate: String(speechRate),
 
-      // Must stay false — skip_tts caused Active Profile Algenib override
-      skip_tts: false,
-      disable_tts: false,
-      tts_enabled: true,
+      // Fixed Audio: play Maskara Chirp3 MP3 (requires portal Active Model = Fixed Audio Upload)
+      skip_tts: true,
+      disable_tts: true,
+      tts_enabled: false,
       force_voice: true,
-      tts_mode: 'text',
-
-      // Optional prefer (ePBX historically never GETs these URLs)
       use_audio_url: true,
       prefer_audio_url: true,
+      require_audio_url: true,
+      play_pre_recorded: true,
+      audio_only: true,
+      use_fixed_audio: true,
+      play_fixed_audio: true,
+
       audio_url: audioUrl,
       media_url: audioUrl,
       play_url: audioUrl,
@@ -353,8 +366,14 @@ export class EpbxProvider implements VoiceProvider {
       greeting_audio_url: audioUrl,
       prompt_audio_url: audioUrl,
       fixed_audio_url: audioUrl,
+      fixed_audio: audioUrl,
       replay_audio_url: audioUrl,
       repeat_audio_url: audioUrl,
+      audio: audioUrl,
+      media: audioUrl,
+      file_url: audioUrl,
+      mp3_url: audioUrl,
+      play_audio: audioUrl,
     };
 
     if (confirmUrl) {

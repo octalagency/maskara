@@ -205,7 +205,8 @@ export default function AdminConfigPage() {
       <div>
         <h2 className="text-2xl font-bold text-slate-900">Voice / ePBX</h2>
         <p className="text-sm text-slate-500">
-          Maskara Chirp3 = voice engine · ePBX = dial only ·{' '}
+          ePBX Active Model-এ Chirp3 নেই — Aoede শুনতে{' '}
+          <strong>Fixed Audio Upload</strong> সিলেক্ট করুন ·{' '}
           <a href="/admin/voice" className="text-brand-600 hover:underline">
             Voice Studio
           </a>
@@ -214,7 +215,20 @@ export default function AdminConfigPage() {
 
       <div className="card border-brand-200 bg-brand-50/30">
         <h3 className="font-semibold">ePBX Dashboard Setup</h3>
-        <p className="mt-1 text-sm text-slate-600">Login: <a href="https://maskara.epbx.bd/login" target="_blank" rel="noreferrer" className="text-brand-600 hover:underline">maskara.epbx.bd/login</a> → Developer API থেকে token নিন</p>
+        <p className="mt-1 text-sm text-slate-600">
+          Login:{' '}
+          <a
+            href="https://maskara.epbx.bd/login"
+            target="_blank"
+            rel="noreferrer"
+            className="text-brand-600 hover:underline"
+          >
+            maskara.epbx.bd/login
+          </a>
+          . ড্রপডাউনে Chirp3 নেই। Aoede শুনতে Active Voice Model →{' '}
+          <strong className="text-amber-800">Fixed Audio Upload</strong> → Update
+          Active Voice Model। WaveNet থাকলে পুরনো ভয়েসই বাজবে।
+        </p>
         <div className="mt-4 flex flex-wrap gap-3">
           <a href={dashboard.login} target="_blank" rel="noreferrer" className="btn-primary inline-flex items-center gap-2 text-sm">
             <ExternalLink className="h-4 w-4" /> Login

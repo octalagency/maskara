@@ -301,9 +301,9 @@ export default function SettingsPage() {
             <div>
               <h3 className="section-title">AI ভয়েস বাছুন</h3>
               <p className="page-subtitle">
-                ভয়েস <strong>Maskara Chirp3</strong> দিয়ে তৈরি হয় — ePBX শুধু ফোন কল করে ও
-                সেই অডিও প্লে করে। পোর্টাল WaveNet / eAI ব্যবহার হয় না। নারী ভয়েসের জন্য{' '}
-                <strong>Aoede</strong> বাছুন, প্রিভিউ শুনে সেভ করুন — লাইভ কলেও একই ভয়েস যাবে।
+                প্রিভিউ Maskara Chirp3 (Aoede)। লাইভ কলে শুনতে ePBX Developer-এ Active
+                Voice Model = <strong>Fixed Audio Upload</strong> সেট করুন — WaveNet
+                থাকলে পুরনো ভয়েসই বাজবে। Chirp3 ড্রপডাউনে নেই।
               </p>
             </div>
 
