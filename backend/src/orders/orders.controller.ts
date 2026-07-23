@@ -59,9 +59,13 @@ export class OrdersController {
   @Get('stats')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get order statistics' })
-  getStats(@CurrentUser('merchantId') merchantId: string) {
-    return this.ordersService.getStats(merchantId);
+  @ApiOperation({ summary: 'Get order statistics (optional from/to YYYY-MM-DD)' })
+  getStats(
+    @CurrentUser('merchantId') merchantId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.ordersService.getStats(merchantId, { from, to });
   }
 
   @Get(':id')

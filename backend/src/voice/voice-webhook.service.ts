@@ -323,15 +323,11 @@ export class VoiceWebhookService {
           verifyStatus: 'pending',
         });
       } else {
-        const failed = await this.prisma.order.update({
-          where: { id: call.orderId },
-          data: { status: 'FAILED', nextCallAt: null },
-        });
-        // Max retries exhausted → WooCommerce cancels the order
-        await this.notifications.pushOrderUpdate(call.merchant, failed, {
-          outcome: 'NO_RESPONSE',
-          verifyStatus: 'failed',
-        });
+        // Max retries exhausted → cancel on Maskara + website (ShopIn/Woo)
+        await this.notifications.autoCancelAfterMaxAttempts(
+          call.merchantId,
+          call.orderId,
+        );
       }
     }
 

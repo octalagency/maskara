@@ -198,50 +198,73 @@ export class OrdersService {
     return { message: 'Call retry queued', orderId };
   }
 
-  async getStats(merchantId: string) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+  async getStats(
+    merchantId: string,
+    opts?: { from?: string; to?: string },
+  ) {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
 
-    // Website/store admin cancels (cancelledFromWebsite) excluded from "বাতিল"
-    const maskaraCancelled = {
-      status: 'CANCELLED' as const,
-      NOT: {
-        metadata: {
-          path: ['cancelledFromWebsite'],
-          equals: true,
-        },
-      },
+    let createdFilter: { gte?: Date; lte?: Date } | undefined;
+    if (opts?.from && opts?.to) {
+      createdFilter = {
+        gte: new Date(`${opts.from.slice(0, 10)}T00:00:00+06:00`),
+        lte: new Date(`${opts.to.slice(0, 10)}T23:59:59.999+06:00`),
+      };
+    }
+
+    const orderWhere = {
+      merchantId,
+      ...(createdFilter ? { createdAt: createdFilter } : {}),
     };
 
-    const [total, verified, cancelled, pending, todayOrders, calls] =
-      await Promise.all([
-        this.prisma.order.count({ where: { merchantId } }),
-        this.prisma.order.count({
-          where: { merchantId, status: 'VERIFIED' },
-        }),
-        this.prisma.order.count({
-          where: { merchantId, ...maskaraCancelled },
-        }),
-        this.prisma.order.count({
-          where: { merchantId, status: { in: ['PENDING', 'CALLING'] } },
-        }),
-        this.prisma.order.count({
-          where: { merchantId, createdAt: { gte: today } },
-        }),
-        this.prisma.call.findMany({
-          where: { merchantId },
-          select: { status: true, outcome: true },
-        }),
-      ]);
+    const [
+      total,
+      verified,
+      cancelledRows,
+      pending,
+      todayOrders,
+      calls,
+    ] = await Promise.all([
+      this.prisma.order.count({ where: orderWhere }),
+      this.prisma.order.count({
+        where: { ...orderWhere, status: 'VERIFIED' },
+      }),
+      // Filter website cancels in JS — Prisma JSON path NOT filter was returning 0
+      this.prisma.order.findMany({
+        where: { ...orderWhere, status: 'CANCELLED' },
+        select: { metadata: true },
+      }),
+      this.prisma.order.count({
+        where: {
+          ...orderWhere,
+          status: { in: ['PENDING', 'CALLING'] },
+        },
+      }),
+      this.prisma.order.count({
+        where: { merchantId, createdAt: { gte: todayStart } },
+      }),
+      this.prisma.call.findMany({
+        where: {
+          merchantId,
+          ...(createdFilter ? { createdAt: createdFilter } : {}),
+        },
+        select: { status: true, outcome: true },
+      }),
+    ]);
 
-    const answered = calls.filter(
-      (c) =>
-        c.status === 'COMPLETED' ||
-        c.outcome === 'CONFIRMED' ||
-        c.outcome === 'CANCELLED',
-    );
-    const successRate =
-      calls.length > 0 ? Math.round((answered.length / calls.length) * 100) : 0;
+    const cancelled = cancelledRows.filter((o) => {
+      const meta = o.metadata;
+      return !(
+        meta &&
+        typeof meta === 'object' &&
+        !Array.isArray(meta) &&
+        (meta as Record<string, unknown>).cancelledFromWebsite === true
+      );
+    }).length;
+
+    const orderConfirmRate =
+      total > 0 ? Math.round((verified / total) * 100) : 0;
 
     return {
       totalOrders: total,
@@ -249,7 +272,8 @@ export class OrdersService {
       cancelledOrders: cancelled,
       pendingOrders: pending,
       todayOrders,
-      callSuccessRate: successRate,
+      orderConfirmRate,
+      callSuccessRate: orderConfirmRate, // legacy alias for older clients
       totalCalls: calls.length,
     };
   }

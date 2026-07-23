@@ -4,6 +4,7 @@ import { Job } from 'bull';
 import { VoiceService } from '../voice/voice.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { isWithinCallWindow } from '../common/utils/call-window.util';
 
 interface CallJobData {
@@ -20,6 +21,7 @@ export class CallsProcessor {
     private voiceService: VoiceService,
     private prisma: PrismaService,
     private subscriptions: SubscriptionsService,
+    private notifications: NotificationsService,
   ) {}
 
   @Process('initiate-call')
@@ -38,7 +40,8 @@ export class CallsProcessor {
     }
 
     if (order.callAttempts >= order.merchant.maxCallRetries) {
-      this.logger.warn(`Max daily call attempts reached for order ${order.orderNumber}`);
+      this.logger.warn(`Max call attempts reached for ${order.orderNumber}`);
+      await this.notifications.autoCancelAfterMaxAttempts(merchantId, orderId);
       return;
     }
 

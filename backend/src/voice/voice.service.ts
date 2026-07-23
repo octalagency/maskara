@@ -68,6 +68,7 @@ export class VoiceService {
 
     if (order.callAttempts >= merchant.maxCallRetries) {
       this.logger.warn(`Max call attempts reached for ${order.orderNumber}`);
+      await this.notifications.autoCancelAfterMaxAttempts(merchantId, orderId);
       return;
     }
 
@@ -329,11 +330,17 @@ export class VoiceService {
         where: { id: callId },
         include: { merchant: true },
       });
-      if (call && call.attemptNumber < call.merchant.maxCallRetries) {
+      if (!call) return;
+      if (call.attemptNumber < call.merchant.maxCallRetries) {
         await this.prisma.order.update({
           where: { id: call.orderId },
           data: { status: 'PENDING' },
         });
+      } else {
+        await this.notifications.autoCancelAfterMaxAttempts(
+          call.merchantId,
+          call.orderId,
+        );
       }
     }
   }

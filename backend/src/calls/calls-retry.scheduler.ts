@@ -65,14 +65,11 @@ export class CallsRetryScheduler {
 
     for (const order of pendingOrders) {
       if (order.callAttempts >= order.merchant.maxCallRetries) {
-        if (order.status !== 'FAILED') {
-          const failed = await this.prisma.order.update({
-            where: { id: order.id },
-            data: { status: 'FAILED', nextCallAt: null },
-          });
-          await this.notifications.pushOrderUpdate(order.merchant, failed, {
-            verifyStatus: 'failed',
-          });
+        if (!['CANCELLED', 'VERIFIED'].includes(order.status)) {
+          await this.notifications.autoCancelAfterMaxAttempts(
+            order.merchantId,
+            order.id,
+          );
         }
         continue;
       }

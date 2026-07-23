@@ -2,7 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import * as twilio from 'twilio';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { Merchant, Order } from '@prisma/client';
 
 @Injectable()
@@ -13,6 +15,7 @@ export class NotificationsService {
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
+    private subscriptions: SubscriptionsService,
   ) {
     const accountSid = this.config.get('TWILIO_ACCOUNT_SID');
     const authToken = this.config.get('TWILIO_AUTH_TOKEN');
@@ -60,6 +63,50 @@ export class NotificationsService {
             : order.status.toLowerCase(),
       courierStatus: outcome === 'CONFIRMED' ? 'processing' : undefined,
     });
+  }
+
+  /**
+   * After max unanswered call attempts: CANCEL order, consume plan quota,
+   * push cancelled to ShopIn/Woo so the website cancels too.
+   */
+  async autoCancelAfterMaxAttempts(merchantId: string, orderId: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { merchant: true },
+    });
+    if (!order?.merchant) return null;
+    if (['VERIFIED', 'CANCELLED'].includes(order.status)) return order;
+
+    const prevMeta =
+      order.metadata &&
+      typeof order.metadata === 'object' &&
+      !Array.isArray(order.metadata)
+        ? ({ ...(order.metadata as Record<string, unknown>) } as Record<string, unknown>)
+        : {};
+
+    const updated = await this.prisma.order.update({
+      where: { id: orderId },
+      data: {
+        status: 'CANCELLED',
+        cancelledAt: new Date(),
+        nextCallAt: null,
+        metadata: {
+          ...prevMeta,
+          autoCancelledMaxAttempts: true,
+          autoCancelledAt: new Date().toISOString(),
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    await this.subscriptions.consumeOrderQuota(merchantId, orderId);
+    await this.pushOrderUpdate(order.merchant, updated, {
+      outcome: 'NO_RESPONSE',
+      verifyStatus: 'cancelled',
+    });
+    this.logger.log(
+      `Auto-cancelled order ${updated.orderNumber} after max call attempts — website notified`,
+    );
+    return updated;
   }
 
   /** Push verification status to WooCommerce / ShopIn / merchant webhookUrl. */

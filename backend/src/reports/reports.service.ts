@@ -1,9 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Dhaka calendar day YYYY-MM-DD */
-function dayKey(d: Date): string {
+export function dayKey(d: Date): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Dhaka',
     year: 'numeric',
@@ -12,7 +11,7 @@ function dayKey(d: Date): string {
   }).format(d);
 }
 
-function isWebsiteCancel(metadata: unknown): boolean {
+export function isWebsiteCancel(metadata: unknown): boolean {
   return Boolean(
     metadata &&
       typeof metadata === 'object' &&
@@ -21,16 +20,23 @@ function isWebsiteCancel(metadata: unknown): boolean {
   );
 }
 
-/** Prisma filter: CANCELLED via Maskara (call/DTMF), not store-admin cancel */
-export const maskaraCancelledWhere: Prisma.OrderWhereInput = {
-  status: 'CANCELLED',
-  NOT: {
-    metadata: {
-      path: ['cancelledFromWebsite'],
-      equals: true,
-    },
-  },
-};
+/** Start of Dhaka calendar day as UTC Date suitable for DB compare */
+export function startOfDhakaDay(isoOrDate: string | Date): Date {
+  const key =
+    typeof isoOrDate === 'string'
+      ? isoOrDate.slice(0, 10)
+      : dayKey(isoOrDate);
+  // Asia/Dhaka = UTC+6 → local midnight = previous day 18:00 UTC
+  return new Date(`${key}T00:00:00+06:00`);
+}
+
+export function endOfDhakaDay(isoOrDate: string | Date): Date {
+  const key =
+    typeof isoOrDate === 'string'
+      ? isoOrDate.slice(0, 10)
+      : dayKey(isoOrDate);
+  return new Date(`${key}T23:59:59.999+06:00`);
+}
 
 @Injectable()
 export class ReportsService {
@@ -38,22 +44,39 @@ export class ReportsService {
 
   /**
    * Always compute from live Order + Call rows.
-   * UsageRecord is incomplete (only ordersReceived is written on create).
-   * Website manual cancels (cancelledFromWebsite) are excluded from cancelled counts.
+   * Website manual cancels (cancelledFromWebsite) excluded from cancelled counts.
    */
-  async getDailyReport(merchantId: string, days = 30) {
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - (days - 1));
-    startDate.setHours(0, 0, 0, 0);
+  async getDailyReport(
+    merchantId: string,
+    days = 30,
+    from?: string,
+    to?: string,
+  ) {
+    let startDate: Date;
+    let endDate: Date;
+    let dayCount: number;
+
+    if (from && to) {
+      startDate = startOfDhakaDay(from);
+      endDate = endOfDhakaDay(to);
+      const ms = endDate.getTime() - startDate.getTime();
+      dayCount = Math.max(1, Math.ceil(ms / (24 * 60 * 60 * 1000)));
+      if (dayCount > 366) dayCount = 366;
+    } else {
+      dayCount = Math.min(Math.max(Number(days) || 30, 1), 366);
+      endDate = endOfDhakaDay(new Date());
+      startDate = startOfDhakaDay(new Date());
+      startDate.setDate(startDate.getDate() - (dayCount - 1));
+    }
 
     const [orders, calls] = await Promise.all([
       this.prisma.order.findMany({
         where: {
           merchantId,
           OR: [
-            { createdAt: { gte: startDate } },
-            { verifiedAt: { gte: startDate } },
-            { cancelledAt: { gte: startDate } },
+            { createdAt: { gte: startDate, lte: endDate } },
+            { verifiedAt: { gte: startDate, lte: endDate } },
+            { cancelledAt: { gte: startDate, lte: endDate } },
           ],
         },
         select: {
@@ -65,7 +88,10 @@ export class ReportsService {
         },
       }),
       this.prisma.call.findMany({
-        where: { merchantId, createdAt: { gte: startDate } },
+        where: {
+          merchantId,
+          createdAt: { gte: startDate, lte: endDate },
+        },
         select: { status: true, outcome: true, createdAt: true },
       }),
     ]);
@@ -81,9 +107,8 @@ export class ReportsService {
       }
     > = {};
 
-    for (let i = 0; i < days; i++) {
-      const d = new Date(startDate);
-      d.setDate(startDate.getDate() + i);
+    for (let i = 0; i < dayCount; i++) {
+      const d = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
       byDay[dayKey(d)] = {
         ordersReceived: 0,
         ordersVerified: 0,
@@ -137,56 +162,69 @@ export class ReportsService {
   }
 
   async getSummary(merchantId: string) {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    thirtyDaysAgo.setHours(0, 0, 0, 0);
+    const thirtyDaysAgo = startOfDhakaDay(new Date());
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+    const end = endOfDhakaDay(new Date());
 
-    const [
-      ordersReceived,
-      ordersVerified,
-      ordersCancelled,
-      recentCalls,
-      ordersByStatus,
-      callsByOutcome,
-    ] = await Promise.all([
-      this.prisma.order.count({
-        where: { merchantId, createdAt: { gte: thirtyDaysAgo } },
-      }),
-      this.prisma.order.count({
-        where: {
-          merchantId,
-          status: 'VERIFIED',
-          OR: [
-            { verifiedAt: { gte: thirtyDaysAgo } },
-            { verifiedAt: null, createdAt: { gte: thirtyDaysAgo } },
-          ],
-        },
-      }),
-      this.prisma.order.count({
-        where: {
-          merchantId,
-          ...maskaraCancelledWhere,
-          OR: [
-            { cancelledAt: { gte: thirtyDaysAgo } },
-            { cancelledAt: null, createdAt: { gte: thirtyDaysAgo } },
-          ],
-        },
-      }),
-      this.prisma.call.findMany({
-        where: { merchantId, createdAt: { gte: thirtyDaysAgo } },
-        select: { status: true, outcome: true, duration: true },
-      }),
-      this.prisma.order.groupBy({
-        by: ['status'],
-        where: { merchantId },
-        _count: true,
-      }),
-      this.prisma.call.groupBy({
-        by: ['outcome'],
-        where: { merchantId, outcome: { not: null } },
-        _count: true,
-      }),
-    ]);
+    const [orders, recentCalls, ordersByStatus, callsByOutcome] =
+      await Promise.all([
+        this.prisma.order.findMany({
+          where: {
+            merchantId,
+            OR: [
+              { createdAt: { gte: thirtyDaysAgo, lte: end } },
+              { verifiedAt: { gte: thirtyDaysAgo, lte: end } },
+              { cancelledAt: { gte: thirtyDaysAgo, lte: end } },
+            ],
+          },
+          select: {
+            status: true,
+            createdAt: true,
+            verifiedAt: true,
+            cancelledAt: true,
+            metadata: true,
+          },
+        }),
+        this.prisma.call.findMany({
+          where: {
+            merchantId,
+            createdAt: { gte: thirtyDaysAgo, lte: end },
+          },
+          select: { status: true, outcome: true, duration: true },
+        }),
+        this.prisma.order.groupBy({
+          by: ['status'],
+          where: { merchantId },
+          _count: true,
+        }),
+        this.prisma.call.groupBy({
+          by: ['outcome'],
+          where: { merchantId, outcome: { not: null } },
+          _count: true,
+        }),
+      ]);
+
+    let ordersReceived = 0;
+    let ordersVerified = 0;
+    let ordersCancelled = 0;
+    for (const o of orders) {
+      if (o.createdAt >= thirtyDaysAgo && o.createdAt <= end) ordersReceived++;
+      if (
+        o.status === 'VERIFIED' &&
+        (o.verifiedAt || o.createdAt) >= thirtyDaysAgo &&
+        (o.verifiedAt || o.createdAt) <= end
+      ) {
+        ordersVerified++;
+      }
+      if (
+        o.status === 'CANCELLED' &&
+        !isWebsiteCancel(o.metadata) &&
+        (o.cancelledAt || o.createdAt) >= thirtyDaysAgo &&
+        (o.cancelledAt || o.createdAt) <= end
+      ) {
+        ordersCancelled++;
+      }
+    }
 
     const callsSuccess = recentCalls.filter(
       (c) =>
@@ -194,7 +232,6 @@ export class ReportsService {
         c.outcome === 'CONFIRMED' ||
         c.outcome === 'CANCELLED',
     ).length;
-
     const withDuration = recentCalls.filter((c) => c.duration && c.duration > 0);
 
     return {

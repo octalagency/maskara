@@ -289,8 +289,12 @@ class ApiClient {
     return this.request<{ orders: Order[]; total: number }>(`/orders${query}`);
   }
 
-  getOrderStats() {
-    return this.request<OrderStats>('/orders/stats');
+  getOrderStats(from?: string, to?: string) {
+    const q =
+      from && to
+        ? `?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+        : '';
+    return this.request<OrderStats>(`/orders/stats${q}`);
   }
 
   getOrder(id: string) {
@@ -316,7 +320,12 @@ class ApiClient {
   }
 
   // Reports
-  getDailyReport(days = 30) {
+  getDailyReport(days = 30, from?: string, to?: string) {
+    if (from && to) {
+      return this.request<DailyReport[]>(
+        `/reports/daily?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+      );
+    }
     return this.request<DailyReport[]>(`/reports/daily?days=${days}`);
   }
 
@@ -618,6 +627,7 @@ export interface OrderStats {
   cancelledOrders: number;
   pendingOrders: number;
   todayOrders: number;
+  orderConfirmRate?: number;
   callSuccessRate: number;
   totalCalls: number;
 }

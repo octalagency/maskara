@@ -12,12 +12,19 @@ export class ReportsController {
   constructor(private reportsService: ReportsService) {}
 
   @Get('daily')
-  @ApiOperation({ summary: 'Daily report for last N days' })
+  @ApiOperation({ summary: 'Daily report for last N days or custom from/to (YYYY-MM-DD)' })
   getDaily(
     @CurrentUser('merchantId') merchantId: string,
     @Query('days') days?: number,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
-    return this.reportsService.getDailyReport(merchantId, days);
+    return this.reportsService.getDailyReport(
+      merchantId,
+      days ? Number(days) : 30,
+      from,
+      to,
+    );
   }
 
   @Get('summary')
