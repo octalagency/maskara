@@ -484,9 +484,14 @@ export class VoiceService {
   }
 
   /**
-   * Admin test dial — uses real ePBX + Maskara Chirp3 path (no order required).
+   * Admin test dial — uses real ePBX + portal Chirp3 (same path as live orders).
+   * Pass voiceId (e.g. google:bn-IN-Chirp3-HD-Aoede) to hear that voice on the phone.
    */
-  async initiateTestCall(phone: string, message?: string) {
+  async initiateTestCall(
+    phone: string,
+    message?: string,
+    voiceId?: string | null,
+  ) {
     const to = phone.replace(/\D/g, '');
     if (to.length < 10) {
       throw new Error('Valid BD phone required (01XXXXXXXXX)');
@@ -498,6 +503,8 @@ export class VoiceService {
     }
 
     const callId = `test_${Date.now()}`;
+    const resolvedVoice =
+      voiceId?.trim() || 'google:bn-IN-Chirp3-HD-Aoede';
     const result = await provider.initiateCall({
       callId,
       to: phone.trim(),
@@ -509,18 +516,20 @@ export class VoiceService {
       customGreeting:
         message?.trim() ||
         'আসসালামু আলাইকুম। এটি Maskara টেস্ট কল। আপনার অর্ডার নিশ্চিত করতে ১ চাপুন, বাতিল করতে ২ চাপুন। পুনরায় শুনতে ০ চাপুন।',
-      voiceId: DEFAULT_MERCHANT_VOICE_ID,
+      voiceId: resolvedVoice,
+      speechRate: 1.05,
     });
 
     this.logger.log(
-      `Admin test call queued callId=${callId} to=${phone} providerId=${result.providerCallId}`,
+      `Admin test call queued callId=${callId} to=${phone} voiceId=${resolvedVoice} providerId=${result.providerCallId}`,
     );
 
     return {
       success: true,
       callId,
       providerCallId: result.providerCallId,
-      message: `Test call queued to ${phone}`,
+      voiceId: resolvedVoice,
+      message: `Test call queued to ${phone} (${resolvedVoice})`,
       details: result,
     };
   }

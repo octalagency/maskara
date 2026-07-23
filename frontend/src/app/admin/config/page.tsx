@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Phone, Radio, Save, Settings2, ExternalLink, Copy, Check, PhoneCall } from 'lucide-react';
 import { api, PlatformConfig, VoiceProviderInfo, EpbxProbe } from '@/lib/api';
+import { VOICE_OPTIONS } from '@/lib/voice';
 
 interface EpbxForm {
   enabled: boolean;
@@ -63,6 +64,7 @@ export default function AdminConfigPage() {
   const [probe, setProbe] = useState<EpbxProbe | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [testPhone, setTestPhone] = useState('');
+  const [testVoiceId, setTestVoiceId] = useState('google:bn-IN-Chirp3-HD-Aoede');
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
 
@@ -113,7 +115,11 @@ export default function AdminConfigPage() {
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await api.testEpbxCall(testPhone.trim());
+      const res = await api.testEpbxCall(
+        testPhone.trim(),
+        undefined,
+        testVoiceId,
+      );
       setTestResult(res.message || 'Call queued');
     } catch (e) {
       setTestResult(e instanceof Error ? e.message : 'Test call failed');
@@ -243,9 +249,35 @@ export default function AdminConfigPage() {
 
         <div className="mt-4 rounded-lg border border-dashed p-3">
           <p className="text-sm font-medium">Test Call</p>
-          <div className="mt-2 flex gap-2">
-            <input className="input flex-1" placeholder="01XXXXXXXXX" value={testPhone} onChange={(e) => setTestPhone(e.target.value)} />
-            <button type="button" onClick={runTestCall} disabled={testing} className="btn-primary inline-flex items-center gap-2">
+          <p className="mt-1 text-xs text-slate-500">
+            আগে সব টেস্ট কল জোর করে পুরুষ Algieba বাজাত — এখন নিচ থেকে ভয়েস বাছুন (ডিফল্ট Aoede নারী)।
+          </p>
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+            <input
+              className="input flex-1"
+              placeholder="01XXXXXXXXX"
+              value={testPhone}
+              onChange={(e) => setTestPhone(e.target.value)}
+            />
+            <select
+              className="input sm:w-56"
+              value={testVoiceId}
+              onChange={(e) => setTestVoiceId(e.target.value)}
+            >
+              {VOICE_OPTIONS.filter(
+                (v) => 'requiresGoogleTts' in v && v.requiresGoogleTts,
+              ).map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.short} ({v.gender === 'female' ? 'নারী' : 'পুরুষ'})
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={runTestCall}
+              disabled={testing}
+              className="btn-primary inline-flex items-center gap-2"
+            >
               <PhoneCall className="h-4 w-4" /> {testing ? 'Calling...' : 'Test'}
             </button>
           </div>

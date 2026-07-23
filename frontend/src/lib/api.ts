@@ -551,10 +551,16 @@ class ApiClient {
     return this.request<EpbxProbe>('/voice/epbx-probe');
   }
 
-  testEpbxCall(phone: string, message?: string) {
-    return this.request<{ success: boolean; message: string; callId?: string; details?: unknown }>('/voice/test-call', {
+  testEpbxCall(phone: string, message?: string, voiceId?: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      callId?: string;
+      voiceId?: string;
+      details?: unknown;
+    }>('/voice/test-call', {
       method: 'POST',
-      body: JSON.stringify({ phone, message }),
+      body: JSON.stringify({ phone, message, voiceId }),
     });
   }
 

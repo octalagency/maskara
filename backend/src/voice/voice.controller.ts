@@ -93,11 +93,17 @@ export class VoiceController {
   @Roles('SUPER_ADMIN', 'ADMIN')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Admin test dial via ePBX + Maskara Chirp3' })
-  async testCall(@Body() body: { phone?: string; to?: string; message?: string }) {
+  async testCall(
+    @Body() body: { phone?: string; to?: string; message?: string; voiceId?: string },
+  ) {
     const phone = (body.phone || body.to || '').trim();
     if (!phone) throw new BadRequestException('phone required');
     try {
-      return await this.voiceService.initiateTestCall(phone, body.message);
+      return await this.voiceService.initiateTestCall(
+        phone,
+        body.message,
+        body.voiceId,
+      );
     } catch (err) {
       throw new BadRequestException(
         err instanceof Error ? err.message : 'Test call failed',

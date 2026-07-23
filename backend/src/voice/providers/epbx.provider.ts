@@ -17,9 +17,11 @@ import {
 /**
  * ePBX `/calls/verify` owns the live speak path.
  *
- * Dial-only + skip_tts without Bangla text made the portal fall back to its
- * default English female WaveNet. Fix: always send Bangla script + Chirp3
- * Algenib (male) voice fields. Prefer Maskara-hosted MP3 when ePBX plays it.
+ * Important: maskara.epbx.bd never fetches Maskara `audio_url` (confirmed via
+ * nginx — zero ePBX User-Agents). Portal synthesizes from Bangla `tts_text`
+ * using the voice_* fields we send. So merchant Aoede/Algieba must be in
+ * voice_name / google_voice / voice_gender — do NOT set skip_tts (that made
+ * the portal ignore our voice and fall back to its Active Profile Algenib).
  */
 @Injectable()
 export class EpbxProvider implements VoiceProvider {
@@ -228,10 +230,11 @@ export class EpbxProvider implements VoiceProvider {
       invalidUrl,
     } = args;
 
-    // Honor merchant gender; default product path is male (Algieba→Algenib).
+    // Portal TTS speaks portalVoice (female=Aoede/…; male=Algenib). Maskara MP3 is unused by ePBX.
+    const speakVoiceId = portalVoice.voiceId;
     const gender =
       portalVoice.gender === 'female' &&
-      /Achernar|Aoede|Kore|Leda/i.test(portalVoice.voiceId)
+      /Achernar|Aoede|Kore|Leda/i.test(speakVoiceId)
         ? 'female'
         : 'male';
 
@@ -268,7 +271,6 @@ export class EpbxProvider implements VoiceProvider {
       use_custom_text_only: true,
       disable_default_greeting: true,
       template: 'custom',
-
       mode: 'custom_tts',
 
       replay_digit: '0',
@@ -288,7 +290,6 @@ export class EpbxProvider implements VoiceProvider {
       dtmf_webhook: this.webhookUrl('/voice/webhook/epbx/dtmf'),
       callback_url: this.webhookUrl('/voice/webhook/epbx'),
 
-      // Block portal female engines / English defaults
       use_eai: false,
       eai: false,
       eai_enabled: false,
@@ -300,7 +301,7 @@ export class EpbxProvider implements VoiceProvider {
       azure_tts: false,
       use_portal_default_voice: false,
 
-      // Portal metadata (fallback only) — Maskara audio_url is primary
+      // Portal Google Chirp3 — these fields are what the customer actually hears
       provider: 'google',
       ai_tts_provider: 'google',
       tts_provider: 'google',
@@ -312,58 +313,46 @@ export class EpbxProvider implements VoiceProvider {
       google_tts_model: 'chirp3-hd',
       tts_model: 'chirp3-hd',
 
-      google_tts_voice_id: maskaraVoiceId,
-      google_voice: maskaraVoiceId,
-      google_voice_name: maskaraVoiceId,
-      google_voice_id: maskaraVoiceId,
-      chirp3_voice: maskaraVoiceId,
-      voice_id: maskaraVoiceId,
-      tts_voice: maskaraVoiceId,
-      tts_voice_id: maskaraVoiceId,
-      tts_voice_name: maskaraVoiceId,
-      voice: maskaraVoiceId,
-      voice_name: maskaraVoiceId,
-      neural_voice: maskaraVoiceId,
-      ai_voice: maskaraVoiceId,
-      voice_label: maskaraVoiceId.replace(/^bn-IN-Chirp3-HD-/i, ''),
-      tts_voice_label: maskaraVoiceId.replace(/^bn-IN-Chirp3-HD-/i, ''),
+      google_tts_voice_id: speakVoiceId,
+      google_voice: speakVoiceId,
+      google_voice_name: speakVoiceId,
+      google_voice_id: speakVoiceId,
+      chirp3_voice: speakVoiceId,
+      voice_id: speakVoiceId,
+      tts_voice: speakVoiceId,
+      tts_voice_id: speakVoiceId,
+      tts_voice_name: speakVoiceId,
+      voice: speakVoiceId,
+      voice_name: speakVoiceId,
+      neural_voice: speakVoiceId,
+      ai_voice: speakVoiceId,
+      voice_label: speakVoiceId.replace(/^bn-IN-Chirp3-HD-/i, ''),
+      tts_voice_label: speakVoiceId.replace(/^bn-IN-Chirp3-HD-/i, ''),
       voice_gender: gender,
       tts_gender: gender,
       gender,
-      google_voice_alias: maskaraVoiceId,
+      google_voice_alias: speakVoiceId,
       maskara_voice: maskaraVoiceId,
       speech_rate: String(speechRate),
       rate: String(speechRate),
 
-      // Maskara hosts Chirp3 MP3 — ePBX must PLAY audio, not re-TTS with portal Algenib
-      skip_tts: true,
-      disable_tts: true,
-      tts_enabled: false,
+      // Must stay false — skip_tts caused Active Profile Algenib override
+      skip_tts: false,
+      disable_tts: false,
+      tts_enabled: true,
       force_voice: true,
+      tts_mode: 'text',
+
+      // Optional prefer (ePBX historically never GETs these URLs)
       use_audio_url: true,
       prefer_audio_url: true,
-      require_audio_url: true,
-      play_pre_recorded: true,
-      audio_only: true,
-      tts_mode: 'audio',
-
       audio_url: audioUrl,
       media_url: audioUrl,
       play_url: audioUrl,
       tts_audio_url: audioUrl,
       greeting_audio_url: audioUrl,
       prompt_audio_url: audioUrl,
-      audio: audioUrl,
-      media: audioUrl,
-      file_url: audioUrl,
-      mp3_url: audioUrl,
-      play_audio: audioUrl,
-      voice_url: audioUrl,
-      sound_url: audioUrl,
-      announcement_url: audioUrl,
-      recording_url: audioUrl,
       fixed_audio_url: audioUrl,
-      fixed_audio: audioUrl,
       replay_audio_url: audioUrl,
       repeat_audio_url: audioUrl,
     };
@@ -383,7 +372,7 @@ export class EpbxProvider implements VoiceProvider {
     // Never attach portal IVR menus (often English / female WaveNet)
     if (this.settings.get('EPBX_IVR_ID') || this.settings.get('EPBX_FORCE_IVR') === '1') {
       this.logger.warn(
-        `[voice] Ignoring EPBX_IVR_ID=${this.settings.get('EPBX_IVR_ID') || ''} — Bangla Algenib TTS only`,
+        `[voice] Ignoring EPBX_IVR_ID=${this.settings.get('EPBX_IVR_ID') || ''} — custom Bangla Chirp3 TTS only`,
       );
     }
 
