@@ -33,22 +33,25 @@ export class PaymentsService {
       return this.subscriptions.subscribe(merchantId, planCode, 'FREE');
     }
 
-    const billing = await this.plans.assignPlanToMerchant(merchantId, planCode, {
-      paymentMethod: provider,
-      markPaid: false,
-      adminNote: `${provider} payment initiated`,
-    });
+    const { billing } = await this.plans.createPendingBilling(
+      merchantId,
+      planCode,
+      {
+        paymentMethod: provider,
+        notes: `${provider} payment initiated`,
+      },
+    );
 
     const amount = Number(plan.priceMonthly);
     const init =
       provider === 'bkash'
-        ? await this.bkash.createPayment(amount, billing.billing.id)
-        : await this.nagad.createPayment(amount, billing.billing.id);
+        ? await this.bkash.createPayment(amount, billing.id)
+        : await this.nagad.createPayment(amount, billing.id);
 
     const session = await this.prisma.paymentSession.create({
       data: {
         merchantId,
-        billingId: billing.billing.id,
+        billingId: billing.id,
         provider: provider.toUpperCase() as PaymentProvider,
         amount,
         status: PaymentSessionStatus.PENDING,
@@ -62,7 +65,7 @@ export class PaymentsService {
       paymentUrl: init.paymentUrl,
       amount,
       provider,
-      billingId: billing.billing.id,
+      billingId: billing.id,
       message: `${provider} payment page-এ redirect করুন`,
     };
   }
