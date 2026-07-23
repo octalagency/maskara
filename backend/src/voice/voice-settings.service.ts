@@ -195,6 +195,10 @@ export class VoiceSettingsService implements OnModuleInit {
     if (updates.googleTts?.apiKey?.startsWith('••••') || updates.googleTts?.apiKey === '') {
       merged.googleTts!.apiKey = current.googleTts?.apiKey;
     }
+    // Avoid wiping saved key when client omits apiKey (undefined)
+    if (updates.googleTts && updates.googleTts.apiKey === undefined) {
+      merged.googleTts!.apiKey = current.googleTts?.apiKey;
+    }
 
     await this.prisma.systemSetting.upsert({
       where: { key: 'voice_providers' },

@@ -427,6 +427,12 @@ export class AdminService {
     const config: Record<string, unknown> = { plans, voice, paymentGateways };
     for (const s of settings) {
       if (s.key === 'voice_providers' || s.key === 'payment_gateways') continue;
+      // Do not overwrite voice provider/TTS public config with SystemSetting "voice"
+      // (language / maxRetries) — that wiped googleTts status in Super Admin UI.
+      if (s.key === 'voice') {
+        config.voiceDefaults = s.value;
+        continue;
+      }
       if (s.key === 'payment') {
         const p = (s.value as Record<string, unknown>) || {};
         const portal = (p.bkashPortal as Record<string, unknown>) || {};

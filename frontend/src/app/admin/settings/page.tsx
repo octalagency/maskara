@@ -105,10 +105,13 @@ export default function AdminSettingsPage() {
           googleTts?: { apiKeySet?: boolean; configured?: boolean };
           status?: { googleTts?: boolean };
         };
-        setGoogleTtsKeySet(Boolean(v?.googleTts?.apiKeySet));
-        setGoogleTtsConfigured(
-          Boolean(v?.googleTts?.configured ?? v?.status?.googleTts),
+        const connected = Boolean(
+          v?.googleTts?.configured ||
+            v?.status?.googleTts ||
+            v?.googleTts?.apiKeySet,
         );
+        setGoogleTtsKeySet(Boolean(v?.googleTts?.apiKeySet));
+        setGoogleTtsConfigured(connected);
       })
       .catch(() => {});
 
@@ -116,7 +119,7 @@ export default function AdminSettingsPage() {
       .getVoiceProvider()
       .then((p) => {
         const info = p as { googleTts?: boolean };
-        if (typeof info.googleTts === 'boolean') setGoogleTtsConfigured(info.googleTts);
+        if (info.googleTts === true) setGoogleTtsConfigured(true);
       })
       .catch(() => {});
   }, []);
@@ -225,10 +228,24 @@ export default function AdminSettingsPage() {
       setGoogleSaved(true);
       setTimeout(() => setGoogleSaved(false), 4000);
 
-      const provider = (await api.getVoiceProvider()) as { googleTts?: boolean };
-      if (typeof provider.googleTts === 'boolean') {
-        setGoogleTtsConfigured(provider.googleTts);
-      }
+      const [cfg, provider] = await Promise.all([
+        api.getPlatformConfig().catch(() => null),
+        api.getVoiceProvider().catch(() => null),
+      ]);
+      const v = cfg?.voice as
+        | {
+            googleTts?: { apiKeySet?: boolean; configured?: boolean };
+            status?: { googleTts?: boolean };
+          }
+        | undefined;
+      const connected = Boolean(
+        (provider as { googleTts?: boolean } | null)?.googleTts ||
+          v?.googleTts?.configured ||
+          v?.status?.googleTts ||
+          v?.googleTts?.apiKeySet,
+      );
+      if (connected) setGoogleTtsConfigured(true);
+      if (v?.googleTts?.apiKeySet) setGoogleTtsKeySet(true);
     } catch (err) {
       setGoogleError(err instanceof Error ? err.message : 'Google TTS সেভ ব্যর্থ');
     } finally {
