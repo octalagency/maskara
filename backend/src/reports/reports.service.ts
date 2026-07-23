@@ -73,6 +73,7 @@ export class ReportsService {
       this.prisma.order.findMany({
         where: {
           merchantId,
+          excludedFromStats: false,
           OR: [
             { createdAt: { gte: startDate, lte: endDate } },
             { verifiedAt: { gte: startDate, lte: endDate } },
@@ -85,6 +86,7 @@ export class ReportsService {
           verifiedAt: true,
           cancelledAt: true,
           metadata: true,
+          manualComplete: true,
         },
       }),
       this.prisma.call.findMany({
@@ -127,7 +129,7 @@ export class ReportsService {
         if (byDay[vDay]) byDay[vDay].ordersVerified++;
       }
 
-      if (o.status === 'CANCELLED' && !isWebsiteCancel(o.metadata)) {
+      if (o.status === 'CANCELLED') {
         const cDay = dayKey(o.cancelledAt || o.createdAt);
         if (byDay[cDay]) byDay[cDay].ordersCancelled++;
       }
@@ -171,6 +173,7 @@ export class ReportsService {
         this.prisma.order.findMany({
           where: {
             merchantId,
+            excludedFromStats: false,
             OR: [
               { createdAt: { gte: thirtyDaysAgo, lte: end } },
               { verifiedAt: { gte: thirtyDaysAgo, lte: end } },
@@ -218,7 +221,6 @@ export class ReportsService {
       }
       if (
         o.status === 'CANCELLED' &&
-        !isWebsiteCancel(o.metadata) &&
         (o.cancelledAt || o.createdAt) >= thirtyDaysAgo &&
         (o.cancelledAt || o.createdAt) <= end
       ) {

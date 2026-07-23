@@ -15,10 +15,33 @@ export class OrdersService {
     @InjectQueue('calls') private callsQueue: Queue,
   ) {}
 
-  async create(merchantId: string, dto: CreateOrderDto) {
-    const limitCheck = await this.subscriptions.canMakeCall(merchantId);
-    if (!limitCheck.allowed) {
-      throw new ForbiddenException(limitCheck.reason || 'Order quota exceeded');
+  async create(
+    merchantId: string,
+    dto: CreateOrderDto,
+    opts?: {
+      skipCall?: boolean;
+      initialStatus?: OrderStatus;
+      manualComplete?: boolean;
+      excludedFromStats?: boolean;
+    },
+  ) {
+    const skipCall = opts?.skipCall || opts?.manualComplete || opts?.excludedFromStats;
+    const initialStatus = opts?.initialStatus || 'PENDING';
+
+    // Manual complete / excluded orders don't need call quota gate
+    if (!skipCall) {
+      const limitCheck = await this.subscriptions.canMakeCall(merchantId);
+      if (!limitCheck.allowed) {
+        throw new ForbiddenException(limitCheck.reason || 'Order quota exceeded');
+      }
+    }
+
+    const baseMeta =
+      dto.metadata && typeof dto.metadata === 'object' && !Array.isArray(dto.metadata)
+        ? ({ ...(dto.metadata as Record<string, unknown>) } as Record<string, unknown>)
+        : {};
+    if (opts?.manualComplete) {
+      baseMeta.manualCompleteFromWebsite = true;
     }
 
     const order = await this.prisma.order.create({
@@ -36,13 +59,17 @@ export class OrdersService {
         paymentMethod: dto.paymentMethod,
         notes: dto.notes,
         source: dto.source || 'CUSTOM_API',
-        metadata: dto.metadata as Prisma.InputJsonValue,
-        status: 'PENDING',
+        metadata: baseMeta as Prisma.InputJsonValue,
+        status: initialStatus,
+        manualComplete: opts?.manualComplete === true,
+        excludedFromStats: opts?.excludedFromStats === true,
+        ...(initialStatus === 'VERIFIED' && { verifiedAt: new Date(), nextCallAt: null }),
+        ...(initialStatus === 'CANCELLED' && { cancelledAt: new Date(), nextCallAt: null }),
       },
     });
 
     // ShopIn orders: bind merchant callback if shopId present and not yet set
-    const meta = (dto.metadata || {}) as Record<string, unknown>;
+    const meta = baseMeta;
     if (meta.provider === 'shopin' || meta.shopId) {
       const shopId = String(meta.shopId || '');
       if (shopId) {
@@ -66,22 +93,73 @@ export class OrdersService {
       }
     }
 
-    await this.updateDailyUsage(merchantId, 'ordersReceived');
+    if (!opts?.excludedFromStats) {
+      await this.updateDailyUsage(merchantId, 'ordersReceived');
+      if (opts?.manualComplete) {
+        await this.updateDailyUsage(merchantId, 'ordersVerified');
+      }
+    }
 
-    // First verification call ASAP (≤20s; backup cron covers misses)
-    await this.callsQueue.add(
-      'initiate-call',
-      { orderId: order.id, merchantId, isRetry: false },
-      {
-        attempts: 2,
-        backoff: { type: 'fixed', delay: 3000 },
-        removeOnComplete: true,
-        removeOnFail: true,
-        jobId: `call-first-${order.id}`,
-      },
-    );
+    if (!skipCall) {
+      await this.callsQueue.add(
+        'initiate-call',
+        { orderId: order.id, merchantId, isRetry: false },
+        {
+          attempts: 2,
+          backoff: { type: 'fixed', delay: 3000 },
+          removeOnComplete: true,
+          removeOnFail: true,
+          jobId: `call-first-${order.id}`,
+        },
+      );
+    }
 
     return order;
+  }
+
+  /** Store admin completed/confirmed the order — stop calling, show Manual Complete */
+  async markManualCompleteFromWebsite(
+    merchantId: string,
+    orderId: string,
+    extraMeta: Record<string, unknown> = {},
+  ) {
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, merchantId },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status === 'VERIFIED' && order.manualComplete) return order;
+    if (order.status === 'CANCELLED' && order.excludedFromStats) return order;
+
+    const prevMeta =
+      order.metadata && typeof order.metadata === 'object' && !Array.isArray(order.metadata)
+        ? ({ ...(order.metadata as Record<string, unknown>) } as Record<string, unknown>)
+        : {};
+
+    const updated = await this.prisma.order.update({
+      where: { id: orderId },
+      data: {
+        status: 'VERIFIED',
+        verifiedAt: new Date(),
+        nextCallAt: null,
+        manualComplete: true,
+        excludedFromStats: false,
+        metadata: {
+          ...prevMeta,
+          ...extraMeta,
+          manualCompleteFromWebsite: true,
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    // Remove queued call jobs if any
+    try {
+      const job = await this.callsQueue.getJob(`call-first-${orderId}`);
+      if (job) await job.remove();
+    } catch {
+      // ignore
+    }
+
+    return updated;
   }
 
   async findAll(
@@ -111,6 +189,7 @@ export class OrdersService {
 
     const where: Prisma.OrderWhereInput = {
       merchantId,
+      excludedFromStats: false,
       ...(params.status && { status: params.status }),
       ...(Object.keys(createdAt).length > 0 && { createdAt }),
       ...(params.search && {
@@ -215,25 +294,25 @@ export class OrdersService {
 
     const orderWhere = {
       merchantId,
+      excludedFromStats: false,
       ...(createdFilter ? { createdAt: createdFilter } : {}),
     };
 
     const [
       total,
       verified,
-      cancelledRows,
+      cancelled,
       pending,
       todayOrders,
       calls,
+      manualComplete,
     ] = await Promise.all([
       this.prisma.order.count({ where: orderWhere }),
       this.prisma.order.count({
         where: { ...orderWhere, status: 'VERIFIED' },
       }),
-      // Filter website cancels in JS — Prisma JSON path NOT filter was returning 0
-      this.prisma.order.findMany({
+      this.prisma.order.count({
         where: { ...orderWhere, status: 'CANCELLED' },
-        select: { metadata: true },
       }),
       this.prisma.order.count({
         where: {
@@ -242,7 +321,11 @@ export class OrdersService {
         },
       }),
       this.prisma.order.count({
-        where: { merchantId, createdAt: { gte: todayStart } },
+        where: {
+          merchantId,
+          excludedFromStats: false,
+          createdAt: { gte: todayStart },
+        },
       }),
       this.prisma.call.findMany({
         where: {
@@ -251,17 +334,10 @@ export class OrdersService {
         },
         select: { status: true, outcome: true },
       }),
+      this.prisma.order.count({
+        where: { ...orderWhere, manualComplete: true },
+      }),
     ]);
-
-    const cancelled = cancelledRows.filter((o) => {
-      const meta = o.metadata;
-      return !(
-        meta &&
-        typeof meta === 'object' &&
-        !Array.isArray(meta) &&
-        (meta as Record<string, unknown>).cancelledFromWebsite === true
-      );
-    }).length;
 
     const orderConfirmRate =
       total > 0 ? Math.round((verified / total) * 100) : 0;
@@ -272,8 +348,9 @@ export class OrdersService {
       cancelledOrders: cancelled,
       pendingOrders: pending,
       todayOrders,
+      manualCompleteOrders: manualComplete,
       orderConfirmRate,
-      callSuccessRate: orderConfirmRate, // legacy alias for older clients
+      callSuccessRate: orderConfirmRate,
       totalCalls: calls.length,
     };
   }

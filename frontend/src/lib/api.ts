@@ -600,6 +600,9 @@ export interface Order {
   callAttempts?: number;
   paymentMethod?: string;
   createdAt: string;
+  manualComplete?: boolean;
+  excludedFromStats?: boolean;
+  metadata?: Record<string, unknown>;
   calls?: Call[];
 }
 
@@ -627,6 +630,7 @@ export interface OrderStats {
   cancelledOrders: number;
   pendingOrders: number;
   todayOrders: number;
+  manualCompleteOrders?: number;
   orderConfirmRate?: number;
   callSuccessRate: number;
   totalCalls: number;

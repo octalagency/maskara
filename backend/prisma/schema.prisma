@@ -313,6 +313,10 @@ model Order {
   notes           String?
   source          IntegrationType @default(CUSTOM_API)
   metadata        Json?
+  /** Website trash/delete/cancel — hide from dashboard totals & lists */
+  excludedFromStats Boolean    @default(false)
+  /** Merchant marked complete/confirm on store — show Manual Complete, never call */
+  manualComplete    Boolean    @default(false)
   verifiedAt      DateTime?
   cancelledAt     DateTime?
   callAttempts    Int         @default(0)
@@ -330,6 +334,7 @@ model Order {
   @@index([customerPhone])
   @@index([createdAt])
   @@index([nextCallAt])
+  @@index([excludedFromStats])
 }
 
 model Call {

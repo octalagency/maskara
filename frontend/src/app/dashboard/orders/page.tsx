@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { api, Order } from '@/lib/api';
-import { formatCurrency, formatDate, getStatusBadge } from '@/lib/utils';
+import { formatCurrency, formatDate, getStatusBadge, orderStatusLabel } from '@/lib/utils';
 import { dateRangeForPeriod } from '@/lib/voice';
 import { RefreshCw, Search, PhoneCall } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -160,7 +160,13 @@ export default function OrdersPage() {
                         {formatCurrency(Number(order.totalAmount))}
                       </td>
                       <td className="px-5 py-4">
-                        <span className={getStatusBadge(order.status)}>{order.status}</span>
+                        <span
+                          className={getStatusBadge(
+                            order.manualComplete ? 'MANUAL_COMPLETE' : order.status,
+                          )}
+                        >
+                          {orderStatusLabel(order)}
+                        </span>
                       </td>
                       <td className="px-5 py-4 text-slate-600">
                         <div className="flex items-center gap-1.5">

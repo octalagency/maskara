@@ -255,7 +255,7 @@ export default function DashboardPage() {
                 <div>
                   <h3 className="section-title">অর্ডার ট্রেন্ড · {dateWindow.label}</h3>
                   <p className="page-subtitle mt-0.5">
-                    ওয়েবসাইট ম্যানুয়াল বাতিল বাদ — শুধু Maskara কল/অটো বাতিল
+                    ওয়েবসাইট delete/trash/cancel বাদ · Manual Complete-এ কল হয় না
                   </p>
                 </div>
                 <Link

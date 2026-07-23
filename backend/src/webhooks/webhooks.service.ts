@@ -4,7 +4,42 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OrdersService } from '../orders/orders.service';
 import { CreateOrderDto } from '../orders/dto/create-order.dto';
 
-const WOO_CANCEL_STATUSES = new Set(['cancelled', 'refunded', 'failed']);
+/** Hide from Maskara totals — store admin cancelled / trashed / deleted */
+const WOO_EXCLUDE_STATUSES = new Set([
+  'cancelled',
+  'canceled',
+  'refunded',
+  'failed',
+  'trash',
+  'deleted',
+]);
+
+/** Merchant confirmed on website — Manual Complete, no AI call */
+const WOO_MANUAL_COMPLETE_STATUSES = new Set([
+  'completed',
+  'complete',
+]);
+
+const SHOPIN_EXCLUDE_STATUSES = new Set([
+  'cancelled',
+  'canceled',
+  'cancel',
+  'deleted',
+  'trash',
+  'trashed',
+  'rejected',
+]);
+
+const SHOPIN_MANUAL_COMPLETE_STATUSES = new Set([
+  'completed',
+  'complete',
+  'confirmed',
+  'confirm',
+  'delivered',
+  'success',
+  'manual_complete',
+  'manual-complete',
+]);
 
 function normalizeWooStatus(raw: unknown): string {
   const s = String(raw ?? '')
@@ -21,6 +56,17 @@ function stripOrderNumberHash(raw: string): string {
 function defaultShopInCallbackUrl(shopId: string): string {
   const base = (process.env.SHOPIN_API_BASE || 'https://api.shopin.bd').replace(/\/$/, '');
   return `${base}/api/v1/webhooks/maskara/${shopId}`;
+}
+
+function mergeMeta(
+  existing: unknown,
+  extra: Record<string, unknown>,
+): Prisma.InputJsonValue {
+  const prev =
+    existing && typeof existing === 'object' && !Array.isArray(existing)
+      ? (existing as Record<string, unknown>)
+      : {};
+  return { ...prev, ...extra } as Prisma.InputJsonValue;
 }
 
 @Injectable()
@@ -65,44 +111,53 @@ export class WebhooksService {
     });
 
     if (existing) {
-      if (WOO_CANCEL_STATUSES.has(wooStatus) && existing.status !== 'CANCELLED') {
-        const prevMeta =
-          existing.metadata && typeof existing.metadata === 'object' && !Array.isArray(existing.metadata)
-            ? (existing.metadata as Record<string, unknown>)
-            : {};
+      if (WOO_EXCLUDE_STATUSES.has(wooStatus) && !existing.excludedFromStats) {
         const cancelled = await this.prisma.order.update({
           where: { id: existing.id },
           data: {
             status: 'CANCELLED' as OrderStatus,
             cancelledAt: new Date(),
             nextCallAt: null,
-            metadata: {
-              ...prevMeta,
+            excludedFromStats: true,
+            metadata: mergeMeta(existing.metadata, {
               wooOrderId: String(payload.id),
               status: String(payload.status ?? ''),
               wooStatus,
               cancelledFromWebsite: true,
-            } as Prisma.InputJsonValue,
+              ...(wooStatus === 'trash' || wooStatus === 'deleted'
+                ? { deletedFromWebsite: true, trashedFromWebsite: wooStatus === 'trash' }
+                : {}),
+            }),
           },
         });
-        // Store-admin cancel: hide from Maskara reports; do not consume plan quota
-        return { received: true, cancelled: true, order: cancelled };
+        return { received: true, excluded: true, order: cancelled };
+      }
+
+      if (
+        WOO_MANUAL_COMPLETE_STATUSES.has(wooStatus) &&
+        !['VERIFIED', 'CANCELLED'].includes(existing.status)
+      ) {
+        const completed = await this.ordersService.markManualCompleteFromWebsite(
+          merchantId,
+          existing.id,
+          {
+            wooOrderId: String(payload.id),
+            status: String(payload.status ?? ''),
+            wooStatus,
+          },
+        );
+        return { received: true, manualComplete: true, order: completed };
       }
 
       if (payload.status != null) {
-        const prevMeta =
-          existing.metadata && typeof existing.metadata === 'object' && !Array.isArray(existing.metadata)
-            ? (existing.metadata as Record<string, unknown>)
-            : {};
         const updated = await this.prisma.order.update({
           where: { id: existing.id },
           data: {
-            metadata: {
-              ...prevMeta,
+            metadata: mergeMeta(existing.metadata, {
               wooOrderId: String(payload.id),
               status: String(payload.status ?? ''),
               wooStatus,
-            } as Prisma.InputJsonValue,
+            }),
           },
         });
         return { received: true, duplicate: true, order: updated };
@@ -111,8 +166,8 @@ export class WebhooksService {
       return { received: true, duplicate: true, order: existing };
     }
 
-    if (WOO_CANCEL_STATUSES.has(wooStatus)) {
-      return { received: true, ignored: true, reason: 'cancel_without_existing_order' };
+    if (WOO_EXCLUDE_STATUSES.has(wooStatus)) {
+      return { received: true, ignored: true, reason: 'exclude_without_existing_order' };
     }
 
     await this.prisma.integration.updateMany({
@@ -133,11 +188,23 @@ export class WebhooksService {
       shippingAddress: payload.shipping as Record<string, unknown>,
       paymentMethod: (payload.payment_method_title as string) || 'COD',
       source: 'WOOCOMMERCE',
-      metadata: { wooOrderId: String(payload.id), status: String(payload.status ?? '') },
+      metadata: {
+        wooOrderId: String(payload.id),
+        status: String(payload.status ?? ''),
+        wooStatus,
+      },
     };
 
     if (!orderData.customerPhone) {
       throw new BadRequestException('Customer phone number required for verification');
+    }
+
+    if (WOO_MANUAL_COMPLETE_STATUSES.has(wooStatus)) {
+      return this.ordersService.create(merchantId, orderData, {
+        skipCall: true,
+        initialStatus: 'VERIFIED',
+        manualComplete: true,
+      });
     }
 
     return this.ordersService.create(merchantId, orderData);
@@ -165,6 +232,8 @@ export class WebhooksService {
     }
 
     const externalId = orderData.externalId || orderData.orderNumber;
+    const status = String(payload.status || payload.orderStatus || '').toLowerCase();
+
     const existing = await this.prisma.order.findFirst({
       where: {
         merchantId,
@@ -176,33 +245,40 @@ export class WebhooksService {
     });
 
     if (existing) {
-      const status = String(payload.status || payload.orderStatus || '').toLowerCase();
-      if (
-        (status === 'cancelled' || status === 'canceled' || status === 'cancel') &&
-        existing.status !== 'CANCELLED'
-      ) {
-        const prevMeta =
-          existing.metadata &&
-          typeof existing.metadata === 'object' &&
-          !Array.isArray(existing.metadata)
-            ? (existing.metadata as Record<string, unknown>)
-            : {};
+      if (SHOPIN_EXCLUDE_STATUSES.has(status) && !existing.excludedFromStats) {
         const cancelled = await this.prisma.order.update({
           where: { id: existing.id },
           data: {
             status: 'CANCELLED',
             cancelledAt: new Date(),
             nextCallAt: null,
-            metadata: {
-              ...prevMeta,
+            excludedFromStats: true,
+            metadata: mergeMeta(existing.metadata, {
               cancelledFromWebsite: true,
-            } as Prisma.InputJsonValue,
+              shopInStatus: status,
+            }),
           },
         });
-        // Store-admin cancel: hide from Maskara reports; do not consume plan quota
-        return { received: true, cancelled: true, order: cancelled };
+        return { received: true, excluded: true, order: cancelled };
       }
+
+      if (
+        SHOPIN_MANUAL_COMPLETE_STATUSES.has(status) &&
+        !['VERIFIED', 'CANCELLED'].includes(existing.status)
+      ) {
+        const completed = await this.ordersService.markManualCompleteFromWebsite(
+          merchantId,
+          existing.id,
+          { shopInStatus: status },
+        );
+        return { received: true, manualComplete: true, order: completed };
+      }
+
       return { received: true, duplicate: true, order: existing };
+    }
+
+    if (SHOPIN_EXCLUDE_STATUSES.has(status)) {
+      return { received: true, ignored: true, reason: 'exclude_without_existing_order' };
     }
 
     await this.prisma.integration.updateMany({
@@ -216,6 +292,15 @@ export class WebhooksService {
       },
       data: { lastSyncAt: new Date() },
     });
+
+    if (SHOPIN_MANUAL_COMPLETE_STATUSES.has(status)) {
+      const order = await this.ordersService.create(
+        merchantId,
+        { ...orderData, externalId, source: 'CUSTOM_API' },
+        { skipCall: true, initialStatus: 'VERIFIED', manualComplete: true },
+      );
+      return { received: true, manualComplete: true, order };
+    }
 
     const order = await this.ordersService.create(merchantId, {
       ...orderData,

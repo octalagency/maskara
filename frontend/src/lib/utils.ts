@@ -30,6 +30,21 @@ export function getStatusBadge(status: string) {
     ESCALATED: 'badge-info',
     COMPLETED: 'badge-success',
     NO_ANSWER: 'badge-warning',
+    MANUAL_COMPLETE: 'badge-info',
   };
   return map[status] || 'badge-info';
+}
+
+export function orderStatusLabel(order: {
+  status: string;
+  manualComplete?: boolean;
+  metadata?: Record<string, unknown> | null;
+}) {
+  if (
+    order.manualComplete ||
+    order.metadata?.manualCompleteFromWebsite === true
+  ) {
+    return 'Manual Complete';
+  }
+  return order.status;
 }
