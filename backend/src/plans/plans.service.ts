@@ -101,14 +101,44 @@ export class PlansService implements OnModuleInit {
       /** When confirming an existing pending billing — do not create a second row */
       skipBilling?: boolean;
       paymentRef?: string;
+      /** Force replace quota instead of stacking (e.g. admin reset) */
+      replaceQuota?: boolean;
     },
   ) {
     const plan = await this.findByCode(planCode);
     if (!plan) throw new Error(`Plan ${planCode} not found`);
 
     const now = new Date();
-    const endsAt = new Date(now);
+    let endsAt = new Date(now);
     endsAt.setMonth(endsAt.getMonth() + 1);
+
+    const prev = await this.prisma.subscription.findFirst({
+      where: { merchantId, isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const isPaid = planCode !== 'FREE' && Number(plan.priceMonthly) > 0;
+    let callLimit = plan.callLimit;
+    let smsLimit = plan.smsLimit;
+    let callsUsed = 0;
+    let smsUsed = 0;
+    let stacked = false;
+
+    // Paid + paid (still valid): stack order-confirm quotas. Free → paid replaces free.
+    if (
+      isPaid &&
+      !options?.replaceQuota &&
+      prev &&
+      prev.endsAt > now &&
+      prev.plan !== 'FREE'
+    ) {
+      callLimit = prev.callLimit + plan.callLimit;
+      smsLimit = prev.smsLimit + plan.smsLimit;
+      callsUsed = prev.callsUsed;
+      smsUsed = prev.smsUsed;
+      endsAt = new Date(Math.max(prev.endsAt.getTime(), endsAt.getTime()));
+      stacked = true;
+    }
 
     await this.prisma.subscription.updateMany({
       where: { merchantId, isActive: true },
@@ -120,8 +150,10 @@ export class PlansService implements OnModuleInit {
         merchantId,
         plan: planCode as 'FREE' | 'STARTER' | 'GROWTH' | 'ENTERPRISE',
         price: plan.priceMonthly,
-        callLimit: plan.callLimit,
-        smsLimit: plan.smsLimit,
+        callLimit,
+        callsUsed,
+        smsLimit,
+        smsUsed,
         startsAt: now,
         endsAt,
         isActive: true,
@@ -139,7 +171,7 @@ export class PlansService implements OnModuleInit {
     });
 
     if (options?.skipBilling) {
-      return { subscription, billing: null, plan };
+      return { subscription, billing: null, plan, stacked };
     }
 
     const billing = await this.prisma.billingRecord.create({
@@ -152,11 +184,18 @@ export class PlansService implements OnModuleInit {
         status: options?.markPaid || Number(plan.priceMonthly) === 0 ? 'PAID' : 'PENDING',
         paymentMethod: options?.paymentMethod || 'admin_assign',
         paymentRef: options?.paymentRef,
-        notes: options?.adminNote,
+        notes: [
+          options?.adminNote,
+          stacked
+            ? `Stacked +${plan.callLimit} order confirms (total ${callLimit})`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(' | '),
       },
     });
 
-    return { subscription, billing, plan };
+    return { subscription, billing, plan, stacked };
   }
 
   /** Pending billing only — plan activates after admin confirms payment. */

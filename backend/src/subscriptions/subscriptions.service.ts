@@ -33,6 +33,8 @@ export class SubscriptionsService {
   }
 
   async getMerchantSubscription(merchantId: string) {
+    await this.healPaidPlansIfNeeded(merchantId);
+
     const [merchant, subscription, plans, recentBilling, payment] =
       await Promise.all([
         this.prisma.merchant.findUnique({ where: { id: merchantId } }),
@@ -55,6 +57,10 @@ export class SubscriptionsService {
       (p) => p.code === merchant.subscriptionPlan,
     );
 
+    const paidPurchases = recentBilling.filter(
+      (b) => b.status === 'PAID' && b.planCode !== 'FREE' && Number(b.amount) > 0,
+    );
+
     return {
       merchant: {
         id: merchant.id,
@@ -68,6 +74,11 @@ export class SubscriptionsService {
       availablePlans: plans,
       billingHistory: recentBilling,
       payment,
+      paidPurchases: paidPurchases.map((b) => ({
+        planCode: b.planCode,
+        amount: b.amount,
+        createdAt: b.createdAt,
+      })),
       usage: subscription
         ? {
             // Plan quota = finalized orders (confirm + cancel), not dial attempts
@@ -88,6 +99,50 @@ export class SubscriptionsService {
           }
         : null,
     };
+  }
+
+  /**
+   * If merchant still shows FREE but has PAID paid-plan billings, apply them
+   * in order (first replaces free, later purchases stack quotas).
+   */
+  private async healPaidPlansIfNeeded(merchantId: string) {
+    const merchant = await this.prisma.merchant.findUnique({
+      where: { id: merchantId },
+      select: { subscriptionPlan: true },
+    });
+    if (!merchant) return;
+
+    const active = await this.prisma.subscription.findFirst({
+      where: { merchantId, isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const paidBillings = await this.prisma.billingRecord.findMany({
+      where: {
+        merchantId,
+        status: 'PAID',
+        planCode: { not: 'FREE' },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!paidBillings.length) return;
+
+    const needsHeal =
+      merchant.subscriptionPlan === 'FREE' ||
+      !active ||
+      active.plan === 'FREE';
+
+    if (!needsHeal) return;
+
+    for (const b of paidBillings) {
+      await this.plans.assignPlanToMerchant(merchantId, b.planCode, {
+        paymentMethod: b.paymentMethod || 'bkash_manual',
+        markPaid: true,
+        skipBilling: true,
+        paymentRef: b.paymentRef || undefined,
+        adminNote: 'Healed from PAID billing (stack quotas)',
+      });
+    }
   }
 
   async subscribe(
@@ -248,26 +303,68 @@ export class SubscriptionsService {
     if (!billing) throw new NotFoundException('Billing record not found');
 
     if (billing.status === 'PAID') {
-      return billing;
+      // Heal orphan PAID rows where plan was never activated
+      const merchant = await this.prisma.merchant.findUnique({
+        where: { id: billing.merchantId },
+        select: { subscriptionPlan: true },
+      });
+      if (
+        merchant &&
+        billing.planCode !== 'FREE' &&
+        merchant.subscriptionPlan === 'FREE'
+      ) {
+        await this.plans.assignPlanToMerchant(
+          billing.merchantId,
+          billing.planCode,
+          {
+            paymentMethod: billing.paymentMethod || 'bkash_manual',
+            markPaid: true,
+            skipBilling: true,
+            paymentRef: billing.paymentRef || undefined,
+            adminNote: 'Activated orphan PAID billing',
+          },
+        );
+      }
+      return this.prisma.billingRecord.findUniqueOrThrow({
+        where: { id: billingId },
+      });
     }
 
     const ref = (paymentRef || billing.paymentRef || '').trim() || undefined;
 
-    const updated = await this.prisma.billingRecord.update({
+    await this.prisma.billingRecord.update({
       where: { id: billingId },
       data: { status: 'PAID', paymentRef: ref },
     });
 
-    // Activate plan without creating a second billing row
-    await this.plans.assignPlanToMerchant(billing.merchantId, billing.planCode, {
-      paymentMethod: billing.paymentMethod || 'bkash_manual',
-      markPaid: true,
-      skipBilling: true,
-      paymentRef: ref,
-      adminNote: `Payment confirmed ${ref || ''}`.trim(),
-    });
+    // Activate / stack plan without creating a second billing row
+    const activated = await this.plans.assignPlanToMerchant(
+      billing.merchantId,
+      billing.planCode,
+      {
+        paymentMethod: billing.paymentMethod || 'bkash_manual',
+        markPaid: true,
+        skipBilling: true,
+        paymentRef: ref,
+        adminNote: `Payment confirmed ${ref || ''}`.trim(),
+      },
+    );
 
-    return updated;
+    if (activated.stacked) {
+      await this.prisma.billingRecord.update({
+        where: { id: billingId },
+        data: {
+          notes: [
+            billing.notes,
+            `Stacked +${activated.plan.callLimit} → total ${activated.subscription.callLimit}`,
+          ]
+            .filter(Boolean)
+            .join(' | '),
+        },
+      });
+    }
+
+    return this.prisma.billingRecord.findUniqueOrThrow({ where: { id: billingId } });
   }
 
   async rejectBilling(billingId: string, reason?: string) {

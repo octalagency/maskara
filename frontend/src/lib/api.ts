@@ -873,6 +873,7 @@ export interface MerchantSubscription {
   currentPlan?: Plan;
   availablePlans: Plan[];
   billingHistory: BillingRecord[];
+  paidPurchases?: { planCode: string; amount: number; createdAt: string }[];
   payment?: {
     bKashNumber?: string;
     nagadNumber?: string;

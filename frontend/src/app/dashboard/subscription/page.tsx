@@ -178,6 +178,11 @@ export default function SubscriptionPage() {
                 {formatCurrency(Number(data.currentPlan.priceMonthly))}/মাস
               </p>
             )}
+            {usage && (
+              <p className="mt-2 text-sm font-medium text-slate-700">
+                মোট কোটা: {usage.callLimit.toLocaleString()} order confirmed
+              </p>
+            )}
             {data.merchant.subscriptionEnds && (
               <p className="mt-2 text-sm text-slate-500">
                 Valid until:{' '}
@@ -191,6 +196,9 @@ export default function SubscriptionPage() {
             >
               {data.merchant.status}
             </span>
+            <p className="mt-3 text-xs text-slate-500">
+              প্ল্যান বদলাতে আবার পেমেন্ট করুন — কোটা যোগ হবে, আগেরটা কাটবে না।
+            </p>
           </div>
 
           {usage && (
@@ -219,7 +227,8 @@ export default function SubscriptionPage() {
         <div>
           <h3 className="text-lg font-semibold">Upgrade Plan</h3>
           <p className="text-sm text-slate-500">
-            bKash Merchant SIM-এ পেমেন্ট → TrxID দিয়ে Verify Paid
+            bKash Merchant SIM-এ পেমেন্ট → TrxID দিয়ে Verify Paid। নতুন প্ল্যান কিনলে{' '}
+            <strong>order confirm কোটা যোগ</strong> হয় (আগের কোটা থাকে)।
           </p>
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {data.availablePlans.map((plan) => {
@@ -239,7 +248,7 @@ export default function SubscriptionPage() {
                     <span className="text-sm font-normal">/mo</span>
                   </p>
                   <p className="mt-1 text-sm text-slate-500">
-                    {plan.callLimit} order confirmed · {plan.smsLimit} SMS
+                    +{plan.callLimit} order confirmed · {plan.smsLimit} SMS
                   </p>
                   <ul className="mt-3 flex-1 space-y-1 text-xs text-slate-600">
                     {features.slice(0, 3).map((f) => (
@@ -250,27 +259,31 @@ export default function SubscriptionPage() {
                     ))}
                   </ul>
                   <div className="mt-4">
-                    {isCurrent ? (
-                      <button disabled className="btn-secondary w-full opacity-50">
-                        Current Plan
-                      </button>
-                    ) : price > 0 ? (
+                    {price <= 0 ? (
+                      isCurrent ? (
+                        <button disabled className="btn-secondary w-full opacity-50">
+                          Current Plan
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => subscribeFree(plan.code)}
+                          disabled={loading === plan.code}
+                          className="btn-primary w-full"
+                        >
+                          {loading === plan.code ? 'Processing...' : 'Subscribe Free'}
+                        </button>
+                      )
+                    ) : (
                       <button
                         type="button"
                         onClick={() => openPayForm(plan)}
                         disabled={!!loading}
                         className="w-full rounded-lg bg-[#E2136E] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#c41060]"
                       >
-                        bKash দিয়ে পেমেন্ট
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => subscribeFree(plan.code)}
-                        disabled={loading === plan.code}
-                        className="btn-primary w-full"
-                      >
-                        {loading === plan.code ? 'Processing...' : 'Subscribe Free'}
+                        {isCurrent
+                          ? 'আরও কোটা · bKash'
+                          : 'bKash দিয়ে পেমেন্ট'}
                       </button>
                     )}
                   </div>
@@ -312,7 +325,7 @@ export default function SubscriptionPage() {
                     <Check className="h-8 w-8 text-emerald-600" />
                   </div>
                   <p className="text-lg font-bold text-emerald-700">Paid</p>
-                  <p className="text-sm text-slate-500">প্ল্যান অ্যাক্টিভ হয়েছে</p>
+                  <p className="text-sm text-slate-500">প্ল্যান অ্যাক্টিভ · কোটা যোগ হয়েছে</p>
                 </div>
               )}
 
