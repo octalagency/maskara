@@ -43,17 +43,26 @@
 
 .land-grid {
   background-image:
-    linear-gradient(rgba(26, 130, 245, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(26, 130, 245, 0.06) 1px, transparent 1px);
-  background-size: 56px 56px;
-  mask-image: radial-gradient(ellipse 70% 55% at 50% 35%, #000 20%, transparent 75%);
+    linear-gradient(rgba(26, 130, 245, 0.09) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(13, 148, 136, 0.07) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 75% 60% at 50% 35%, #000 15%, transparent 78%);
 }
 
 .land-grid-dark {
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+    linear-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
   background-size: 48px 48px;
+}
+
+.land-orb {
+  animation: land-drift 14s ease-in-out infinite alternate;
+}
+
+.land-orb-delay {
+  animation-delay: -6s;
+  animation-duration: 18s;
 }
 
 .land-wave-bar {
@@ -133,12 +142,22 @@
   }
 }
 
+@keyframes land-drift {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(3%, 4%) scale(1.06);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .land-wave-bar,
   .land-wave-line,
   .land-mini-bar,
   .land-pulse,
-  .land-fade-up {
+  .land-fade-up,
+  .land-orb {
     animation: none !important;
   }
 }
