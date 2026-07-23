@@ -156,7 +156,7 @@ export default function SubscriptionPage() {
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Subscription & Billing</h2>
           <p className="text-sm text-slate-500">
-            প্ল্যান, ব্যবহার ও bKash SIM Send Money পেমেন্ট
+            প্ল্যান, ব্যবহার ও bKash Merchant SIM পেমেন্ট
           </p>
         </div>
 
@@ -219,7 +219,7 @@ export default function SubscriptionPage() {
         <div>
           <h3 className="text-lg font-semibold">Upgrade Plan</h3>
           <p className="text-sm text-slate-500">
-            bKash SIM-এ Send Money → TrxID দিয়ে Verify Paid
+            bKash Merchant SIM-এ পেমেন্ট → TrxID দিয়ে Verify Paid
           </p>
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {data.availablePlans.map((plan) => {
@@ -320,7 +320,7 @@ export default function SubscriptionPage() {
                 <form onSubmit={verifyPaid} className="space-y-4 px-5 py-5">
                   <div className="rounded-xl bg-[#E2136E]/5 p-3 ring-1 ring-[#E2136E]/15">
                     <p className="text-xs font-medium text-slate-500">
-                      এই নম্বরে Send Money করুন
+                      এই নম্বরে পেমেন্ট করুন
                     </p>
                     {bKashNumber ? (
                       <div className="mt-1 flex items-center justify-between gap-2">
@@ -338,7 +338,7 @@ export default function SubscriptionPage() {
                       </div>
                     ) : (
                       <p className="mt-1 text-sm text-amber-700">
-                        Admin এখনো Send Money নম্বর সেট করেনি
+                        Admin এখনো Payment নম্বর সেট করেনি
                       </p>
                     )}
                     <p className="mt-2 text-xs text-slate-500">

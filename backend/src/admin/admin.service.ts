@@ -110,12 +110,41 @@ export class AdminService {
     ]);
 
     return {
-      merchants: merchants.map((m) => ({
-        ...m,
-        wooConnected: m.integrations.some((i) => i.type === 'WOOCOMMERCE' && i.isActive),
-        apiKeyCount: m._count.apiKeys,
-        integration: m.integrations.find((i) => i.type === 'WOOCOMMERCE') || null,
-      })),
+      merchants: merchants.map((m) => {
+        const stores = m.integrations.filter((i) => i.isActive);
+        const woo = stores.find((i) => i.type === 'WOOCOMMERCE');
+        const shopin = stores.find(
+          (i) =>
+            i.type === 'CUSTOM_API' &&
+            (i.name.startsWith('ShopIn') ||
+              (i.credentials as { provider?: string } | null)?.provider ===
+                'shopin'),
+        );
+        const shopify = stores.find((i) => i.type === 'SHOPIFY');
+        const connected = stores.filter(
+          (i) =>
+            i.type === 'WOOCOMMERCE' ||
+            i.type === 'SHOPIFY' ||
+            (i.type === 'CUSTOM_API' &&
+              (i.name.startsWith('ShopIn') ||
+                (i.credentials as { provider?: string } | null)?.provider ===
+                  'shopin')),
+        );
+        return {
+          ...m,
+          wooConnected: connected.length > 0,
+          storeCount: connected.length,
+          storeLabels: connected.map((i) => {
+            if (i.type === 'WOOCOMMERCE') return 'WordPress';
+            if (i.type === 'SHOPIFY') return 'Shopify';
+            if (i.name.startsWith('ShopIn') || (i.credentials as { provider?: string })?.provider === 'shopin')
+              return 'ShopIn';
+            return i.name;
+          }),
+          apiKeyCount: m._count.apiKeys,
+          integration: woo || shopin || shopify || null,
+        };
+      }),
       total,
       page: pageNum,
       limit: limitNum,
@@ -180,19 +209,35 @@ export class AdminService {
   }
 
   async getPlatformStatus() {
-    const [merchantCount, activeCount, wooCount, voice, paymentGateways] = await Promise.all([
-      this.prisma.merchant.count(),
-      this.prisma.merchant.count({ where: { status: 'ACTIVE' } }),
-      this.prisma.integration.count({ where: { type: 'WOOCOMMERCE', isActive: true } }),
-      this.voiceSettings.getPublicConfig(),
-      this.paymentSettings.getPublicConfig(),
-    ]);
+    const [merchantCount, activeCount, storeCount, voice, paymentGateways] =
+      await Promise.all([
+        this.prisma.merchant.count(),
+        this.prisma.merchant.count({ where: { status: 'ACTIVE' } }),
+        // Woo + ShopIn + Shopify — all store connections
+        this.prisma.integration.count({
+          where: {
+            isActive: true,
+            OR: [
+              { type: 'WOOCOMMERCE' },
+              { type: 'SHOPIFY' },
+              { type: 'CUSTOM_API', name: { startsWith: 'ShopIn' } },
+            ],
+          },
+        }),
+        this.voiceSettings.getPublicConfig(),
+        this.paymentSettings.getPublicConfig(),
+      ]);
 
     return {
       voice: voice.status,
       voiceProvider: voice.provider,
       payments: paymentGateways.status,
-      merchants: { total: merchantCount, active: activeCount, wooConnected: wooCount },
+      merchants: {
+        total: merchantCount,
+        active: activeCount,
+        wooConnected: storeCount,
+        storesConnected: storeCount,
+      },
       publicApiUrl: voice.publicApiUrl,
     };
   }
@@ -212,9 +257,54 @@ export class AdminService {
     if (!merchant) throw new NotFoundException('Merchant not found');
     return {
       ...merchant,
-      wooConnected: merchant.integrations.some((i) => i.type === 'WOOCOMMERCE' && i.isActive),
+      wooConnected: merchant.integrations.some(
+        (i) =>
+          i.isActive &&
+          (i.type === 'WOOCOMMERCE' ||
+            i.type === 'SHOPIFY' ||
+            (i.type === 'CUSTOM_API' &&
+              (i.name.startsWith('ShopIn') ||
+                (i.credentials as { provider?: string } | null)?.provider ===
+                  'shopin'))),
+      ),
+      storeCount: merchant.integrations.filter(
+        (i) =>
+          i.isActive &&
+          (i.type === 'WOOCOMMERCE' ||
+            i.type === 'SHOPIFY' ||
+            (i.type === 'CUSTOM_API' &&
+              (i.name.startsWith('ShopIn') ||
+                (i.credentials as { provider?: string } | null)?.provider ===
+                  'shopin'))),
+      ).length,
+      storeLabels: merchant.integrations
+        .filter((i) => i.isActive)
+        .map((i) => {
+          if (i.type === 'WOOCOMMERCE') return 'WordPress';
+          if (i.type === 'SHOPIFY') return 'Shopify';
+          if (
+            i.name.startsWith('ShopIn') ||
+            (i.credentials as { provider?: string })?.provider === 'shopin'
+          )
+            return 'ShopIn';
+          return i.name;
+        })
+        .filter((label, idx, arr) =>
+          ['WordPress', 'Shopify', 'ShopIn'].includes(label)
+            ? arr.indexOf(label) === idx || true
+            : true,
+        ),
       apiKeyCount: merchant._count.apiKeys,
-      integration: merchant.integrations.find((i) => i.type === 'WOOCOMMERCE') || null,
+      integration:
+        merchant.integrations.find((i) => i.type === 'WOOCOMMERCE') ||
+        merchant.integrations.find(
+          (i) =>
+            i.type === 'CUSTOM_API' &&
+            (i.name.startsWith('ShopIn') ||
+              (i.credentials as { provider?: string } | null)?.provider ===
+                'shopin'),
+        ) ||
+        null,
     };
   }
 

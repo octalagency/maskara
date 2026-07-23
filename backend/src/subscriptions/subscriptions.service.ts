@@ -27,7 +27,7 @@ export class SubscriptionsService {
       nagadNumber: String(p.nagadNumber || ''),
       instructions: String(
         p.instructions ||
-          'bKash Send Money করুন, তারপর TrxID, নম্বর ও অ্যামাউন্ট সাবমিট করুন।',
+          'bKash-এ Payment করুন (Merchant SIM), তারপর TrxID, নম্বর ও অ্যামাউন্ট সাবমিট করুন।',
       ),
     };
   }
@@ -115,7 +115,7 @@ export class SubscriptionsService {
       billing,
       plan,
       message:
-        'bKash Send Money করুন, তারপর TrxID / নম্বর / অ্যামাউন্ট সাবমিট করুন। Admin confirm করলে Paid হবে।',
+        'bKash-এ Payment করুন, তারপর TrxID / নম্বর / অ্যামাউন্ট সাবমিট করুন। Admin confirm করলে Paid হবে।',
       paymentInstructions: {
         bKash: payment.bKashNumber || undefined,
         nagad: payment.nagadNumber || undefined,

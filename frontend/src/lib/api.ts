@@ -894,6 +894,8 @@ export interface AdminMerchantDetail {
   createdAt: string;
   storeNameBangla?: string;
   wooConnected?: boolean;
+  storeCount?: number;
+  storeLabels?: string[];
   apiKeyCount?: number;
   integration?: {
     type?: string;
@@ -912,7 +914,7 @@ export interface PlatformStatus {
   voice: { epbx: boolean; ippbx: boolean; twilio: boolean };
   voiceProvider?: string;
   payments: { bkash: boolean; nagad: boolean };
-  merchants: { total: number; active: number; wooConnected: number };
+  merchants: { total: number; active: number; wooConnected: number; storesConnected?: number };
   publicApiUrl?: string;
 }
 

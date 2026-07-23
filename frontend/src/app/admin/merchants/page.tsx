@@ -171,9 +171,9 @@ export default function AdminMerchantsPage() {
         </div>
         <div className="card text-center">
           <p className="text-2xl font-bold text-brand-600">
-            {merchants.filter((m) => m.wooConnected).length}
+            {merchants.reduce((n, m) => n + (m.storeCount || (m.wooConnected ? 1 : 0)), 0)}
           </p>
-          <p className="text-sm text-slate-500">WooCommerce ✓</p>
+          <p className="text-sm text-slate-500">Stores connected</p>
         </div>
         <div className="card text-center">
           <p className="text-2xl font-bold text-red-600">
@@ -213,9 +213,14 @@ export default function AdminMerchantsPage() {
                     <span className="badge-info">{m.subscriptionPlan}</span>
                   </td>
                   <td className="px-6 py-4">
-                    {m.wooConnected ? (
-                      <span className="badge-success inline-flex items-center gap-1">
-                        <Globe className="h-3 w-3" /> Connected
+                    {m.wooConnected || (m.storeCount && m.storeCount > 0) ? (
+                      <span className="badge-success inline-flex flex-wrap items-center gap-1">
+                        <Globe className="h-3 w-3" />
+                        {(m.storeLabels && m.storeLabels.length > 0
+                          ? m.storeLabels
+                          : ['Connected']
+                        ).join(' · ')}
+                        {m.storeCount && m.storeCount > 1 ? ` (${m.storeCount})` : ''}
                       </span>
                     ) : (
                       <span className="badge-warning">— Not connected</span>
@@ -377,15 +382,17 @@ export default function AdminMerchantsPage() {
               <h4 className="flex items-center gap-2 font-semibold">
                 <Globe className="h-4 w-4" /> Store Integration
               </h4>
-              {selected.wooConnected ? (
-                <div className="mt-2 text-sm text-slate-600">
+              {selected.storeCount || selected.wooConnected ? (
+                <div className="mt-2 space-y-1 text-sm text-slate-600">
                   <p>
-                    <strong>WooCommerce:</strong>{' '}
-                    {selected.integration?.storeName || selected.integration?.storeUrl}
+                    <strong>{selected.storeCount || 1} store connected:</strong>{' '}
+                    {(selected.storeLabels || []).join(' · ') || 'Connected'}
                   </p>
-                  <p className="text-xs text-slate-400">
-                    {selected.integration?.storeUrl}
-                  </p>
+                  {selected.integration?.storeUrl && (
+                    <p className="text-xs text-slate-400">
+                      {selected.integration.storeUrl}
+                    </p>
+                  )}
                 </div>
               ) : (
                 <p className="mt-2 text-sm text-amber-600">

@@ -82,7 +82,7 @@ export default function AdminPaymentsPage() {
     bKashNumber: '',
     nagadNumber: '',
     instructions:
-      'bKash Send Money করুন। তারপর Maskara Subscription পেজে TrxID, নম্বর ও অ্যামাউন্ট সাবমিট করুন।',
+      'bKash-এ Payment করুন (Merchant SIM)। তারপর Maskara Subscription পেজে TrxID, নম্বর ও অ্যামাউন্ট সাবমিট করুন।',
     portalUsername: '',
     portalPassword: '',
     portalPasswordSet: false,
@@ -243,7 +243,7 @@ export default function AdminPaymentsPage() {
       <div>
         <h2 className="text-2xl font-bold text-slate-900">Payment Gateway</h2>
         <p className="text-sm text-slate-500">
-          Primary: bKash Merchant Portal + Send Money (non-API). API gateway optional।
+          Primary: bKash Merchant Portal + Payment SIM (non-API). API gateway optional।
         </p>
       </div>
 
@@ -285,7 +285,7 @@ export default function AdminPaymentsPage() {
             saved={payment.portalPasswordSet}
           />
           <PaymentTextField
-            label="Send Money number (মার্চেন্ট যা দেখবে)"
+            label="Payment number (মার্চেন্ট যা দেখবে)"
             value={payment.bKashNumber}
             onChange={(v) => setPayment({ ...payment, bKashNumber: v })}
             placeholder="01XXXXXXXXX"
