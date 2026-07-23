@@ -136,7 +136,7 @@ export default function DashboardPage() {
         orderConfirmRate: 0,
       });
     }
-    return [...byLabel.values()].map((s) => ({
+    return Array.from(byLabel.values()).map((s) => ({
       ...s,
       orderConfirmRate:
         s.totalOrders > 0
