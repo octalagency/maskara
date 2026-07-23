@@ -36,43 +36,50 @@
   }
 }
 
-/* ── Landing page atmosphere ── */
+/* ── Landing page atmosphere (voice.ai-inspired mesh) ── */
 .landing-root {
   font-family: Sora, 'Noto Sans Bengali', 'Hind Siliguri', sans-serif;
+  color: #15204a;
 }
 
-.land-grid {
-  background-image:
-    linear-gradient(rgba(26, 130, 245, 0.09) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(13, 148, 136, 0.07) 1px, transparent 1px);
-  background-size: 48px 48px;
-  mask-image: radial-gradient(ellipse 75% 60% at 50% 35%, #000 15%, transparent 78%);
+.land-mesh {
+  background:
+    radial-gradient(ellipse 55% 50% at 28% 42%, rgba(125, 211, 252, 0.85) 0%, transparent 58%),
+    radial-gradient(ellipse 50% 48% at 58% 38%, rgba(165, 180, 252, 0.9) 0%, transparent 55%),
+    radial-gradient(ellipse 48% 52% at 72% 58%, rgba(196, 181, 253, 0.85) 0%, transparent 55%),
+    radial-gradient(ellipse 45% 45% at 42% 68%, rgba(249, 168, 212, 0.75) 0%, transparent 55%),
+    radial-gradient(ellipse 40% 40% at 55% 52%, rgba(253, 164, 175, 0.45) 0%, transparent 60%);
+  animation: land-mesh-drift 16s ease-in-out infinite alternate;
 }
 
-.land-grid-dark {
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
-  background-size: 48px 48px;
+.land-mesh-2 {
+  background: radial-gradient(circle, rgba(147, 197, 253, 0.7) 0%, transparent 70%);
+  animation: land-orb-soft 12s ease-in-out infinite alternate-reverse;
 }
 
-.land-orb {
-  animation: land-drift 14s ease-in-out infinite alternate;
+.land-mesh-3 {
+  background: radial-gradient(circle, rgba(244, 114, 182, 0.45) 0%, transparent 70%);
+  animation: land-orb-soft 14s ease-in-out infinite alternate;
 }
 
-.land-orb-delay {
-  animation-delay: -6s;
-  animation-duration: 18s;
+.land-glass-card {
+  background: linear-gradient(
+    135deg,
+    rgba(125, 211, 252, 0.55),
+    rgba(165, 180, 252, 0.5),
+    rgba(196, 181, 253, 0.55),
+    rgba(249, 168, 212, 0.5)
+  );
+  box-shadow: 0 24px 60px -28px rgba(59, 91, 219, 0.35);
+}
+
+.land-ring {
+  animation: land-ring-soft 8s ease-in-out infinite;
 }
 
 .land-wave-bar {
   transform-origin: center bottom;
   animation: land-wave 1.8s ease-in-out infinite;
-}
-
-.land-wave-line {
-  stroke-dasharray: 12 10;
-  animation: land-dash 18s linear infinite;
 }
 
 .land-mini-bar {
@@ -81,27 +88,6 @@
   animation: land-wave 1.4s ease-in-out infinite;
 }
 
-.land-pulse {
-  animation: land-node 3.2s ease-in-out infinite;
-}
-
-.land-pulse-delay {
-  animation-delay: 0.9s;
-}
-
-.land-pulse-delay-2 {
-  animation-delay: 1.7s;
-}
-
-.land-fade-up {
-  animation: land-rise 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.land-fade-delay {
-  animation-delay: 0.15s;
-}
-
-/* Staggered hero entrance */
 .land-hero-item {
   opacity: 0;
   animation: land-rise 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -136,7 +122,8 @@
   transition: transform 0.25s ease;
 }
 
-.land-cta-glow:hover .land-arrow {
+.land-cta-glow:hover .land-arrow,
+a:hover .land-arrow {
   transform: translateX(4px);
 }
 
@@ -165,24 +152,6 @@
   }
 }
 
-@keyframes land-dash {
-  to {
-    stroke-dashoffset: -400;
-  }
-}
-
-@keyframes land-node {
-  0%,
-  100% {
-    opacity: 0.35;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.6);
-  }
-}
-
 @keyframes land-rise {
   from {
     opacity: 0;
@@ -191,15 +160,6 @@
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-@keyframes land-drift {
-  from {
-    transform: translate(0, 0) scale(1);
-  }
-  to {
-    transform: translate(3%, 4%) scale(1.06);
   }
 }
 
@@ -216,23 +176,51 @@
 @keyframes land-soft-pulse {
   0%,
   100% {
-    box-shadow: 0 8px 28px -12px rgba(26, 130, 245, 0.45);
+    box-shadow: 0 10px 28px -12px rgba(59, 91, 219, 0.45);
   }
   50% {
-    box-shadow: 0 12px 36px -10px rgba(13, 148, 136, 0.5);
+    box-shadow: 0 14px 36px -10px rgba(124, 108, 240, 0.4);
+  }
+}
+
+@keyframes land-mesh-drift {
+  from {
+    transform: translate(-50%, -50%) scale(1) rotate(0deg);
+  }
+  to {
+    transform: translate(-48%, -52%) scale(1.06) rotate(4deg);
+  }
+}
+
+@keyframes land-orb-soft {
+  from {
+    transform: translate(-50%, 0) scale(1);
+  }
+  to {
+    transform: translate(-46%, 6%) scale(1.1);
+  }
+}
+
+@keyframes land-ring-soft {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .land-wave-bar,
-  .land-wave-line,
   .land-mini-bar,
-  .land-pulse,
-  .land-fade-up,
-  .land-orb,
   .land-hero-item,
   .land-shimmer-text,
-  .land-cta-glow {
+  .land-cta-glow,
+  .land-mesh,
+  .land-mesh-2,
+  .land-mesh-3,
+  .land-ring {
     animation: none !important;
   }
 
