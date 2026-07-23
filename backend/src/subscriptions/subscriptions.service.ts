@@ -156,6 +156,28 @@ export class SubscriptionsService {
     }
 
     if (planCode === 'FREE' || Number(plan.priceMonthly) === 0) {
+      const merchant = await this.prisma.merchant.findUnique({
+        where: { id: merchantId },
+        select: { subscriptionPlan: true },
+      });
+      const activePaid = await this.prisma.subscription.findFirst({
+        where: {
+          merchantId,
+          isActive: true,
+          plan: { not: 'FREE' },
+          endsAt: { gt: new Date() },
+        },
+      });
+      if (
+        activePaid ||
+        (merchant &&
+          merchant.subscriptionPlan !== 'FREE' &&
+          merchant.subscriptionPlan !== undefined)
+      ) {
+        throw new BadRequestException(
+          'Paid plan আছে — Free দিয়ে overwrite করা যাবে না। নতুন কোটার জন্য paid প্ল্যান কিনুন।',
+        );
+      }
       return this.plans.assignPlanToMerchant(merchantId, planCode, {
         paymentMethod: 'trial',
         markPaid: true,

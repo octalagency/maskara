@@ -149,6 +149,9 @@ export default function SubscriptionPage() {
     ? Math.round((usage.callsUsed / usage.callLimit) * 100)
     : 0;
   const bKashNumber = data.payment?.bKashNumber || '';
+  const hasPaidPlan =
+    data.merchant.subscriptionPlan !== 'FREE' &&
+    data.merchant.status === 'ACTIVE';
 
   return (
     <DashboardLayout>
@@ -263,6 +266,10 @@ export default function SubscriptionPage() {
                       isCurrent ? (
                         <button disabled className="btn-secondary w-full opacity-50">
                           Current Plan
+                        </button>
+                      ) : hasPaidPlan ? (
+                        <button disabled className="btn-secondary w-full opacity-50">
+                          Paid plan active
                         </button>
                       ) : (
                         <button

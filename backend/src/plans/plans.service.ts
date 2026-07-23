@@ -118,6 +118,19 @@ export class PlansService implements OnModuleInit {
     });
 
     const isPaid = planCode !== 'FREE' && Number(plan.priceMonthly) > 0;
+
+    // Never let FREE wipe an active paid subscription
+    if (
+      !isPaid &&
+      prev &&
+      prev.plan !== 'FREE' &&
+      prev.endsAt > now &&
+      !options?.replaceQuota
+    ) {
+      throw new Error(
+        'Cannot assign FREE while a paid subscription is active',
+      );
+    }
     let callLimit = plan.callLimit;
     let smsLimit = plan.smsLimit;
     let callsUsed = 0;
