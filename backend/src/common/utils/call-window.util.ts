@@ -62,36 +62,39 @@ export function minsToHourMinute(totalMin: number): { hour: number; minute: numb
 }
 
 export function isWithinCallWindow(
-  timezone = DEFAULT_TZ,
+  timezone: string | null | undefined = DEFAULT_TZ,
   startMin = DEFAULT_WINDOW_START_MIN,
   endMin = DEFAULT_WINDOW_END_MIN,
   now = new Date(),
 ): boolean {
-  const mins = minuteOfDay(now, timezone);
-  const start = Math.max(0, Math.min(1439, startMin));
-  const end = Math.max(start + 1, Math.min(1440, endMin));
+  const tz = timezone || DEFAULT_TZ;
+  const mins = minuteOfDay(now, tz);
+  const start = Math.max(0, Math.min(1439, startMin ?? DEFAULT_WINDOW_START_MIN));
+  const end = Math.max(start + 1, Math.min(1440, endMin ?? DEFAULT_WINDOW_END_MIN));
   return mins >= start && mins < end;
 }
 
 /** Next time the call window opens (today if still before start, else tomorrow). */
 export function nextWindowOpenAt(
-  timezone = DEFAULT_TZ,
+  timezone: string | null | undefined = DEFAULT_TZ,
   startMin = DEFAULT_WINDOW_START_MIN,
   endMin = DEFAULT_WINDOW_END_MIN,
   now = new Date(),
 ): Date {
-  const p = zonedParts(now, timezone);
-  const { hour, minute } = minsToHourMinute(startMin);
-  const todayOpen = zonedWallTimeToUtc(p.year, p.month, p.day, hour, minute, timezone);
-  const mins = minuteOfDay(now, timezone);
-  const end = Math.max(startMin + 1, Math.min(1440, endMin));
+  const tz = timezone || DEFAULT_TZ;
+  const start = startMin ?? DEFAULT_WINDOW_START_MIN;
+  const endBound = endMin ?? DEFAULT_WINDOW_END_MIN;
+  const p = zonedParts(now, tz);
+  const { hour, minute } = minsToHourMinute(start);
+  const todayOpen = zonedWallTimeToUtc(p.year, p.month, p.day, hour, minute, tz);
+  const mins = minuteOfDay(now, tz);
+  const end = Math.max(start + 1, Math.min(1440, endBound));
 
-  if (mins < startMin) return todayOpen;
+  if (mins < start) return todayOpen;
   if (mins >= end) {
-    // tomorrow at start
     const tomorrow = new Date(todayOpen.getTime() + 24 * 60 * 60 * 1000);
-    const tp = zonedParts(tomorrow, timezone);
-    return zonedWallTimeToUtc(tp.year, tp.month, tp.day, hour, minute, timezone);
+    const tp = zonedParts(tomorrow, tz);
+    return zonedWallTimeToUtc(tp.year, tp.month, tp.day, hour, minute, tz);
   }
   return now;
 }
