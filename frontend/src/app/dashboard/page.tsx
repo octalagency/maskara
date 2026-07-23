@@ -115,7 +115,35 @@ export default function DashboardPage() {
   const hasAny =
     period.received > 0 || period.verified > 0 || period.cancelled > 0;
 
-  const storeRows: StoreStat[] = stats?.byStore || [];
+  const storeRows: StoreStat[] = (() => {
+    const rows = stats?.byStore || [];
+    const byLabel = new Map<string, StoreStat>();
+    for (const row of rows) {
+      const prev = byLabel.get(row.label);
+      if (!prev) {
+        byLabel.set(row.label, row);
+        continue;
+      }
+      // Merge duplicate ShopIn chips (same label, different keys)
+      byLabel.set(row.label, {
+        ...prev,
+        totalOrders: prev.totalOrders + row.totalOrders,
+        verifiedOrders: prev.verifiedOrders + row.verifiedOrders,
+        cancelledOrders: prev.cancelledOrders + row.cancelledOrders,
+        pendingOrders: prev.pendingOrders + row.pendingOrders,
+        manualCompleteOrders:
+          (prev.manualCompleteOrders || 0) + (row.manualCompleteOrders || 0),
+        orderConfirmRate: 0,
+      });
+    }
+    return [...byLabel.values()].map((s) => ({
+      ...s,
+      orderConfirmRate:
+        s.totalOrders > 0
+          ? Math.round((s.verifiedOrders / s.totalOrders) * 100)
+          : 0,
+    }));
+  })();
   const storeChips = [
     { key: 'all', label: 'সব স্টোর' },
     ...storeRows.map((s) => ({ key: s.key, label: s.label })),
