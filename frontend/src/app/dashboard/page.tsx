@@ -242,7 +242,7 @@ export default function DashboardPage() {
               <StatCard title="পেন্ডিং" value={s.pendingOrders} icon={Clock} color="amber" />
               <StatCard title="আজকের অর্ডার" value={s.todayOrders} icon={TrendingUp} color="brand" />
               <StatCard
-                title="Order Confirm %"
+                title="Order Confirm"
                 value={`${confirmPct}%`}
                 icon={Percent}
                 color="green"
