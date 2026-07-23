@@ -874,16 +874,64 @@ class Maskara_Pathao {
 
         $normalized = Maskara_Shipments::normalize_pathao_status($raw_status);
 
+        $collected = self::first_float($data, array(
+            'collected_amount',
+            'amount_collected',
+            'collectable_amount',
+            'collected',
+        ));
+        $amount_to_collect = self::first_float($data, array(
+            'amount_to_collect',
+            'cod_amount',
+            'collectable_amount',
+            'amount',
+        ));
+        $delivery = self::first_float($data, array(
+            'delivery_fee',
+            'delivery_charge',
+            'delivery_cost',
+            'delivery_price',
+            'fee',
+        ));
+        $return_fee = self::first_float($data, array(
+            'return_fee',
+            'return_charge',
+            'return_cost',
+        ));
+
+        // Delivered COD with no explicit collected_amount → treat collectable as collected
+        if ($collected <= 0 && $normalized === Maskara_Shipments::STATUS_DELIVERED && $amount_to_collect > 0) {
+            $collected = $amount_to_collect;
+        }
+
         return array(
-            'success'          => true,
-            'status'           => $normalized,
-            'status_raw'       => $raw_status,
-            'collected_amount' => (float) ($data['collected_amount'] ?? 0),
-            'delivery_charge'  => (float) ($data['delivery_fee'] ?? $data['delivery_charge'] ?? 0),
-            'return_charge'    => (float) ($data['return_fee'] ?? $data['return_charge'] ?? 0),
-            'is_paid_return'   => $normalized === Maskara_Shipments::STATUS_PAID_RETURN,
-            'raw'              => $body,
+            'success'            => true,
+            'status'             => $normalized,
+            'status_raw'         => $raw_status,
+            'collected_amount'   => $collected,
+            'amount_to_collect'  => $amount_to_collect,
+            'delivery_charge'    => $delivery,
+            'return_charge'      => $return_fee,
+            'is_paid_return'     => $normalized === Maskara_Shipments::STATUS_PAID_RETURN,
+            'raw'                => $body,
         );
+    }
+
+    /**
+     * First positive/zero numeric field found in Pathao payload.
+     *
+     * @param array    $data
+     * @param string[] $keys
+     * @return float
+     */
+    private static function first_float(array $data, array $keys) {
+        foreach ($keys as $key) {
+            if (!array_key_exists($key, $data) || $data[$key] === null || $data[$key] === '') {
+                continue;
+            }
+            return (float) $data[$key];
+        }
+        return 0.0;
     }
 
     /** Normalize consignment id (strip # / spaces). */

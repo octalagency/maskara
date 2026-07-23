@@ -167,7 +167,7 @@
 		renderCourierTable(rows) {
 			const $tbody = $('#msk-courier-table tbody').empty();
 			if (!rows.length) {
-				$tbody.append('<tr><td colspan="7" class="msk-empty">' + this.escape(MaskaraAdmin.i18n.no_data) + '</td></tr>');
+				$tbody.append('<tr><td colspan="8" class="msk-empty">' + this.escape(MaskaraAdmin.i18n.no_data) + '</td></tr>');
 				return;
 			}
 			rows.forEach((r) => {
@@ -186,6 +186,7 @@
 						'<td class="msk-num">' + this.formatNumber(returned) + '</td>' +
 						'<td class="msk-num">' + rateText + '</td>' +
 						'<td class="msk-num">' + this.formatMoney(r.collected) + '</td>' +
+						'<td class="msk-num">' + this.formatMoney(r.delivery_charges) + '</td>' +
 					'</tr>'
 				);
 			});
@@ -285,7 +286,12 @@
 		},
 
 		formatMoney(n) {
-			return (MaskaraAdmin.currency || '৳') + ' ' + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+			const amount = Number(n || 0);
+			const formatted = amount.toLocaleString(undefined, {
+				minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
+				maximumFractionDigits: 2,
+			});
+			return (MaskaraAdmin.currency || '৳') + ' ' + formatted;
 		},
 
 		escape(str) {

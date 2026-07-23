@@ -68,6 +68,41 @@ class Maskara_Sync {
         }
     }
 
+    /**
+     * Resolve collected / delivery money for shipment updates.
+     * Keeps existing delivery fee when Pathao returns 0; for delivered uses COD if collected empty.
+     *
+     * @param array       $result Pathao fetch_status payload
+     * @param object|null $row    Existing shipment row
+     * @return array{collected_amount:float,delivery_charge:float,return_charge:float}
+     */
+    public static function resolve_money_fields(array $result, $row = null) {
+        $collected = (float) ($result['collected_amount'] ?? 0);
+        $delivery  = (float) ($result['delivery_charge'] ?? 0);
+        $return    = (float) ($result['return_charge'] ?? 0);
+        $status    = (string) ($result['status'] ?? '');
+
+        if ($collected <= 0 && $status === Maskara_Shipments::STATUS_DELIVERED) {
+            $collected = (float) ($result['amount_to_collect'] ?? 0);
+            if ($collected <= 0 && $row) {
+                $collected = (float) ($row->cod_amount ?? 0);
+            }
+        }
+
+        if ($delivery <= 0 && $row) {
+            $delivery = (float) ($row->delivery_charge ?? 0);
+        }
+        if ($return <= 0 && $row) {
+            $return = (float) ($row->return_charge ?? 0);
+        }
+
+        return array(
+            'collected_amount' => $collected,
+            'delivery_charge'  => $delivery,
+            'return_charge'    => $return,
+        );
+    }
+
     public function handle_manual_sync() {
         if (!current_user_can('manage_woocommerce')) {
             wp_die('Forbidden');
@@ -199,12 +234,13 @@ class Maskara_Sync {
         ));
         $row = $shipments->get_by_consignment($consignment);
         if ($row) {
+            $money = self::resolve_money_fields($result, $row);
             $shipments->update((int) $row->id, array(
                 'status'            => $result['status_raw'],
                 'status_normalized' => $result['status'],
-                'collected_amount'  => $result['collected_amount'],
-                'delivery_charge'   => $result['delivery_charge'],
-                'return_charge'     => $result['return_charge'],
+                'collected_amount'  => $money['collected_amount'],
+                'delivery_charge'   => $money['delivery_charge'],
+                'return_charge'     => $money['return_charge'],
                 'is_paid_return'    => !empty($result['is_paid_return']) ? 1 : 0,
                 'raw_response'      => wp_json_encode($result['raw'] ?? array()),
             ));
@@ -278,12 +314,13 @@ class Maskara_Sync {
                 continue;
             }
 
+            $money = self::resolve_money_fields($result, $row);
             $ok = $shipments->update((int) $row->id, array(
                 'status'            => $result['status_raw'],
                 'status_normalized' => $result['status'],
-                'collected_amount'  => $result['collected_amount'],
-                'delivery_charge'   => $result['delivery_charge'],
-                'return_charge'     => $result['return_charge'],
+                'collected_amount'  => $money['collected_amount'],
+                'delivery_charge'   => $money['delivery_charge'],
+                'return_charge'     => $money['return_charge'],
                 'is_paid_return'    => !empty($result['is_paid_return']) ? 1 : 0,
                 'raw_response'      => wp_json_encode($result['raw'] ?? array()),
             ));
@@ -374,12 +411,13 @@ class Maskara_Sync {
 
             $row = $shipments->get_by_consignment($consignment);
             if ($row) {
+                $money = self::resolve_money_fields($result, $row);
                 $shipments->update((int) $row->id, array(
                     'status'            => $result['status_raw'],
                     'status_normalized' => $result['status'],
-                    'collected_amount'  => $result['collected_amount'],
-                    'delivery_charge'   => $result['delivery_charge'],
-                    'return_charge'     => $result['return_charge'],
+                    'collected_amount'  => $money['collected_amount'],
+                    'delivery_charge'   => $money['delivery_charge'],
+                    'return_charge'     => $money['return_charge'],
                     'is_paid_return'    => !empty($result['is_paid_return']) ? 1 : 0,
                     'raw_response'      => wp_json_encode($result['raw'] ?? array()),
                 ));
@@ -420,12 +458,13 @@ class Maskara_Sync {
             return new WP_Error('maskara_sync', $result['error'] ?? 'Sync failed');
         }
 
+        $money = self::resolve_money_fields($result, $row);
         $shipments->update((int) $row->id, array(
             'status'            => $result['status_raw'],
             'status_normalized' => $result['status'],
-            'collected_amount'  => $result['collected_amount'],
-            'delivery_charge'   => $result['delivery_charge'],
-            'return_charge'     => $result['return_charge'],
+            'collected_amount'  => $money['collected_amount'],
+            'delivery_charge'   => $money['delivery_charge'],
+            'return_charge'     => $money['return_charge'],
             'is_paid_return'    => !empty($result['is_paid_return']) ? 1 : 0,
             'raw_response'      => wp_json_encode($result['raw'] ?? array()),
         ));

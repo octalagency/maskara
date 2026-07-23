@@ -71,6 +71,23 @@ class Maskara_Shipments {
         dbDelta($sql);
         update_option('maskara_db_version', '1.3.0');
         self::backfill_from_order_meta();
+        self::backfill_collected_amounts();
+    }
+
+    /**
+     * Delivered rows with empty collected_amount → use COD amount.
+     */
+    public static function backfill_collected_amounts() {
+        global $wpdb;
+        $table = self::table_name();
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        $wpdb->query(
+            "UPDATE {$table}
+			 SET collected_amount = cod_amount
+			 WHERE status_normalized = 'delivered'
+			   AND collected_amount <= 0
+			   AND cod_amount > 0"
+        );
     }
 
     /**
@@ -307,7 +324,13 @@ class Maskara_Shipments {
 			SUM(status_normalized = 'paid_return') AS paid_returns,
 			SUM(status_normalized IN ('processing','pending')) AS processing,
 			SUM(status_normalized = 'in_transit') AS in_transit,
-			COALESCE(SUM(collected_amount), 0) AS total_collected,
+			COALESCE(SUM(
+				CASE
+					WHEN collected_amount > 0 THEN collected_amount
+					WHEN status_normalized = 'delivered' THEN cod_amount
+					ELSE 0
+				END
+			), 0) AS total_collected,
 			COALESCE(SUM(CASE WHEN status_normalized = 'delivered' THEN cod_amount ELSE 0 END), 0) AS total_cod,
 			COALESCE(SUM(delivery_charge), 0) AS delivery_charges,
 			COALESCE(SUM(return_charge), 0) AS return_charges
@@ -369,7 +392,13 @@ class Maskara_Shipments {
 			SUM(status_normalized IN ('returned','paid_return')) AS returned,
 			SUM(status_normalized = 'in_transit') AS in_transit,
 			ROUND(SUM(status_normalized = 'delivered') / COUNT(*) * 100, 2) AS success_rate,
-			COALESCE(SUM(collected_amount), 0) AS collected,
+			COALESCE(SUM(
+				CASE
+					WHEN collected_amount > 0 THEN collected_amount
+					WHEN status_normalized = 'delivered' THEN cod_amount
+					ELSE 0
+				END
+			), 0) AS collected,
 			COALESCE(SUM(delivery_charge), 0) AS delivery_charges
 			FROM {$this->table}
 			{$where}
