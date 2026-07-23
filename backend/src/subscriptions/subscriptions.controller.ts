@@ -53,6 +53,7 @@ export class SubscriptionsController {
       trxId: string;
       senderPhone: string;
       amount: number;
+      autoVerify?: boolean;
     },
   ) {
     return this.subscriptionsService.submitBkashManual(merchantId, body);

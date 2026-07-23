@@ -81,7 +81,9 @@ export class AdminService {
   }
 
   async getMerchants(page = 1, limit = 20, search?: string) {
-    const skip = (page - 1) * limit;
+    const pageNum = Math.max(1, Number(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, Number(limit) || 20));
+    const skip = (pageNum - 1) * limitNum;
     const where = search
       ? {
           OR: [
@@ -102,7 +104,7 @@ export class AdminService {
         },
         orderBy: { createdAt: 'desc' },
         skip,
-        take: limit,
+        take: limitNum,
       }),
       this.prisma.merchant.count({ where }),
     ]);
@@ -115,8 +117,8 @@ export class AdminService {
         integration: m.integrations.find((i) => i.type === 'WOOCOMMERCE') || null,
       })),
       total,
-      page,
-      limit,
+      page: pageNum,
+      limit: limitNum,
     };
   }
 
@@ -257,7 +259,9 @@ export class AdminService {
 
   // --- Billing ---
   async getBillingRecords(page = 1, limit = 20, status?: string) {
-    const skip = (page - 1) * limit;
+    const pageNum = Math.max(1, Number(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, Number(limit) || 20));
+    const skip = (pageNum - 1) * limitNum;
     const where = status
       ? { status: status as 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED' }
       : {};
@@ -270,12 +274,12 @@ export class AdminService {
         },
         orderBy: { createdAt: 'desc' },
         skip,
-        take: limit,
+        take: limitNum,
       }),
       this.prisma.billingRecord.count({ where }),
     ]);
 
-    return { records, total, page, limit };
+    return { records, total, page: pageNum, limit: limitNum };
   }
 
   confirmBilling(billingId: string, paymentRef?: string) {

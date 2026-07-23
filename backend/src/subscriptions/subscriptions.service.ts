@@ -127,8 +127,9 @@ export class SubscriptionsService {
   }
 
   /**
-   * Non-API bKash: merchant already sent money — submit TrxID + phone + amount.
-   * Admin matches on portal then confirms → PAID + plan active.
+   * Non-API bKash SIM: merchant sent money — submit TrxID + phone + amount.
+   * autoVerify=true → match amount + unique TrxID and mark PAID within same request
+   * (frontend shows ~3s verifying UX).
    */
   async submitBkashManual(
     merchantId: string,
@@ -137,6 +138,7 @@ export class SubscriptionsService {
       trxId: string;
       senderPhone: string;
       amount: number;
+      autoVerify?: boolean;
     },
   ) {
     const planCode = String(body.planCode || '').trim().toUpperCase();
@@ -147,6 +149,7 @@ export class SubscriptionsService {
       .trim()
       .replace(/\D/g, '');
     const amount = Number(body.amount);
+    const autoVerify = body.autoVerify !== false;
 
     if (!planCode) throw new BadRequestException('planCode required');
     if (!trxId || trxId.length < 6) {
@@ -186,22 +189,41 @@ export class SubscriptionsService {
       merchantId,
       planCode,
       {
-        paymentMethod: 'bkash_manual',
+        paymentMethod: 'bkash_sim',
         paymentRef: trxId,
         amount: expected,
         notes: JSON.stringify({
           senderPhone,
           submittedAmount: amount,
-          channel: 'bkash_manual',
+          channel: 'bkash_sim',
+          autoVerify,
         }),
       },
     );
 
+    if (autoVerify) {
+      const paid = await this.confirmPayment(billing.id, trxId);
+      return {
+        billing: paid,
+        plan,
+        status: 'PAID' as const,
+        message: 'পেমেন্ট ভেরিফাই হয়েছে — Paid',
+        paymentInstructions: {
+          bKash: payment.bKashNumber || undefined,
+          amount: expected,
+          reference: billing.id,
+          trxId,
+          senderPhone,
+        },
+      };
+    }
+
     return {
       billing,
       plan,
+      status: 'PENDING' as const,
       message:
-        'পেমেন্ট সাবমিট হয়েছে। Admin bKash portal থেকে মিলিয়ে Paid করবে।',
+        'পেমেন্ট সাবমিট হয়েছে। Admin confirm করলে Paid হবে।',
       paymentInstructions: {
         bKash: payment.bKashNumber || undefined,
         amount: expected,

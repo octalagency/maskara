@@ -541,11 +541,15 @@ class ApiClient {
     trxId: string;
     senderPhone: string;
     amount: number;
+    autoVerify?: boolean;
   }) {
-    return this.request<SubscribeResult>('/subscriptions/bkash-manual', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+    return this.request<SubscribeResult & { status?: string }>(
+      '/subscriptions/bkash-manual',
+      {
+        method: 'POST',
+        body: JSON.stringify({ autoVerify: true, ...data }),
+      },
+    );
   }
 
   initiatePayment(planCode: string, provider: 'bkash' | 'nagad') {
