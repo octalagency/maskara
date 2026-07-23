@@ -14,21 +14,45 @@ export default function AdminMerchantsPage() {
   const [planLoading, setPlanLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', planCode: 'FREE' });
+  const [loadError, setLoadError] = useState('');
+  const [grantPlan, setGrantPlan] = useState('STARTER');
+  const [form, setForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    password: '',
+    planCode: 'FREE',
+  });
+
+  async function loadMerchants() {
+    setLoadError('');
+    try {
+      const res = await api.getAdminMerchants({ limit: '100' });
+      setMerchants(res.merchants ?? []);
+    } catch (err) {
+      setMerchants([]);
+      setLoadError(
+        err instanceof Error ? err.message : 'Merchant list load হয়নি — login check করুন',
+      );
+    }
+  }
 
   useEffect(() => {
-    api.getAdminMerchants().then((res) => {
-      if (res.merchants?.length) setMerchants(res.merchants);
-    }).catch(() => {});
-    api.getAdminPlans().then(setPlans).catch(() => {});
+    void loadMerchants();
+    api
+      .getAdminPlans()
+      .then(setPlans)
+      .catch(() => setPlans([]));
   }, []);
 
   async function openDetail(m: AdminMerchantDetail) {
     try {
       const detail = await api.getAdminMerchantDetail(m.id);
       setSelected(detail);
+      setGrantPlan(detail.subscriptionPlan || 'STARTER');
     } catch {
       setSelected(m);
+      setGrantPlan(m.subscriptionPlan || 'STARTER');
     }
   }
 
@@ -48,13 +72,25 @@ export default function AdminMerchantsPage() {
     }
   }
 
-  async function assignPlan(merchantId: string, planCode: string) {
+  async function assignPlan(merchantId: string, planCode: string, markPaid: boolean) {
     setPlanLoading(true);
     try {
-      await api.assignMerchantPlan(merchantId, planCode, true);
-      setMerchants((prev) => prev.map((m) => (m.id === merchantId ? { ...m, subscriptionPlan: planCode } : m)));
-      if (selected?.id === merchantId) setSelected({ ...selected, subscriptionPlan: planCode });
-      alert(`Plan ${planCode} assigned`);
+      await api.assignMerchantPlan(merchantId, planCode, markPaid);
+      if (markPaid) {
+        setMerchants((prev) =>
+          prev.map((m) =>
+            m.id === merchantId ? { ...m, subscriptionPlan: planCode } : m,
+          ),
+        );
+        if (selected?.id === merchantId) {
+          setSelected({ ...selected, subscriptionPlan: planCode });
+        }
+      }
+      alert(
+        markPaid
+          ? `Plan ${planCode} granted (Paid)`
+          : `Pending billing তৈরি — payment confirm হলে ${planCode} Active হবে`,
+      );
     } catch {
       alert('Plan assign failed');
     } finally {
@@ -62,9 +98,10 @@ export default function AdminMerchantsPage() {
     }
   }
 
-  const filtered = merchants.filter((m) =>
-    m.name.toLowerCase().includes(search.toLowerCase()) ||
-    m.email.toLowerCase().includes(search.toLowerCase()),
+  const filtered = merchants.filter(
+    (m) =>
+      m.name.toLowerCase().includes(search.toLowerCase()) ||
+      m.email.toLowerCase().includes(search.toLowerCase()),
   );
 
   async function toggleStatus(id: string, current: string) {
@@ -72,7 +109,9 @@ export default function AdminMerchantsPage() {
     setLoading(id);
     try {
       await api.updateMerchantStatus(id, next);
-      setMerchants((prev) => prev.map((m) => (m.id === id ? { ...m, status: next } : m)));
+      setMerchants((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, status: next } : m)),
+      );
       if (selected?.id === id) setSelected({ ...selected, status: next });
     } catch {
       alert('Status update failed');
@@ -86,24 +125,62 @@ export default function AdminMerchantsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Merchant Control</h2>
-          <p className="text-sm text-slate-500">তৈরি, plan দিন, store connection দেখুন, suspend করুন</p>
+          <p className="text-sm text-slate-500">
+            তৈরি, plan দিন, store connection দেখুন, suspend করুন
+          </p>
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={() => setShowCreate(true)} className="btn-primary inline-flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowCreate(true)}
+            className="btn-primary inline-flex items-center gap-2"
+          >
             <Plus className="h-4 w-4" /> নতুন Merchant
           </button>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input className="input pl-9" placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            <input
+              className="input pl-9"
+              placeholder="Search..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
         </div>
       </div>
 
+      {loadError && (
+        <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+          {loadError}{' '}
+          <button type="button" className="font-semibold underline" onClick={() => void loadMerchants()}>
+            Retry
+          </button>
+        </div>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-4">
-        <div className="card text-center"><p className="text-2xl font-bold">{merchants.length}</p><p className="text-sm text-slate-500">Total</p></div>
-        <div className="card text-center"><p className="text-2xl font-bold text-emerald-600">{merchants.filter((m) => m.status === 'ACTIVE').length}</p><p className="text-sm text-slate-500">Active</p></div>
-        <div className="card text-center"><p className="text-2xl font-bold text-brand-600">{merchants.filter((m) => m.wooConnected).length}</p><p className="text-sm text-slate-500">WooCommerce ✓</p></div>
-        <div className="card text-center"><p className="text-2xl font-bold text-red-600">{merchants.filter((m) => m.status === 'SUSPENDED').length}</p><p className="text-sm text-slate-500">Suspended</p></div>
+        <div className="card text-center">
+          <p className="text-2xl font-bold">{merchants.length}</p>
+          <p className="text-sm text-slate-500">Total</p>
+        </div>
+        <div className="card text-center">
+          <p className="text-2xl font-bold text-emerald-600">
+            {merchants.filter((m) => m.status === 'ACTIVE').length}
+          </p>
+          <p className="text-sm text-slate-500">Active</p>
+        </div>
+        <div className="card text-center">
+          <p className="text-2xl font-bold text-brand-600">
+            {merchants.filter((m) => m.wooConnected).length}
+          </p>
+          <p className="text-sm text-slate-500">WooCommerce ✓</p>
+        </div>
+        <div className="card text-center">
+          <p className="text-2xl font-bold text-red-600">
+            {merchants.filter((m) => m.status === 'SUSPENDED').length}
+          </p>
+          <p className="text-sm text-slate-500">Suspended</p>
+        </div>
       </div>
 
       <div className="card overflow-hidden p-0">
@@ -121,91 +198,214 @@ export default function AdminMerchantsPage() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {filtered.map((m) => (
-              <tr key={m.id} className="hover:bg-slate-50">
-                <td className="px-6 py-4 font-medium">{m.name}</td>
-                <td className="px-6 py-4 text-slate-500">{m.email}</td>
-                <td className="px-6 py-4"><span className="badge-info">{m.subscriptionPlan}</span></td>
-                <td className="px-6 py-4">
-                  {m.wooConnected ? (
-                    <span className="badge-success inline-flex items-center gap-1"><Globe className="h-3 w-3" /> Connected</span>
-                  ) : (
-                    <span className="badge-warning">— Not connected</span>
-                  )}
-                </td>
-                <td className="px-6 py-4">
-                  <span className={m.status === 'ACTIVE' ? 'badge-success' : m.status === 'SUSPENDED' ? 'badge-danger' : 'badge-warning'}>{m.status}</span>
-                </td>
-                <td className="px-6 py-4">{m._count.orders}</td>
-                <td className="px-6 py-4">{m._count.calls}</td>
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-3">
-                    <button onClick={() => openDetail(m)} className="text-brand-600 hover:text-brand-700"><Eye className="h-4 w-4" /></button>
-                    <button onClick={() => toggleStatus(m.id, m.status)} disabled={loading === m.id} className={`text-sm font-medium ${m.status === 'SUSPENDED' ? 'text-emerald-600' : 'text-red-600'}`}>
-                      {loading === m.id ? '...' : m.status === 'SUSPENDED' ? 'Activate' : 'Suspend'}
-                    </button>
-                  </div>
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="px-6 py-10 text-center text-slate-500">
+                  {loadError ? 'Load করতে পারেনি' : 'কোনো merchant নেই'}
                 </td>
               </tr>
-            ))}
+            ) : (
+              filtered.map((m) => (
+                <tr key={m.id} className="hover:bg-slate-50">
+                  <td className="px-6 py-4 font-medium">{m.name}</td>
+                  <td className="px-6 py-4 text-slate-500">{m.email}</td>
+                  <td className="px-6 py-4">
+                    <span className="badge-info">{m.subscriptionPlan}</span>
+                  </td>
+                  <td className="px-6 py-4">
+                    {m.wooConnected ? (
+                      <span className="badge-success inline-flex items-center gap-1">
+                        <Globe className="h-3 w-3" /> Connected
+                      </span>
+                    ) : (
+                      <span className="badge-warning">— Not connected</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4">
+                    <span
+                      className={
+                        m.status === 'ACTIVE'
+                          ? 'badge-success'
+                          : m.status === 'SUSPENDED'
+                            ? 'badge-danger'
+                            : 'badge-warning'
+                      }
+                    >
+                      {m.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">{m._count.orders}</td>
+                  <td className="px-6 py-4">{m._count.calls}</td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => openDetail(m)}
+                        className="text-brand-600 hover:text-brand-700"
+                        title="Details / Grant plan"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => toggleStatus(m.id, m.status)}
+                        disabled={loading === m.id}
+                        className={`text-sm font-medium ${
+                          m.status === 'SUSPENDED' ? 'text-emerald-600' : 'text-red-600'
+                        }`}
+                      >
+                        {loading === m.id
+                          ? '...'
+                          : m.status === 'SUSPENDED'
+                            ? 'Activate'
+                            : 'Suspend'}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
 
       {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowCreate(false)}>
-          <form onSubmit={createMerchant} className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setShowCreate(false)}
+        >
+          <form
+            onSubmit={createMerchant}
+            className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="text-xl font-bold">নতুন Merchant তৈরি</h3>
-            <p className="mt-1 text-sm text-slate-500">Admin panel থেকে সরাসরি account খুলুন</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Admin panel থেকে সরাসরি account খুলুন
+            </p>
             <div className="mt-4 space-y-3">
-              <input className="input" placeholder="Store name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-              <input className="input" type="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
-              <input className="input" placeholder="Phone 01XXXXXXXXX" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} required />
-              <input className="input" type="password" placeholder="Password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
-              <select className="input" value={form.planCode} onChange={(e) => setForm({ ...form, planCode: e.target.value })}>
-                {plans.map((p) => <option key={p.code} value={p.code}>{p.code}</option>)}
+              <input
+                className="input"
+                placeholder="Store name"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                required
+              />
+              <input
+                className="input"
+                type="email"
+                placeholder="Email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                required
+              />
+              <input
+                className="input"
+                placeholder="Phone 01XXXXXXXXX"
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                required
+              />
+              <input
+                className="input"
+                type="password"
+                placeholder="Password"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                required
+              />
+              <select
+                className="input"
+                value={form.planCode}
+                onChange={(e) => setForm({ ...form, planCode: e.target.value })}
+              >
+                {plans.map((p) => (
+                  <option key={p.code} value={p.code}>
+                    {p.code}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="mt-6 flex gap-3">
-              <button type="submit" className="btn-primary flex-1" disabled={creating}>{creating ? 'Creating...' : 'Create Merchant'}</button>
-              <button type="button" onClick={() => setShowCreate(false)} className="btn-secondary">Cancel</button>
+              <button type="submit" className="btn-primary flex-1" disabled={creating}>
+                {creating ? 'Creating...' : 'Create Merchant'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCreate(false)}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
             </div>
           </form>
         </div>
       )}
 
       {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setSelected(null)}>
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setSelected(null)}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="text-xl font-bold">{selected.name}</h3>
-            <p className="text-sm text-slate-500">{selected.email} · {selected.phone}</p>
+            <p className="text-sm text-slate-500">
+              {selected.email} · {selected.phone}
+            </p>
 
             <div className="mt-4 grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
-              <div><span className="text-slate-500">Plan</span><p className="font-medium">{selected.subscriptionPlan}</p></div>
-              <div><span className="text-slate-500">Status</span><p className="font-medium">{selected.status}</p></div>
-              <div><span className="text-slate-500">Orders</span><p className="font-medium">{selected._count.orders}</p></div>
-              <div><span className="text-slate-500">Calls</span><p className="font-medium">{selected._count.calls}</p></div>
+              <div>
+                <span className="text-slate-500">Plan</span>
+                <p className="font-medium">{selected.subscriptionPlan}</p>
+              </div>
+              <div>
+                <span className="text-slate-500">Status</span>
+                <p className="font-medium">{selected.status}</p>
+              </div>
+              <div>
+                <span className="text-slate-500">Orders</span>
+                <p className="font-medium">{selected._count.orders}</p>
+              </div>
+              <div>
+                <span className="text-slate-500">Calls</span>
+                <p className="font-medium">{selected._count.calls}</p>
+              </div>
             </div>
 
             <div className="mt-6 rounded-lg border p-4">
-              <h4 className="flex items-center gap-2 font-semibold"><Globe className="h-4 w-4" /> Store Integration</h4>
+              <h4 className="flex items-center gap-2 font-semibold">
+                <Globe className="h-4 w-4" /> Store Integration
+              </h4>
               {selected.wooConnected ? (
                 <div className="mt-2 text-sm text-slate-600">
-                  <p><strong>WooCommerce:</strong> {selected.integration?.storeName || selected.integration?.storeUrl}</p>
-                  <p className="text-xs text-slate-400">{selected.integration?.storeUrl}</p>
-                  {selected.integration?.lastSyncAt && <p className="text-xs">Last sync: {new Date(selected.integration.lastSyncAt).toLocaleString()}</p>}
+                  <p>
+                    <strong>WooCommerce:</strong>{' '}
+                    {selected.integration?.storeName || selected.integration?.storeUrl}
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    {selected.integration?.storeUrl}
+                  </p>
                 </div>
               ) : (
-                <p className="mt-2 text-sm text-amber-600">এখনো connect হয়নি — merchant কে Integrations page থেকে WooCommerce plugin setup করতে বলুন</p>
+                <p className="mt-2 text-sm text-amber-600">
+                  এখনো connect হয়নি — merchant কে Integrations থেকে setup করতে বলুন
+                </p>
               )}
             </div>
 
             <div className="mt-4 rounded-lg border p-4">
-              <h4 className="flex items-center gap-2 font-semibold"><Key className="h-4 w-4" /> API Keys ({selected.apiKeyCount ?? selected.apiKeys?.length ?? 0})</h4>
+              <h4 className="flex items-center gap-2 font-semibold">
+                <Key className="h-4 w-4" /> API Keys (
+                {selected.apiKeyCount ?? selected.apiKeys?.length ?? 0})
+              </h4>
               {selected.apiKeys?.length ? (
                 <ul className="mt-2 space-y-1 text-sm">
                   {selected.apiKeys.map((k) => (
-                    <li key={k.id} className="flex justify-between"><span>{k.name}</span><span className="text-slate-400">{k.keyPrefix}••••</span></li>
+                    <li key={k.id} className="flex justify-between">
+                      <span>{k.name}</span>
+                      <span className="text-slate-400">{k.keyPrefix}••••</span>
+                    </li>
                   ))}
                 </ul>
               ) : (
@@ -213,25 +413,71 @@ export default function AdminMerchantsPage() {
               )}
             </div>
 
-            <div className="mt-6">
-              <label className="block text-sm font-medium text-slate-700">Assign Plan</label>
-              <div className="mt-2 flex gap-2">
-                <select className="input flex-1" defaultValue={selected.subscriptionPlan} id="plan-select" disabled={planLoading}>
-                  {plans.map((p) => <option key={p.code} value={p.code}>{p.code} — ৳{Number(p.priceMonthly)}/mo</option>)}
+            <div className="mt-6 rounded-lg border border-brand-200 bg-brand-50/40 p-4">
+              <label className="block text-sm font-semibold text-slate-800">
+                Grant Plan (Super Admin)
+              </label>
+              <p className="mt-1 text-xs text-slate-500">
+                Paid = সাথে সাথে Active। Pending = billing তৈরি, পেমেন্টের পর confirm।
+              </p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <select
+                  className="input flex-1"
+                  value={grantPlan}
+                  onChange={(e) => setGrantPlan(e.target.value)}
+                  disabled={planLoading}
+                >
+                  {plans.map((p) => (
+                    <option key={p.code} value={p.code}>
+                      {p.code} — ৳{Number(p.priceMonthly)}/mo
+                    </option>
+                  ))}
                 </select>
-                <button type="button" className="btn-primary" disabled={planLoading} onClick={() => {
-                  const sel = document.getElementById('plan-select') as HTMLSelectElement;
-                  assignPlan(selected.id, sel.value);
-                }}>{planLoading ? '...' : 'Assign'}</button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={planLoading}
+                  onClick={() => assignPlan(selected.id, grantPlan, true)}
+                >
+                  {planLoading ? '...' : 'Grant (Paid)'}
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={planLoading}
+                  onClick={() => assignPlan(selected.id, grantPlan, false)}
+                >
+                  Grant (Pending)
+                </button>
               </div>
             </div>
 
             <div className="mt-4 flex flex-wrap gap-3">
-              <button onClick={() => toggleStatus(selected.id, selected.status)} className={`btn-primary flex-1 ${selected.status === 'SUSPENDED' ? 'bg-emerald-600' : 'bg-red-600'}`}>
-                {selected.status === 'SUSPENDED' ? 'Activate' : 'Suspend'}
+              <button
+                onClick={() => toggleStatus(selected.id, selected.status)}
+                className={`btn-primary flex-1 ${
+                  selected.status === 'SUSPENDED' ? 'bg-emerald-600' : 'bg-red-600'
+                }`}
+              >
+                {selected.status === 'SUSPENDED' ? (
+                  <span className="inline-flex items-center gap-1">
+                    <CheckCircle className="h-4 w-4" /> Activate
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1">
+                    <Ban className="h-4 w-4" /> Suspend
+                  </span>
+                )}
               </button>
-              <Link href="/admin/config" className="btn-secondary inline-flex items-center gap-2"><Phone className="h-4 w-4" /> ePBX Config</Link>
-              <button onClick={() => setSelected(null)} className="btn-secondary">Close</button>
+              <Link
+                href="/admin/config"
+                className="btn-secondary inline-flex items-center gap-2"
+              >
+                <Phone className="h-4 w-4" /> ePBX Config
+              </Link>
+              <button onClick={() => setSelected(null)} className="btn-secondary">
+                Close
+              </button>
             </div>
           </div>
         </div>

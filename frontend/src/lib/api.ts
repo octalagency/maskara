@@ -467,6 +467,22 @@ class ApiClient {
     });
   }
 
+  rejectBilling(billingId: string, reason?: string) {
+    return this.request(`/admin/billing/${billingId}/reject`, {
+      method: 'PATCH',
+      body: JSON.stringify({ reason }),
+    });
+  }
+
+  getBkashPortalCredentials() {
+    return this.request<{
+      loginUrl: string;
+      username: string;
+      password: string;
+      connected: boolean;
+    }>('/admin/payment/bkash-portal');
+  }
+
   getPlatformConfig() {
     return this.request<PlatformConfig>('/admin/config');
   }
@@ -513,10 +529,22 @@ class ApiClient {
     return this.request<MerchantSubscription>('/subscriptions/me');
   }
 
-  subscribeToPlan(planCode: string, paymentMethod = 'bKash') {
+  subscribeToPlan(planCode: string, paymentMethod = 'bkash_manual') {
     return this.request<SubscribeResult>('/subscriptions/subscribe', {
       method: 'POST',
       body: JSON.stringify({ planCode, paymentMethod }),
+    });
+  }
+
+  submitBkashManual(data: {
+    planCode: string;
+    trxId: string;
+    senderPhone: string;
+    amount: number;
+  }) {
+    return this.request<SubscribeResult>('/subscriptions/bkash-manual', {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
   }
 
@@ -685,6 +713,7 @@ export interface BillingRecord {
   status: 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';
   paymentMethod?: string;
   paymentRef?: string;
+  notes?: string | null;
   createdAt: string;
   merchant?: { id: string; name: string; email: string };
 }
@@ -720,7 +749,17 @@ export interface PlatformConfig {
       apiSecretSet?: boolean;
     };
   };
-  payment?: { bKashNumber?: string; nagadNumber?: string; instructions?: string };
+  payment?: {
+    bKashNumber?: string;
+    nagadNumber?: string;
+    instructions?: string;
+    bkashPortal?: {
+      username?: string;
+      password?: string;
+      passwordSet?: boolean;
+      loginUrl?: string;
+    };
+  };
   paymentGateways?: {
     status?: { bkash: boolean; nagad: boolean };
     bkash?: {
@@ -766,6 +805,11 @@ export interface MerchantSubscription {
   currentPlan?: Plan;
   availablePlans: Plan[];
   billingHistory: BillingRecord[];
+  payment?: {
+    bKashNumber?: string;
+    nagadNumber?: string;
+    instructions?: string;
+  };
   usage?: {
     callsUsed: number;
     callLimit: number;

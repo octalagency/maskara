@@ -17,20 +17,37 @@ export class SubscriptionsService {
     return this.plans.findAll(true);
   }
 
+  private async getManualPaymentInfo() {
+    const row = await this.prisma.systemSetting.findUnique({
+      where: { key: 'payment' },
+    });
+    const p = (row?.value as Record<string, unknown>) || {};
+    return {
+      bKashNumber: String(p.bKashNumber || ''),
+      nagadNumber: String(p.nagadNumber || ''),
+      instructions: String(
+        p.instructions ||
+          'bKash Send Money করুন, তারপর TrxID, নম্বর ও অ্যামাউন্ট সাবমিট করুন।',
+      ),
+    };
+  }
+
   async getMerchantSubscription(merchantId: string) {
-    const [merchant, subscription, plans, recentBilling] = await Promise.all([
-      this.prisma.merchant.findUnique({ where: { id: merchantId } }),
-      this.prisma.subscription.findFirst({
-        where: { merchantId, isActive: true },
-        orderBy: { createdAt: 'desc' },
-      }),
-      this.plans.findAll(true),
-      this.prisma.billingRecord.findMany({
-        where: { merchantId },
-        orderBy: { createdAt: 'desc' },
-        take: 12,
-      }),
-    ]);
+    const [merchant, subscription, plans, recentBilling, payment] =
+      await Promise.all([
+        this.prisma.merchant.findUnique({ where: { id: merchantId } }),
+        this.prisma.subscription.findFirst({
+          where: { merchantId, isActive: true },
+          orderBy: { createdAt: 'desc' },
+        }),
+        this.plans.findAll(true),
+        this.prisma.billingRecord.findMany({
+          where: { merchantId },
+          orderBy: { createdAt: 'desc' },
+          take: 12,
+        }),
+        this.getManualPaymentInfo(),
+      ]);
 
     if (!merchant) throw new NotFoundException('Merchant not found');
 
@@ -50,13 +67,17 @@ export class SubscriptionsService {
       currentPlan,
       availablePlans: plans,
       billingHistory: recentBilling,
+      payment,
       usage: subscription
         ? {
             callsUsed: subscription.callsUsed,
             callLimit: subscription.callLimit,
             smsUsed: subscription.smsUsed,
             smsLimit: subscription.smsLimit,
-            callsRemaining: Math.max(0, subscription.callLimit - subscription.callsUsed),
+            callsRemaining: Math.max(
+              0,
+              subscription.callLimit - subscription.callsUsed,
+            ),
           }
         : null,
     };
@@ -65,36 +86,128 @@ export class SubscriptionsService {
   async subscribe(
     merchantId: string,
     planCode: string,
-    paymentMethod = 'bKash',
+    paymentMethod = 'bkash_manual',
   ) {
     const plan = await this.plans.findByCode(planCode);
     if (!plan || !plan.isActive) {
       throw new BadRequestException('Invalid plan');
     }
 
-    if (planCode === 'FREE') {
+    if (planCode === 'FREE' || Number(plan.priceMonthly) === 0) {
       return this.plans.assignPlanToMerchant(merchantId, planCode, {
         paymentMethod: 'trial',
         markPaid: true,
       });
     }
 
-    // Create pending billing — admin confirms or payment gateway later
-    const result = await this.plans.assignPlanToMerchant(merchantId, planCode, {
-      paymentMethod,
-      markPaid: false,
-      adminNote: `Merchant requested via ${paymentMethod}`,
-    });
+    // Paid plans: pending billing only — plan activates after payment confirm
+    const payment = await this.getManualPaymentInfo();
+    const { billing } = await this.plans.createPendingBilling(
+      merchantId,
+      planCode,
+      {
+        paymentMethod,
+        notes: `Merchant requested ${planCode} via ${paymentMethod}`,
+      },
+    );
 
     return {
-      ...result,
+      billing,
+      plan,
       message:
-        'Use POST /payments/initiate with provider bkash or nagad to pay online.',
+        'bKash Send Money করুন, তারপর TrxID / নম্বর / অ্যামাউন্ট সাবমিট করুন। Admin confirm করলে Paid হবে।',
       paymentInstructions: {
-        bkash: 'POST /payments/initiate { planCode, provider: "bkash" }',
-        nagad: 'POST /payments/initiate { planCode, provider: "nagad" }',
+        bKash: payment.bKashNumber || undefined,
+        nagad: payment.nagadNumber || undefined,
         amount: Number(plan.priceMonthly),
-        reference: result.billing.id,
+        reference: billing.id,
+        instructions: payment.instructions,
+      },
+    };
+  }
+
+  /**
+   * Non-API bKash: merchant already sent money — submit TrxID + phone + amount.
+   * Admin matches on portal then confirms → PAID + plan active.
+   */
+  async submitBkashManual(
+    merchantId: string,
+    body: {
+      planCode: string;
+      trxId: string;
+      senderPhone: string;
+      amount: number;
+    },
+  ) {
+    const planCode = String(body.planCode || '').trim().toUpperCase();
+    const trxId = String(body.trxId || '')
+      .trim()
+      .replace(/\s+/g, '');
+    const senderPhone = String(body.senderPhone || '')
+      .trim()
+      .replace(/\D/g, '');
+    const amount = Number(body.amount);
+
+    if (!planCode) throw new BadRequestException('planCode required');
+    if (!trxId || trxId.length < 6) {
+      throw new BadRequestException('Valid bKash TrxID required');
+    }
+    if (senderPhone.length < 10) {
+      throw new BadRequestException('Sender phone required (01XXXXXXXXX)');
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Amount required');
+    }
+
+    const plan = await this.plans.findByCode(planCode);
+    if (!plan || !plan.isActive) {
+      throw new BadRequestException('Invalid plan');
+    }
+
+    const expected = Number(plan.priceMonthly);
+    if (Math.abs(amount - expected) > 1) {
+      throw new BadRequestException(
+        `Amount must be ৳${expected} for ${planCode} (got ৳${amount})`,
+      );
+    }
+
+    const dup = await this.prisma.billingRecord.findFirst({
+      where: {
+        paymentRef: trxId,
+        status: { in: ['PENDING', 'PAID'] },
+      },
+    });
+    if (dup) {
+      throw new BadRequestException('This TrxID was already submitted');
+    }
+
+    const payment = await this.getManualPaymentInfo();
+    const { billing } = await this.plans.createPendingBilling(
+      merchantId,
+      planCode,
+      {
+        paymentMethod: 'bkash_manual',
+        paymentRef: trxId,
+        amount: expected,
+        notes: JSON.stringify({
+          senderPhone,
+          submittedAmount: amount,
+          channel: 'bkash_manual',
+        }),
+      },
+    );
+
+    return {
+      billing,
+      plan,
+      message:
+        'পেমেন্ট সাবমিট হয়েছে। Admin bKash portal থেকে মিলিয়ে Paid করবে।',
+      paymentInstructions: {
+        bKash: payment.bKashNumber || undefined,
+        amount: expected,
+        reference: billing.id,
+        trxId,
+        senderPhone,
       },
     };
   }
@@ -105,21 +218,53 @@ export class SubscriptionsService {
     });
     if (!billing) throw new NotFoundException('Billing record not found');
 
-    await this.prisma.billingRecord.update({
+    if (billing.status === 'PAID') {
+      return billing;
+    }
+
+    const ref = (paymentRef || billing.paymentRef || '').trim() || undefined;
+
+    const updated = await this.prisma.billingRecord.update({
       where: { id: billingId },
-      data: { status: 'PAID', paymentRef },
+      data: { status: 'PAID', paymentRef: ref },
     });
 
-    await this.prisma.merchant.update({
-      where: { id: billing.merchantId },
-      data: { status: 'ACTIVE' },
+    // Activate plan without creating a second billing row
+    await this.plans.assignPlanToMerchant(billing.merchantId, billing.planCode, {
+      paymentMethod: billing.paymentMethod || 'bkash_manual',
+      markPaid: true,
+      skipBilling: true,
+      paymentRef: ref,
+      adminNote: `Payment confirmed ${ref || ''}`.trim(),
     });
 
-    return billing;
+    return updated;
+  }
+
+  async rejectBilling(billingId: string, reason?: string) {
+    const billing = await this.prisma.billingRecord.findUnique({
+      where: { id: billingId },
+    });
+    if (!billing) throw new NotFoundException('Billing record not found');
+    if (billing.status === 'PAID') {
+      throw new BadRequestException('Cannot reject a PAID record');
+    }
+
+    return this.prisma.billingRecord.update({
+      where: { id: billingId },
+      data: {
+        status: 'FAILED',
+        notes: [billing.notes, reason ? `Rejected: ${reason}` : 'Rejected by admin']
+          .filter(Boolean)
+          .join(' | '),
+      },
+    });
   }
 
   /** Returns true if merchant can initiate another verification call */
-  async canMakeCall(merchantId: string): Promise<{ allowed: boolean; reason?: string }> {
+  async canMakeCall(
+    merchantId: string,
+  ): Promise<{ allowed: boolean; reason?: string }> {
     const merchant = await this.prisma.merchant.findUnique({
       where: { id: merchantId },
       select: { status: true, subscriptionPlan: true },
@@ -135,7 +280,6 @@ export class SubscriptionsService {
     });
 
     if (!subscription) {
-      // FREE plan merchants without subscription row — allow with default limit
       return { allowed: true };
     }
 

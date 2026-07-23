@@ -26,12 +26,35 @@ export class SubscriptionsController {
   @Post('subscribe')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Subscribe or upgrade plan' })
+  @ApiOperation({ summary: 'Request plan (pending until payment confirmed)' })
   subscribe(
     @CurrentUser('merchantId') merchantId: string,
     @Body('planCode') planCode: string,
     @Body('paymentMethod') paymentMethod?: string,
   ) {
-    return this.subscriptionsService.subscribe(merchantId, planCode, paymentMethod);
+    return this.subscriptionsService.subscribe(
+      merchantId,
+      planCode,
+      paymentMethod || 'bkash_manual',
+    );
+  }
+
+  @Post('bkash-manual')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Submit non-API bKash payment proof (TrxID + phone + amount)',
+  })
+  submitBkashManual(
+    @CurrentUser('merchantId') merchantId: string,
+    @Body()
+    body: {
+      planCode: string;
+      trxId: string;
+      senderPhone: string;
+      amount: number;
+    },
+  ) {
+    return this.subscriptionsService.submitBkashManual(merchantId, body);
   }
 }

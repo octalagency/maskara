@@ -99,6 +99,19 @@ export class AdminController {
     return this.adminService.confirmBilling(id, paymentRef);
   }
 
+  @Patch('billing/:id/reject')
+  rejectBilling(@Param('id') id: string, @Body('reason') reason?: string) {
+    return this.adminService.rejectBilling(id, reason);
+  }
+
+  @Get('payment/bkash-portal')
+  @ApiOperation({
+    summary: 'Reveal bKash Merchant Portal credentials (admin only)',
+  })
+  getBkashPortal() {
+    return this.adminService.getBkashPortalCredentials();
+  }
+
   @Get('config')
   getConfig() {
     return this.adminService.getPlatformConfig();

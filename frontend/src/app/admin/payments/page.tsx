@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CreditCard, Save } from 'lucide-react';
+import { CreditCard, Save, ExternalLink, Copy, Eye } from 'lucide-react';
 import { api, PlatformConfig } from '@/lib/api';
 import {
   PaymentMethodCard,
@@ -13,6 +13,9 @@ interface PaymentForm {
   bKashNumber: string;
   nagadNumber: string;
   instructions: string;
+  portalUsername: string;
+  portalPassword: string;
+  portalPasswordSet: boolean;
 }
 
 interface BkashPgwForm {
@@ -72,11 +75,17 @@ const DEFAULT_NAGAD_PGW: NagadPgwForm = {
   baseUrl: '',
 };
 
+const PORTAL_LOGIN = 'https://merchantportal.bkash.com/login';
+
 export default function AdminPaymentsPage() {
   const [payment, setPayment] = useState<PaymentForm>({
-    bKashNumber: '01700000000',
-    nagadNumber: '01800000000',
-    instructions: 'Send Money করুন এবং reference হিসেবে Billing ID দিন।',
+    bKashNumber: '',
+    nagadNumber: '',
+    instructions:
+      'bKash Send Money করুন। তারপর Maskara Subscription পেজে TrxID, নম্বর ও অ্যামাউন্ট সাবমিট করুন।',
+    portalUsername: '',
+    portalPassword: '',
+    portalPasswordSet: false,
   });
   const [paymentGateways, setPaymentGateways] = useState<PaymentGatewaysForm>({
     bkash: DEFAULT_BKASH_PGW,
@@ -87,46 +96,63 @@ export default function AdminPaymentsPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    api.getPlatformConfig().then((c: PlatformConfig) => {
-      const p = c.payment as PaymentForm | undefined;
-      if (p) {
-        setPayment({
-          bKashNumber: p.bKashNumber || '',
-          nagadNumber: p.nagadNumber || '',
-          instructions: p.instructions || '',
-        });
-      }
-      const pg = c.paymentGateways;
-      if (pg) {
-        setPaymentStatus(pg.status || { bkash: false, nagad: false });
-        setPaymentGateways({
-          bkash: {
-            enabled: pg.bkash?.enabled ?? false,
-            sandbox: pg.bkash?.sandbox ?? true,
-            username: pg.bkash?.username || '',
-            merchantNumber: pg.bkash?.merchantNumber || '',
-            appKey: pg.bkash?.appKey || '',
-            appKeySet: pg.bkash?.appKeySet ?? false,
-            appSecret: pg.bkash?.appSecret || '',
-            appSecretSet: pg.bkash?.appSecretSet ?? false,
-            password: pg.bkash?.password || '',
-            passwordSet: pg.bkash?.passwordSet ?? false,
-            baseUrl: pg.bkash?.baseUrl || '',
-          },
-          nagad: {
-            enabled: pg.nagad?.enabled ?? false,
-            sandbox: pg.nagad?.sandbox ?? true,
-            merchantId: pg.nagad?.merchantId || '',
-            merchantNumber: pg.nagad?.merchantNumber || '',
-            publicKey: pg.nagad?.publicKey || '',
-            publicKeySet: pg.nagad?.publicKeySet ?? false,
-            privateKey: pg.nagad?.privateKey || '',
-            privateKeySet: pg.nagad?.privateKeySet ?? false,
-            baseUrl: pg.nagad?.baseUrl || '',
-          },
-        });
-      }
-    }).catch(() => {});
+    api
+      .getPlatformConfig()
+      .then((c: PlatformConfig) => {
+        const p = c.payment as
+          | {
+              bKashNumber?: string;
+              nagadNumber?: string;
+              instructions?: string;
+              bkashPortal?: {
+                username?: string;
+                password?: string;
+                passwordSet?: boolean;
+              };
+            }
+          | undefined;
+        if (p) {
+          setPayment({
+            bKashNumber: p.bKashNumber || '',
+            nagadNumber: p.nagadNumber || '',
+            instructions: p.instructions || '',
+            portalUsername: p.bkashPortal?.username || '',
+            portalPassword: '',
+            portalPasswordSet: Boolean(p.bkashPortal?.passwordSet),
+          });
+        }
+        const pg = c.paymentGateways;
+        if (pg) {
+          setPaymentStatus(pg.status || { bkash: false, nagad: false });
+          setPaymentGateways({
+            bkash: {
+              enabled: pg.bkash?.enabled ?? false,
+              sandbox: pg.bkash?.sandbox ?? true,
+              username: pg.bkash?.username || '',
+              merchantNumber: pg.bkash?.merchantNumber || '',
+              appKey: pg.bkash?.appKey || '',
+              appKeySet: pg.bkash?.appKeySet ?? false,
+              appSecret: pg.bkash?.appSecret || '',
+              appSecretSet: pg.bkash?.appSecretSet ?? false,
+              password: pg.bkash?.password || '',
+              passwordSet: pg.bkash?.passwordSet ?? false,
+              baseUrl: pg.bkash?.baseUrl || '',
+            },
+            nagad: {
+              enabled: pg.nagad?.enabled ?? false,
+              sandbox: pg.nagad?.sandbox ?? true,
+              merchantId: pg.nagad?.merchantId || '',
+              merchantNumber: pg.nagad?.merchantNumber || '',
+              publicKey: pg.nagad?.publicKey || '',
+              publicKeySet: pg.nagad?.publicKeySet ?? false,
+              privateKey: pg.nagad?.privateKey || '',
+              privateKeySet: pg.nagad?.privateKeySet ?? false,
+              baseUrl: pg.nagad?.baseUrl || '',
+            },
+          });
+        }
+      })
+      .catch(() => {});
   }, []);
 
   async function savePayment(e: React.FormEvent) {
@@ -134,7 +160,15 @@ export default function AdminPaymentsPage() {
     setSaving(true);
     try {
       await api.updatePlatformConfig({
-        payment,
+        payment: {
+          bKashNumber: payment.bKashNumber,
+          nagadNumber: payment.nagadNumber,
+          instructions: payment.instructions,
+          bkashPortal: {
+            username: payment.portalUsername,
+            password: payment.portalPassword || undefined,
+          },
+        },
         payment_gateways: {
           bkash: {
             enabled: paymentGateways.bkash.enabled,
@@ -159,26 +193,11 @@ export default function AdminPaymentsPage() {
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-      const updated = await api.getPlatformConfig();
-      const pg = updated.paymentGateways;
-      if (pg) {
-        setPaymentStatus(pg.status || { bkash: false, nagad: false });
-        setPaymentGateways((prev) => ({
-          bkash: {
-            ...prev.bkash,
-            ...pg.bkash,
-            appKey: pg.bkash?.appKey || '',
-            appSecret: pg.bkash?.appSecret || '',
-            password: pg.bkash?.password || '',
-          },
-          nagad: {
-            ...prev.nagad,
-            ...pg.nagad,
-            publicKey: pg.nagad?.publicKey || '',
-            privateKey: pg.nagad?.privateKey || '',
-          },
-        }));
-      }
+      setPayment((prev) => ({
+        ...prev,
+        portalPassword: '',
+        portalPasswordSet: prev.portalPasswordSet || Boolean(prev.portalPassword),
+      }));
     } catch {
       alert('Payment config save failed');
     } finally {
@@ -186,85 +205,230 @@ export default function AdminPaymentsPage() {
     }
   }
 
+  async function copyPortalCred(field: 'username' | 'password') {
+    try {
+      const creds = await api.getBkashPortalCredentials();
+      const value = field === 'username' ? creds.username : creds.password;
+      if (!value) {
+        alert(field === 'username' ? 'Username সেট নেই' : 'Password সেট নেই');
+        return;
+      }
+      await navigator.clipboard.writeText(value);
+      alert(`${field} copied`);
+    } catch {
+      alert('Credentials load failed');
+    }
+  }
+
+  async function revealAndOpenPortal() {
+    try {
+      const creds = await api.getBkashPortalCredentials();
+      if (creds.username) await navigator.clipboard.writeText(creds.username);
+      window.open(PORTAL_LOGIN, '_blank', 'noopener,noreferrer');
+      if (creds.password) {
+        setTimeout(() => {
+          void navigator.clipboard.writeText(creds.password);
+          alert('Portal খোলা হয়েছে। Password clipboard-এ কপি হয়েছে — paste করুন।');
+        }, 400);
+      } else {
+        alert('Portal খোলা হয়েছে। Password সেভ করুন আগে।');
+      }
+    } catch {
+      window.open(PORTAL_LOGIN, '_blank', 'noopener,noreferrer');
+    }
+  }
+
   return (
     <div className="mx-auto max-w-3xl space-y-8">
       <div>
         <h2 className="text-2xl font-bold text-slate-900">Payment Gateway</h2>
-        <p className="text-sm text-slate-500">মার্চেন্ট subscription পেমেন্টের জন্য bKash, Nagad ও manual gateway সেট করুন</p>
+        <p className="text-sm text-slate-500">
+          Primary: bKash Merchant Portal + Send Money (non-API). API gateway optional।
+        </p>
       </div>
 
-      <div className="card">
-        <p className="text-sm text-slate-500">Gateway Status</p>
-        <div className="mt-2 flex flex-wrap gap-2 text-xs">
-          <span className={paymentStatus.bkash ? 'badge-success' : 'badge-warning'}>
-            bKash {paymentStatus.bkash ? '✓ configured' : '— not configured'}
-          </span>
-          <span className={paymentStatus.nagad ? 'badge-success' : 'badge-warning'}>
-            Nagad {paymentStatus.nagad ? '✓ configured' : '— not configured'}
-          </span>
-        </div>
-      </div>
-
-      <form onSubmit={savePayment} className="card space-y-6">
-        <div className="flex items-center gap-2">
-          <CreditCard className="h-5 w-5 text-brand-600" />
-          <h3 className="font-semibold">Payment Methods</h3>
-        </div>
-
+      <form onSubmit={savePayment} className="space-y-6">
         {saved && (
-          <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">Payment settings saved!</div>
+          <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">
+            Payment settings saved!
+          </div>
         )}
 
-        <div className="space-y-3">
+        <div className="card space-y-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#E2136E] text-sm font-bold text-white">
+              bK
+            </div>
+            <div>
+              <h3 className="font-semibold">bKash Merchant Portal (non-API)</h3>
+              <p className="text-xs text-slate-500">
+                merchantportal.bkash.com — user/pass সেভ → Open + copy → ট্রানজেকশন মিলিয়ে Paid
+              </p>
+            </div>
+          </div>
+
+          <PaymentTextField
+            label="Portal username / email"
+            value={payment.portalUsername}
+            onChange={(v) => setPayment({ ...payment, portalUsername: v })}
+            placeholder="portal login email or number"
+          />
+          <PasswordField
+            label="Portal password"
+            value={payment.portalPassword}
+            onChange={(v) => setPayment({ ...payment, portalPassword: v })}
+            placeholder={
+              payment.portalPasswordSet
+                ? '•••••••• (unchanged if empty)'
+                : 'Enter portal password'
+            }
+            saved={payment.portalPasswordSet}
+          />
+          <PaymentTextField
+            label="Send Money number (মার্চেন্ট যা দেখবে)"
+            value={payment.bKashNumber}
+            onChange={(v) => setPayment({ ...payment, bKashNumber: v })}
+            placeholder="01XXXXXXXXX"
+          />
+          <div>
+            <label className="block text-sm font-medium text-slate-700">
+              Payment instructions
+            </label>
+            <textarea
+              className="input mt-1 min-h-[80px]"
+              value={payment.instructions}
+              onChange={(e) =>
+                setPayment({ ...payment, instructions: e.target.value })
+              }
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void revealAndOpenPortal()}
+              className="btn-primary inline-flex items-center gap-2 text-sm"
+            >
+              <ExternalLink className="h-4 w-4" /> Open Portal + copy login
+            </button>
+            <button
+              type="button"
+              onClick={() => void copyPortalCred('username')}
+              className="btn-secondary inline-flex items-center gap-1 text-sm"
+            >
+              <Copy className="h-3.5 w-3.5" /> Copy user
+            </button>
+            <button
+              type="button"
+              onClick={() => void copyPortalCred('password')}
+              className="btn-secondary inline-flex items-center gap-1 text-sm"
+            >
+              <Eye className="h-3.5 w-3.5" /> Copy password
+            </button>
+          </div>
+          <p className="text-xs text-slate-400">
+            ব্রাউজার সিকিউরিটির জন্য third-party সাইটে auto-session রাখা যায় না — credentials
+            সেভ + one-click open/copy দিয়ে দ্রুত login করুন।
+          </p>
+        </div>
+
+        <div className="card space-y-4">
+          <div className="flex items-center gap-2">
+            <CreditCard className="h-5 w-5 text-brand-600" />
+            <h3 className="font-semibold">Manual numbers</h3>
+          </div>
+          <PaymentTextField
+            label="Nagad number (optional)"
+            value={payment.nagadNumber}
+            onChange={(v) => setPayment({ ...payment, nagadNumber: v })}
+            placeholder="01XXXXXXXXX"
+          />
+        </div>
+
+        <div className="card space-y-4">
+          <h3 className="font-semibold text-slate-700">API gateway (optional)</h3>
+          <p className="text-xs text-slate-500">
+            Tokenized Checkout — শুধু যদি অফিসিয়াল API key থাকে। ডিফল্ট অফ রাখুন।
+          </p>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <span className={paymentStatus.bkash ? 'badge-success' : 'badge-warning'}>
+              bKash API {paymentStatus.bkash ? '✓' : '— off'}
+            </span>
+            <span className={paymentStatus.nagad ? 'badge-success' : 'badge-warning'}>
+              Nagad API {paymentStatus.nagad ? '✓' : '— off'}
+            </span>
+          </div>
+
           <PaymentMethodCard
             logo={
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#E2136E] text-sm font-bold text-white">
-                bK
+                API
               </div>
             }
-            title="bKash"
-            subtitle="bKash Tokenized Checkout (App Key + Secret)"
+            title="bKash Tokenized API"
+            subtitle="App Key + Secret (optional)"
             enabled={paymentGateways.bkash.enabled}
-            onEnabledChange={(v) => setPaymentGateways({ ...paymentGateways, bkash: { ...paymentGateways.bkash, enabled: v } })}
+            onEnabledChange={(v) =>
+              setPaymentGateways({
+                ...paymentGateways,
+                bkash: { ...paymentGateways.bkash, enabled: v },
+              })
+            }
             configured={paymentStatus.bkash}
+            defaultOpen={false}
           >
             <PaymentTextField
               label="App Key"
               value={paymentGateways.bkash.appKey}
-              onChange={(v) => setPaymentGateways({ ...paymentGateways, bkash: { ...paymentGateways.bkash, appKey: v } })}
-              placeholder="iSpc04XvwL0pxafU6TjSbACKtc"
+              onChange={(v) =>
+                setPaymentGateways({
+                  ...paymentGateways,
+                  bkash: { ...paymentGateways.bkash, appKey: v },
+                })
+              }
             />
             <PasswordField
               label="App Secret"
               value={paymentGateways.bkash.appSecret}
-              onChange={(v) => setPaymentGateways({ ...paymentGateways, bkash: { ...paymentGateways.bkash, appSecret: v } })}
-              placeholder={paymentGateways.bkash.appSecretSet ? '•••••••• (unchanged if empty)' : 'Enter app secret'}
+              onChange={(v) =>
+                setPaymentGateways({
+                  ...paymentGateways,
+                  bkash: { ...paymentGateways.bkash, appSecret: v },
+                })
+              }
               saved={paymentGateways.bkash.appSecretSet}
             />
             <PaymentTextField
-              label="Username (developer.bka.sh)"
+              label="Username"
               value={paymentGateways.bkash.username}
-              onChange={(v) => setPaymentGateways({ ...paymentGateways, bkash: { ...paymentGateways.bkash, username: v } })}
-              placeholder="017XXXXXXXX"
+              onChange={(v) =>
+                setPaymentGateways({
+                  ...paymentGateways,
+                  bkash: { ...paymentGateways.bkash, username: v },
+                })
+              }
             />
             <PasswordField
               label="Password"
               value={paymentGateways.bkash.password}
-              onChange={(v) => setPaymentGateways({ ...paymentGateways, bkash: { ...paymentGateways.bkash, password: v } })}
-              placeholder={paymentGateways.bkash.passwordSet ? '•••••••• (unchanged if empty)' : 'Enter password'}
+              onChange={(v) =>
+                setPaymentGateways({
+                  ...paymentGateways,
+                  bkash: { ...paymentGateways.bkash, password: v },
+                })
+              }
               saved={paymentGateways.bkash.passwordSet}
-            />
-            <PaymentTextField
-              label="Merchant number (optional)"
-              value={paymentGateways.bkash.merchantNumber}
-              onChange={(v) => setPaymentGateways({ ...paymentGateways, bkash: { ...paymentGateways.bkash, merchantNumber: v } })}
-              placeholder="01XXXXXXXXX"
             />
             <label className="flex items-center gap-2 text-sm text-slate-600">
               <input
                 type="checkbox"
                 checked={paymentGateways.bkash.sandbox}
-                onChange={(e) => setPaymentGateways({ ...paymentGateways, bkash: { ...paymentGateways.bkash, sandbox: e.target.checked } })}
+                onChange={(e) =>
+                  setPaymentGateways({
+                    ...paymentGateways,
+                    bkash: { ...paymentGateways.bkash, sandbox: e.target.checked },
+                  })
+                }
               />
               Sandbox mode
             </label>
@@ -276,89 +440,49 @@ export default function AdminPaymentsPage() {
                 NG
               </div>
             }
-            title="Nagad"
-            subtitle="Nagad Payment Gateway (Merchant ID + Keys)"
+            title="Nagad API"
+            subtitle="Optional"
             enabled={paymentGateways.nagad.enabled}
-            onEnabledChange={(v) => setPaymentGateways({ ...paymentGateways, nagad: { ...paymentGateways.nagad, enabled: v } })}
+            onEnabledChange={(v) =>
+              setPaymentGateways({
+                ...paymentGateways,
+                nagad: { ...paymentGateways.nagad, enabled: v },
+              })
+            }
             configured={paymentStatus.nagad}
+            defaultOpen={false}
           >
             <PaymentTextField
               label="Merchant ID"
               value={paymentGateways.nagad.merchantId}
-              onChange={(v) => setPaymentGateways({ ...paymentGateways, nagad: { ...paymentGateways.nagad, merchantId: v } })}
-              placeholder="NAGAD_MERCHANT_ID"
-            />
-            <PasswordField
-              label="Public Key"
-              value={paymentGateways.nagad.publicKey}
-              onChange={(v) => setPaymentGateways({ ...paymentGateways, nagad: { ...paymentGateways.nagad, publicKey: v } })}
-              placeholder={paymentGateways.nagad.publicKeySet ? '•••••••• (unchanged if empty)' : 'Enter public key'}
-              saved={paymentGateways.nagad.publicKeySet}
+              onChange={(v) =>
+                setPaymentGateways({
+                  ...paymentGateways,
+                  nagad: { ...paymentGateways.nagad, merchantId: v },
+                })
+              }
             />
             <PasswordField
               label="Private Key"
               value={paymentGateways.nagad.privateKey}
-              onChange={(v) => setPaymentGateways({ ...paymentGateways, nagad: { ...paymentGateways.nagad, privateKey: v } })}
-              placeholder={paymentGateways.nagad.privateKeySet ? '•••••••• (unchanged if empty)' : 'Enter private key'}
+              onChange={(v) =>
+                setPaymentGateways({
+                  ...paymentGateways,
+                  nagad: { ...paymentGateways.nagad, privateKey: v },
+                })
+              }
               saved={paymentGateways.nagad.privateKeySet}
             />
-            <PaymentTextField
-              label="Merchant number (optional)"
-              value={paymentGateways.nagad.merchantNumber}
-              onChange={(v) => setPaymentGateways({ ...paymentGateways, nagad: { ...paymentGateways.nagad, merchantNumber: v } })}
-              placeholder="01XXXXXXXXX"
-            />
-            <label className="flex items-center gap-2 text-sm text-slate-600">
-              <input
-                type="checkbox"
-                checked={paymentGateways.nagad.sandbox}
-                onChange={(e) => setPaymentGateways({ ...paymentGateways, nagad: { ...paymentGateways.nagad, sandbox: e.target.checked } })}
-              />
-              Sandbox mode
-            </label>
-          </PaymentMethodCard>
-
-          <PaymentMethodCard
-            logo={
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-600 text-sm font-bold text-white">
-                SM
-              </div>
-            }
-            title="Send Money"
-            subtitle="Manual payment fallback (bKash/Nagad number)"
-            enabled={false}
-            onEnabledChange={() => {}}
-            showToggle={false}
-            defaultOpen={false}
-          >
-            <div className="grid gap-4 sm:grid-cols-2">
-              <PaymentTextField
-                label="bKash Number"
-                value={payment.bKashNumber}
-                onChange={(v) => setPayment({ ...payment, bKashNumber: v })}
-                placeholder="01700000000"
-              />
-              <PaymentTextField
-                label="Nagad Number"
-                value={payment.nagadNumber}
-                onChange={(v) => setPayment({ ...payment, nagadNumber: v })}
-                placeholder="01800000000"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Payment Instructions</label>
-              <textarea
-                className="input mt-1 min-h-[80px]"
-                value={payment.instructions}
-                onChange={(e) => setPayment({ ...payment, instructions: e.target.value })}
-              />
-            </div>
           </PaymentMethodCard>
         </div>
 
-        <button type="submit" className="btn-primary inline-flex items-center gap-2" disabled={saving}>
+        <button
+          type="submit"
+          className="btn-primary inline-flex items-center gap-2"
+          disabled={saving}
+        >
           <Save className="h-4 w-4" />
-          {saving ? 'Saving...' : 'Save Payment Methods'}
+          {saving ? 'Saving...' : 'Save Payment Settings'}
         </button>
       </form>
     </div>

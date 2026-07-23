@@ -228,10 +228,17 @@ export class AdminService {
     planCode: string,
     markPaid = true,
   ) {
-    return this.plans.assignPlanToMerchant(merchantId, planCode, {
-      paymentMethod: 'admin',
-      markPaid,
-      adminNote: 'Assigned by Super Admin',
+    if (markPaid) {
+      return this.plans.assignPlanToMerchant(merchantId, planCode, {
+        paymentMethod: 'admin',
+        markPaid: true,
+        adminNote: 'Granted by Super Admin (Paid)',
+      });
+    }
+    // Pending: billing only — merchant plan activates after payment confirm
+    return this.plans.createPendingBilling(merchantId, planCode, {
+      paymentMethod: 'admin_pending',
+      notes: 'Granted by Super Admin (awaiting payment)',
     });
   }
 
@@ -251,7 +258,9 @@ export class AdminService {
   // --- Billing ---
   async getBillingRecords(page = 1, limit = 20, status?: string) {
     const skip = (page - 1) * limit;
-    const where = status ? { status: status as 'PENDING' | 'PAID' } : {};
+    const where = status
+      ? { status: status as 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED' }
+      : {};
 
     const [records, total] = await Promise.all([
       this.prisma.billingRecord.findMany({
@@ -271,6 +280,24 @@ export class AdminService {
 
   confirmBilling(billingId: string, paymentRef?: string) {
     return this.subscriptions.confirmPayment(billingId, paymentRef);
+  }
+
+  rejectBilling(billingId: string, reason?: string) {
+    return this.subscriptions.rejectBilling(billingId, reason);
+  }
+
+  async getBkashPortalCredentials() {
+    const row = await this.prisma.systemSetting.findUnique({
+      where: { key: 'payment' },
+    });
+    const p = (row?.value as Record<string, unknown>) || {};
+    const portal = (p.bkashPortal as Record<string, unknown>) || {};
+    return {
+      loginUrl: 'https://merchantportal.bkash.com/login',
+      username: String(portal.username || ''),
+      password: String(portal.password || ''),
+      connected: Boolean(portal.username && portal.password),
+    };
   }
 
   async getCallAnalytics(days = 30) {
@@ -306,6 +333,22 @@ export class AdminService {
     const config: Record<string, unknown> = { plans, voice, paymentGateways };
     for (const s of settings) {
       if (s.key === 'voice_providers' || s.key === 'payment_gateways') continue;
+      if (s.key === 'payment') {
+        const p = (s.value as Record<string, unknown>) || {};
+        const portal = (p.bkashPortal as Record<string, unknown>) || {};
+        config.payment = {
+          bKashNumber: p.bKashNumber || '',
+          nagadNumber: p.nagadNumber || '',
+          instructions: p.instructions || '',
+          bkashPortal: {
+            username: portal.username || '',
+            passwordSet: Boolean(portal.password),
+            password: portal.password ? '••••••••' : '',
+            loginUrl: 'https://merchantportal.bkash.com/login',
+          },
+        };
+        continue;
+      }
       config[s.key] = s.value;
     }
     return config;
@@ -329,17 +372,54 @@ export class AdminService {
     }
 
     if (updates.payment) {
+      const existing = await this.prisma.systemSetting.findUnique({
+        where: { key: 'payment' },
+      });
+      const prev = (existing?.value as Record<string, unknown>) || {};
+      const next = updates.payment as Record<string, unknown>;
+      const prevPortal =
+        (prev.bkashPortal as Record<string, unknown>) || {};
+      const nextPortal =
+        (next.bkashPortal as Record<string, unknown>) || {};
+      const incomingPass = String(nextPortal.password || '');
+      const keepPass =
+        !incomingPass || incomingPass.startsWith('••••')
+          ? prevPortal.password
+          : incomingPass;
+
+      const merged = {
+        ...prev,
+        ...next,
+        bkashPortal: {
+          ...prevPortal,
+          ...nextPortal,
+          password: keepPass,
+          username: nextPortal.username ?? prevPortal.username ?? '',
+        },
+      };
+
       results.push(
         await this.prisma.systemSetting.upsert({
           where: { key: 'payment' },
-          create: { key: 'payment', value: updates.payment as Prisma.InputJsonValue },
-          update: { value: updates.payment as Prisma.InputJsonValue },
+          create: { key: 'payment', value: merged as Prisma.InputJsonValue },
+          update: { value: merged as Prisma.InputJsonValue },
         }),
       );
     }
 
     for (const [key, value] of Object.entries(updates)) {
-      if (['plans', 'voice', 'voice_providers', 'payment', 'payment_gateways', 'paymentGateways'].includes(key)) continue;
+      if (
+        [
+          'plans',
+          'voice',
+          'voice_providers',
+          'payment',
+          'payment_gateways',
+          'paymentGateways',
+        ].includes(key)
+      ) {
+        continue;
+      }
       results.push(
         await this.prisma.systemSetting.upsert({
           where: { key },

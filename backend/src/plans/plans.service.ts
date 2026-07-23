@@ -94,7 +94,14 @@ export class PlansService implements OnModuleInit {
   async assignPlanToMerchant(
     merchantId: string,
     planCode: string,
-    options?: { paymentMethod?: string; markPaid?: boolean; adminNote?: string },
+    options?: {
+      paymentMethod?: string;
+      markPaid?: boolean;
+      adminNote?: string;
+      /** When confirming an existing pending billing — do not create a second row */
+      skipBilling?: boolean;
+      paymentRef?: string;
+    },
   ) {
     const plan = await this.findByCode(planCode);
     if (!plan) throw new Error(`Plan ${planCode} not found`);
@@ -131,6 +138,10 @@ export class PlansService implements OnModuleInit {
       },
     });
 
+    if (options?.skipBilling) {
+      return { subscription, billing: null, plan };
+    }
+
     const billing = await this.prisma.billingRecord.create({
       data: {
         merchantId,
@@ -140,10 +151,48 @@ export class PlansService implements OnModuleInit {
         periodEnd: endsAt,
         status: options?.markPaid || Number(plan.priceMonthly) === 0 ? 'PAID' : 'PENDING',
         paymentMethod: options?.paymentMethod || 'admin_assign',
+        paymentRef: options?.paymentRef,
         notes: options?.adminNote,
       },
     });
 
     return { subscription, billing, plan };
+  }
+
+  /** Pending billing only — plan activates after admin confirms payment. */
+  async createPendingBilling(
+    merchantId: string,
+    planCode: string,
+    options: {
+      paymentMethod: string;
+      paymentRef?: string;
+      notes?: string;
+      amount?: number;
+    },
+  ) {
+    const plan = await this.findByCode(planCode);
+    if (!plan || !plan.isActive) throw new Error(`Plan ${planCode} not found`);
+
+    const now = new Date();
+    const endsAt = new Date(now);
+    endsAt.setMonth(endsAt.getMonth() + 1);
+    const amount =
+      options.amount != null ? options.amount : Number(plan.priceMonthly);
+
+    const billing = await this.prisma.billingRecord.create({
+      data: {
+        merchantId,
+        planCode,
+        amount,
+        periodStart: now,
+        periodEnd: endsAt,
+        status: 'PENDING',
+        paymentMethod: options.paymentMethod,
+        paymentRef: options.paymentRef,
+        notes: options.notes,
+      },
+    });
+
+    return { billing, plan };
   }
 }

@@ -36,7 +36,7 @@ export default function AdminDashboardPage() {
     { href: '/admin/merchants', label: 'মার্চেন্ট', desc: 'তৈরি, plan, suspend, store status', icon: Users, color: 'bg-blue-50 text-blue-700' },
     { href: '/admin/voice', label: 'Voice Studio', desc: 'Chirp3 artists, synthesize playground', icon: Mic2, color: 'bg-sky-50 text-sky-700' },
     { href: '/admin/config', label: 'Voice / ePBX', desc: 'Maskara TTS + dial-only telephony', icon: SlidersHorizontal, color: 'bg-amber-50 text-amber-700' },
-    { href: '/admin/payments', label: 'পেমেন্ট গেটওয়ে', desc: 'bKash, Nagad PGW', icon: Banknote, color: 'bg-pink-50 text-pink-700' },
+    { href: '/admin/payments', label: 'পেমেন্ট গেটওয়ে', desc: 'bKash portal + Send Money', icon: Banknote, color: 'bg-pink-50 text-pink-700' },
     { href: '/admin/plans', label: 'প্ল্যান', desc: 'দাম, limit, features', icon: ShoppingCart, color: 'bg-purple-50 text-purple-700' },
     { href: '/admin/billing', label: 'বিলিং', desc: 'Payment confirm', icon: Wallet, color: 'bg-emerald-50 text-emerald-700' },
     { href: '/admin/analytics', label: 'কল অ্যানালিটিক্স', desc: 'Success rate, reports', icon: Phone, color: 'bg-slate-100 text-slate-700' },
