@@ -160,8 +160,23 @@ export class OrdersService {
 
     // Remove queued call jobs if any
     try {
-      const job = await this.callsQueue.getJob(`call-first-${orderId}`);
-      if (job) await job.remove();
+      const first = await this.callsQueue.getJob(`call-first-${orderId}`);
+      if (first) await first.remove();
+    } catch {
+      // ignore
+    }
+    try {
+      const jobs = await this.callsQueue.getJobs([
+        'waiting',
+        'delayed',
+        'paused',
+      ]);
+      for (const job of jobs) {
+        const data = job.data as { orderId?: string };
+        if (data?.orderId === orderId) {
+          await job.remove();
+        }
+      }
     } catch {
       // ignore
     }

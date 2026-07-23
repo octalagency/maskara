@@ -88,7 +88,7 @@ cp -f "$DOWNLOADS_DIR/maskara-woocommerce.zip" "$PUBLIC_DIR/maskara-woocommerce.
 cp -f "$DOWNLOADS_DIR/maskara-woocommerce.zip" "$PUBLIC_DIR/maskara-woocommerce-$VERSION.zip"
 
 # Keep legacy URLs serving the latest full package.
-for legacy in 1.1.0 1.2.0 1.4.0 1.5.0 1.5.1 1.5.2 1.5.3 1.5.4 1.5.5 1.5.6 1.5.7 1.5.8 1.5.9 1.5.10 1.5.11; do
+for legacy in 1.1.0 1.2.0 1.4.0 1.5.0 1.5.1 1.5.2 1.5.3 1.5.4 1.5.5 1.5.6 1.5.7 1.5.8 1.5.9 1.5.10 1.5.11 1.5.12; do
   cp -f "$DOWNLOADS_DIR/maskara-woocommerce.zip" "$PUBLIC_DIR/maskara-woocommerce-$legacy.zip"
 done
 

@@ -20,6 +20,8 @@ class Maskara_Order_Sync {
         add_action('woocommerce_order_status_cancelled', array($this, 'queue_status_sync'), 10, 1);
         add_action('woocommerce_order_status_refunded', array($this, 'queue_status_sync'), 10, 1);
         add_action('woocommerce_order_status_failed', array($this, 'queue_status_sync'), 10, 1);
+        // Website Completed (manual) → Maskara Manual Complete + stop further calls
+        add_action('woocommerce_order_status_completed', array($this, 'queue_status_sync'), 10, 1);
 
         add_action('maskara_send_order_event', array($this, 'maybe_send_order'), 10, 1);
         add_action('maskara_sync_order_status_event', array($this, 'sync_order_status'), 10, 1);
@@ -65,8 +67,8 @@ class Maskara_Order_Sync {
     }
 
     /**
-     * Notify Maskara of WooCommerce status (cancelled/refunded/failed).
-     * Backend marks existing order CANCELLED and stops further calls.
+     * Notify Maskara of WooCommerce status (cancelled/refunded/failed/completed).
+     * Backend marks existing order CANCELLED or Manual Complete and stops further calls.
      */
     public function sync_order_status($order_id) {
         $api = new Maskara_API();
@@ -89,6 +91,11 @@ class Maskara_Order_Sync {
             $order->update_meta_data('_maskara_verification', 'cancelled');
             $order->save();
             $order->add_order_note('Maskara: website ' . $status . ' synced — calls stopped.');
+        } elseif ($status === 'completed') {
+            $order->update_meta_data('_maskara_verify_status', 'verified');
+            $order->update_meta_data('_maskara_verification', 'manual_complete');
+            $order->save();
+            $order->add_order_note('Maskara: website completed synced — Manual Complete, calls stopped.');
         }
     }
 
