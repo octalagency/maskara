@@ -7,7 +7,10 @@ import {
   isWithinCallWindow,
   nextWindowOpenAt,
 } from '../common/utils/call-window.util';
-import { SECOND_CALL_DELAY_MS } from '../common/utils/call-schedule.util';
+import {
+  isCallWindowExempt,
+  SECOND_CALL_DELAY_MS,
+} from '../common/utils/call-schedule.util';
 import {
   countCallsTodayForOrder,
   lifetimeLimitOf,
@@ -35,7 +38,6 @@ export class CallsRetryScheduler {
         createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
       },
       include: {
-        merchant: true,
         calls: { take: 1 },
       },
       take: 40,
@@ -44,17 +46,7 @@ export class CallsRetryScheduler {
 
     for (const order of pending) {
       if (order.calls.length > 0) continue;
-      const cfg = merchantDialConfig(order.merchant);
-      if (
-        !isWithinCallWindow(
-          cfg.timezone,
-          cfg.callWindowStartMin,
-          cfg.callWindowEndMin,
-        )
-      ) {
-        continue;
-      }
-
+      // First call is window-exempt — dial even after 22:00
       this.logger.log(`First-call enqueue (≤20s backup) for ${order.orderNumber}`);
       await this.queueCall(order.id, order.merchantId, false, `call-first-${order.id}`);
     }
@@ -92,6 +84,7 @@ export class CallsRetryScheduler {
       }
 
       if (
+        !isCallWindowExempt(order.callAttempts) &&
         !isWithinCallWindow(
           cfg.timezone,
           cfg.callWindowStartMin,
@@ -161,10 +154,13 @@ export class CallsRetryScheduler {
       const dueBySchedule =
         order.nextCallAt != null && order.nextCallAt.getTime() <= now.getTime();
 
+      // Second burst call: +2 min any time (also heals stale nextCallAt parked for next morning)
       const dueSecondCall =
         order.callAttempts === 1 &&
-        order.nextCallAt == null &&
-        timeSinceLastCall >= SECOND_CALL_DELAY_MS;
+        timeSinceLastCall >= SECOND_CALL_DELAY_MS &&
+        (order.nextCallAt == null ||
+          order.nextCallAt.getTime() <= now.getTime() ||
+          isCallWindowExempt(order.callAttempts));
 
       const dueBySpacing =
         order.callAttempts >= 2 &&

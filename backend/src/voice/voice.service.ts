@@ -11,7 +11,10 @@ import {
 } from './providers/bangla-prompt';
 import { S3StorageService } from '../common/services/s3-storage.service';
 import { isWithinCallWindow } from '../common/utils/call-window.util';
-import { computeNextCallAt } from '../common/utils/call-schedule.util';
+import {
+  computeNextCallAt,
+  isCallWindowExempt,
+} from '../common/utils/call-schedule.util';
 import {
   countCallsTodayForOrder,
   lifetimeLimitOf,
@@ -67,7 +70,9 @@ export class VoiceService {
     }
 
     const cfg = merchantDialConfig(merchant);
+    // Attempts 1–2 may dial outside the daily window (new-order burst)
     if (
+      !isCallWindowExempt(order.callAttempts) &&
       !isWithinCallWindow(
         cfg.timezone,
         cfg.callWindowStartMin,

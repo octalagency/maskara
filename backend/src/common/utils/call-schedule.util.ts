@@ -1,8 +1,8 @@
 /**
  * Call schedule:
- * 1) Attempt 1 — ASAP within call window (~20s backup cron)
- * 2) Attempt 2 — 2 minutes later
- * 3) Attempt 3 — within first hour (~15–20 min after attempt 2)
+ * 1) Attempt 1 — ASAP any time (~20s backup cron) — window exempt
+ * 2) Attempt 2 — 2 minutes later, any time — window exempt
+ * 3) Attempt 3 — within first hour (~15–20 min after attempt 2), inside window
  * 4) Attempts 4..dailyCap — staggered until window end
  * 5) Next day resumes at window open until lifetime cap (manual cancel, no auto-cancel)
  */
@@ -16,6 +16,14 @@ import {
 } from './call-window.util';
 
 const DEFAULT_TZ = 'Asia/Dhaka';
+
+/** First N dials ignore the daily call window (new-order burst). */
+export const WINDOW_EXEMPT_ATTEMPTS = 2;
+
+/** True when the next dial (callAttempts → attempt+1) may run outside the window. */
+export function isCallWindowExempt(callAttemptsSoFar: number): boolean {
+  return callAttemptsSoFar < WINDOW_EXEMPT_ATTEMPTS;
+}
 
 /** Delay between first and second call. */
 export const SECOND_CALL_DELAY_MS = 2 * 60 * 1000;
@@ -218,14 +226,9 @@ export function computeNextCallAt(opts: {
     );
   }
 
-  // Attempt 2: +2 minutes
+  // Attempt 2: +2 minutes — any time of day (window exempt)
   if (completedAttempts === 1) {
-    return clampIntoWindowOrNextOpen(
-      new Date(from.getTime() + SECOND_CALL_DELAY_MS),
-      timezone,
-      startMin,
-      endMin,
-    );
+    return new Date(from.getTime() + SECOND_CALL_DELAY_MS);
   }
 
   // Attempt 3 (and any remaining first-hour slots): within first hour of order
@@ -260,16 +263,13 @@ export function computeNextCallAt(opts: {
   return schedule[0] ?? nextWindowOpenAt(timezone, startMin, endMin, from);
 }
 
-/** First dial time for a brand-new order (attempt 0 → 1). */
+/**
+ * First dial time for a brand-new order (attempt 0 → 1).
+ * Always ASAP — night orders still get the first two burst calls.
+ */
 export function computeFirstCallAt(
-  merchant: DialMerchantConfig,
+  _merchant: DialMerchantConfig,
   now = new Date(),
 ): Date {
-  const timezone = merchant.timezone || DEFAULT_TZ;
-  const startMin = merchant.callWindowStartMin ?? DEFAULT_WINDOW_START_MIN;
-  const endMin = merchant.callWindowEndMin ?? DEFAULT_WINDOW_END_MIN;
-  const open = nextWindowOpenAt(timezone, startMin, endMin, now);
-  // If already inside window, dial ASAP (caller may enqueue immediately)
-  if (open.getTime() <= now.getTime() + 1000) return now;
-  return open;
+  return now;
 }

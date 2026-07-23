@@ -111,9 +111,15 @@ export default function CallSystemPage() {
         <div className="card space-y-3 text-sm text-slate-600">
           <p className="font-semibold text-slate-900">ডিফল্ট টাইমলাইন</p>
           <ol className="list-decimal space-y-1.5 pl-5">
-            <li>অর্ডারের ~২০ সেকেন্ডের মধ্যে প্রথম কল (উইন্ডোর ভিতরে)</li>
-            <li>~২ মিনিট পর দ্বিতীয় কল</li>
-            <li>প্রথম ১ ঘন্টার মধ্যে তৃতীয় কল</li>
+            <li>
+              অর্ডারের ~২০ সেকেন্ডের মধ্যে প্রথম কল — যেকোনো সময় (রাত{' '}
+              {minsToTime(form.callWindowEndMin)} এর পরও)
+            </li>
+            <li>~২ মিনিট পর দ্বিতীয় কল — যেকোনো সময়</li>
+            <li>
+              তৃতীয় কল থেকে উইন্ডো প্রযোজ্য ({minsToTime(form.callWindowStartMin)}–
+              {minsToTime(form.callWindowEndMin)}) · প্রথম ১ ঘন্টার মধ্যে তৃতীয়
+            </li>
             <li>বাকি কলগুলো দিনভর stagger — রাত {minsToTime(form.callWindowEndMin)} এর মধ্যে</li>
             <li>
               দিনে সর্বোচ্চ {form.dailyCallLimit} · বাকি থাকলে পরের দিন সকাল{' '}

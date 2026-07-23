@@ -13,7 +13,7 @@ import {
   lifetimeLimitOf,
   merchantDialConfig,
 } from '../common/utils/dial-merchant.util';
-import { computeFirstCallAt } from '../common/utils/call-schedule.util';
+import { isCallWindowExempt } from '../common/utils/call-schedule.util';
 
 interface CallJobData {
   orderId: string;
@@ -59,14 +59,20 @@ export class CallsProcessor {
     }
 
     const cfg = merchantDialConfig(order.merchant);
+    // Attempts 1–2 (new-order burst) dial any time; later attempts wait for window
     if (
+      !isCallWindowExempt(order.callAttempts) &&
       !isWithinCallWindow(
         cfg.timezone,
         cfg.callWindowStartMin,
         cfg.callWindowEndMin,
       )
     ) {
-      const openAt = computeFirstCallAt(cfg);
+      const openAt = nextWindowOpenAt(
+        cfg.timezone,
+        cfg.callWindowStartMin,
+        cfg.callWindowEndMin,
+      );
       this.logger.log(
         `Outside call window — defer ${order.orderNumber} to ${openAt.toISOString()}`,
       );
