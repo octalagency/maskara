@@ -200,7 +200,7 @@ export default function SubscriptionPage() {
                 <div>
                   <div className="flex justify-between text-sm">
                     <span>
-                      Calls: {usage.callsUsed} / {usage.callLimit}
+                      Order confirmed: {usage.callsUsed} / {usage.callLimit}
                     </span>
                     <span>{usagePct}%</span>
                   </div>
@@ -239,7 +239,7 @@ export default function SubscriptionPage() {
                     <span className="text-sm font-normal">/mo</span>
                   </p>
                   <p className="mt-1 text-sm text-slate-500">
-                    {plan.callLimit} calls · {plan.smsLimit} SMS
+                    {plan.callLimit} order confirmed · {plan.smsLimit} SMS
                   </p>
                   <ul className="mt-3 flex-1 space-y-1 text-xs text-slate-600">
                     {features.slice(0, 3).map((f) => (

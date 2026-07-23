@@ -70,11 +70,18 @@ export class SubscriptionsService {
       payment,
       usage: subscription
         ? {
+            // Plan quota = finalized orders (confirm + cancel), not dial attempts
             callsUsed: subscription.callsUsed,
             callLimit: subscription.callLimit,
+            ordersUsed: subscription.callsUsed,
+            orderLimit: subscription.callLimit,
             smsUsed: subscription.smsUsed,
             smsLimit: subscription.smsLimit,
             callsRemaining: Math.max(
+              0,
+              subscription.callLimit - subscription.callsUsed,
+            ),
+            ordersRemaining: Math.max(
               0,
               subscription.callLimit - subscription.callsUsed,
             ),
@@ -283,7 +290,10 @@ export class SubscriptionsService {
     });
   }
 
-  /** Returns true if merchant can initiate another verification call */
+  /**
+   * Quota gate: plan limit = monthly order outcomes (confirm OR cancel).
+   * Dialing unanswered calls does not consume quota.
+   */
   async canMakeCall(
     merchantId: string,
   ): Promise<{ allowed: boolean; reason?: string }> {
@@ -312,23 +322,52 @@ export class SubscriptionsService {
     if (subscription.callsUsed >= subscription.callLimit) {
       return {
         allowed: false,
-        reason: `Monthly call limit reached (${subscription.callLimit})`,
+        reason: `মাসিক অর্ডার লিমিট শেষ (${subscription.callsUsed}/${subscription.callLimit} order confirmed/cancelled)`,
       };
     }
 
     return { allowed: true };
   }
 
+  /** @deprecated dials no longer consume quota — kept for callers */
   async incrementCallUsage(merchantId: string): Promise<void> {
+    // No-op: quota is consumed only on order VERIFIED / CANCELLED
+    void merchantId;
+  }
+
+  /**
+   * Consume 1 plan unit when an order is confirmed OR cancelled (once per order).
+   */
+  async consumeOrderQuota(
+    merchantId: string,
+    orderId: string,
+  ): Promise<void> {
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order || order.merchantId !== merchantId) return;
+    if (!['VERIFIED', 'CANCELLED'].includes(order.status)) return;
+
+    const meta =
+      order.metadata && typeof order.metadata === 'object' && !Array.isArray(order.metadata)
+        ? ({ ...(order.metadata as Record<string, unknown>) } as Record<string, unknown>)
+        : {};
+    if (meta.quotaConsumed) return;
+
     const subscription = await this.prisma.subscription.findFirst({
       where: { merchantId, isActive: true },
       orderBy: { createdAt: 'desc' },
     });
-    if (!subscription) return;
+    if (subscription) {
+      await this.prisma.subscription.update({
+        where: { id: subscription.id },
+        data: { callsUsed: { increment: 1 } },
+      });
+    }
 
-    await this.prisma.subscription.update({
-      where: { id: subscription.id },
-      data: { callsUsed: { increment: 1 } },
+    await this.prisma.order.update({
+      where: { id: orderId },
+      data: {
+        metadata: { ...meta, quotaConsumed: true, quotaConsumedAt: new Date().toISOString() },
+      },
     });
   }
 }

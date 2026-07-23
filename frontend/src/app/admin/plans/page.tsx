@@ -86,7 +86,7 @@ export default function AdminPlansPage() {
                   <input className="input" placeholder="Name (Bangla)" value={form.nameBangla || ''} onChange={(e) => setForm({ ...form, nameBangla: e.target.value })} />
                   <div className="grid grid-cols-3 gap-2">
                     <input type="number" className="input" placeholder="Price/mo" value={form.priceMonthly ?? ''} onChange={(e) => setForm({ ...form, priceMonthly: +e.target.value })} />
-                    <input type="number" className="input" placeholder="Calls" value={form.callLimit ?? ''} onChange={(e) => setForm({ ...form, callLimit: +e.target.value })} />
+                    <input type="number" className="input" placeholder="Order confirmed" value={form.callLimit ?? ''} onChange={(e) => setForm({ ...form, callLimit: +e.target.value })} />
                     <input type="number" className="input" placeholder="SMS" value={form.smsLimit ?? ''} onChange={(e) => setForm({ ...form, smsLimit: +e.target.value })} />
                   </div>
                   <label className="flex items-center gap-2 text-sm">
@@ -98,7 +98,7 @@ export default function AdminPlansPage() {
                 <>
                   <p className="mt-3 text-2xl font-bold">{formatCurrency(Number(plan.priceMonthly))}<span className="text-sm font-normal text-slate-500">/মাস</span></p>
                   <div className="mt-2 flex gap-4 text-sm text-slate-600">
-                    <span>{plan.callLimit.toLocaleString()} calls</span>
+                    <span>{plan.callLimit.toLocaleString()} order confirmed</span>
                     <span>{plan.smsLimit.toLocaleString()} SMS</span>
                     <span className={plan.isActive ? 'text-emerald-600' : 'text-red-600'}>{plan.isActive ? 'Active' : 'Inactive'}</span>
                   </div>

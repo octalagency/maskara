@@ -57,6 +57,6 @@ export class CallsProcessor {
 
     const attemptNumber = order.callAttempts + 1;
     await this.voiceService.initiateCall(orderId, merchantId, attemptNumber);
-    await this.subscriptions.incrementCallUsage(merchantId);
+    // Quota is consumed only when order is confirmed OR cancelled — not on dial
   }
 }

@@ -6,6 +6,7 @@ import { VoiceService } from './voice.service';
 import { VoiceController } from './voice.controller';
 import { VoiceWebhookService } from './voice-webhook.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { TwilioProvider } from './providers/twilio.provider';
 import { EpbxProvider } from './providers/epbx.provider';
 import { IppbxProvider } from './providers/ippbx.provider';
@@ -15,7 +16,7 @@ import { TtsPreviewService } from './tts-preview.service';
 import { GoogleTtsService } from './google-tts.service';
 
 @Module({
-  imports: [NotificationsModule],
+  imports: [NotificationsModule, SubscriptionsModule],
   controllers: [VoiceController],
   providers: [
     VoiceSettingsService,

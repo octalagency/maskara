@@ -13,6 +13,7 @@ import { S3StorageService } from '../common/services/s3-storage.service';
 import { isWithinCallWindow } from '../common/utils/call-window.util';
 import { computeNextCallAt } from '../common/utils/call-schedule.util';
 import { VoiceSettingsService } from './voice-settings.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 @Injectable()
 export class VoiceService {
@@ -26,6 +27,7 @@ export class VoiceService {
     private providers: VoiceProviderFactory,
     private s3: S3StorageService,
     private voiceSettings: VoiceSettingsService,
+    private subscriptions: SubscriptionsService,
   ) {
     this.apiUrl =
       this.config.get('PUBLIC_API_URL') ||
@@ -292,6 +294,7 @@ export class VoiceService {
     ]);
 
     const updatedOrder = await this.prisma.order.findUniqueOrThrow({ where: { id: call.orderId } });
+    await this.subscriptions.consumeOrderQuota(call.merchantId, call.orderId);
     await this.notifications.notifyMerchant(call.merchant, updatedOrder, outcome);
     return this.generateResponseTwiml(message);
   }
@@ -422,6 +425,8 @@ export class VoiceService {
         nextCallAt: null,
       },
     });
+
+    await this.subscriptions.consumeOrderQuota(merchant.id, order.id);
 
     this.logger.log(`Simulated call completed for order ${order.orderNumber}`);
     return call;

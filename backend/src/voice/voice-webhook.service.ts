@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 @Injectable()
 export class VoiceWebhookService {
@@ -9,6 +10,7 @@ export class VoiceWebhookService {
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
+    private subscriptions: SubscriptionsService,
   ) {}
 
   /** Normalize ePBX / ippbx webhook payloads (POST body or GET query). */
@@ -258,6 +260,7 @@ export class VoiceWebhookService {
     const updatedOrder = await this.prisma.order.findUniqueOrThrow({
       where: { id: call.orderId },
     });
+    await this.subscriptions.consumeOrderQuota(call.merchantId, call.orderId);
     await this.notifications.notifyMerchant(call.merchant, updatedOrder, outcome);
     this.logger.log(`Webhook DTMF ${digits} → ${outcome} for call ${callId}`);
     return { ok: true, outcome };

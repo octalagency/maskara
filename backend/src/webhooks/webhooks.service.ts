@@ -2,6 +2,7 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { Prisma, OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrdersService } from '../orders/orders.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { CreateOrderDto } from '../orders/dto/create-order.dto';
 
 const WOO_CANCEL_STATUSES = new Set(['cancelled', 'refunded', 'failed']);
@@ -28,6 +29,7 @@ export class WebhooksService {
   constructor(
     private prisma: PrismaService,
     private ordersService: OrdersService,
+    private subscriptions: SubscriptionsService,
   ) {}
 
   async handleShopifyWebhook(merchantId: string, payload: Record<string, unknown>) {
@@ -85,6 +87,7 @@ export class WebhooksService {
             } as Prisma.InputJsonValue,
           },
         });
+        await this.subscriptions.consumeOrderQuota(merchantId, cancelled.id);
         return { received: true, cancelled: true, order: cancelled };
       }
 
@@ -188,6 +191,7 @@ export class WebhooksService {
             nextCallAt: null,
           },
         });
+        await this.subscriptions.consumeOrderQuota(merchantId, cancelled.id);
         return { received: true, cancelled: true, order: cancelled };
       }
       return { received: true, duplicate: true, order: existing };

@@ -817,9 +817,12 @@ export interface MerchantSubscription {
   usage?: {
     callsUsed: number;
     callLimit: number;
+    ordersUsed?: number;
+    orderLimit?: number;
     smsUsed: number;
     smsLimit: number;
     callsRemaining: number;
+    ordersRemaining?: number;
   } | null;
 }
 

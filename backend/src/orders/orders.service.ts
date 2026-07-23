@@ -18,7 +18,7 @@ export class OrdersService {
   async create(merchantId: string, dto: CreateOrderDto) {
     const limitCheck = await this.subscriptions.canMakeCall(merchantId);
     if (!limitCheck.allowed) {
-      throw new ForbiddenException(limitCheck.reason || 'Call limit exceeded');
+      throw new ForbiddenException(limitCheck.reason || 'Order quota exceeded');
     }
 
     const order = await this.prisma.order.create({
@@ -168,8 +168,10 @@ export class OrdersService {
 
     if (dto.status === 'VERIFIED') {
       await this.updateDailyUsage(merchantId, 'ordersVerified');
+      await this.subscriptions.consumeOrderQuota(merchantId, order.id);
     } else if (dto.status === 'CANCELLED') {
       await this.updateDailyUsage(merchantId, 'ordersCancelled');
+      await this.subscriptions.consumeOrderQuota(merchantId, order.id);
     }
 
     return updated;

@@ -76,7 +76,7 @@ export default function PricingPage() {
                   <span className="text-sm text-slate-500">{plan.period}</span>
                 </div>
                 <div className="mt-4 space-y-1 text-sm text-slate-600">
-                  <p><strong>{plan.calls}</strong> calls/month</p>
+                  <p><strong>{plan.calls}</strong> order confirmed/month</p>
                   <p><strong>{plan.sms}</strong> SMS/month</p>
                 </div>
                 <ul className="mt-6 flex-1 space-y-3">
