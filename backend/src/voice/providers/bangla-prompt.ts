@@ -192,7 +192,7 @@ export const MERCHANT_VOICE_OPTIONS = [
   },
   {
     id: 'google:bn-IN-Chirp3-HD-Aoede',
-    label: 'Aoede — Chirp3 নারী',
+    label: 'Aoede — Chirp3 নারী (প্রস্তাবিত প্রফেশনাল)',
     provider: 'google',
     voiceId: 'bn-IN-Chirp3-HD-Aoede',
     languageCode: 'bn-IN',
@@ -263,28 +263,40 @@ export function toChirpExpressiveMarkup(text: string): string {
   let out = text.replace(/\s+/g, ' ').trim();
   if (!out) return out;
 
-  // Soft open — agent greeting feel
+  // Soft open — warm agent greeting
   if (!/^\[pause/.test(out)) {
-    out = `[pause short] ${out}`;
+    out = `[pause] ${out}`;
   }
 
-  // Ellipsis / sentence end → short natural pause
-  out = out.replace(/\.{2,}\s*/g, '... [pause short] ');
-  out = out.replace(/([।!?])\s*/g, '$1 [pause short] ');
-  // Commas as light breath (Bangla/English)
+  // Ellipsis / Bangla danda / sentence end → natural breath
+  out = out.replace(/\.{2,}\s*/g, '... [pause] ');
+  out = out.replace(/([।!?])\s*/g, '$1 [pause] ');
+  // Commas as light breath
   out = out.replace(/([,،])\s*/g, '$1 [pause short] ');
 
-  // Brief breath before key action lines
+  // Empathetic beats before key lines
   out = out.replace(
-    /(অর্ডারটি\s*নিশ্চিত\s*করার\s*জন্য)/g,
+    /(আসসালামু\s*আলাইকুম)/g,
+    '[pause short] $1',
+  );
+  out = out.replace(
+    /(অর্ডার\s*করেছেন|অর্ডার\s*করেছেন।)/g,
+    '$1 [pause]',
+  );
+  out = out.replace(
+    /(মোট\s*বিল|মোট\s*টাকা)/g,
+    '[pause short] $1',
+  );
+  out = out.replace(
+    /(অর্ডারটি\s*নিশ্চিত\s*করার\s*জন্য|নিশ্চিত\s*করতে)/g,
     '[pause] $1',
   );
-  out = out.replace(/(বাতিল\s*করার\s*জন্য)/g, '[pause short] $1');
-  out = out.replace(/(পুনরায়\s*শুনতে)/g, '[pause] $1');
-  out = out.replace(/(ধন্যবাদ)/g, '[pause short] $1');
+  out = out.replace(/(বাতিল\s*করার\s*জন্য|বাতিল\s*করতে)/g, '[pause] $1');
+  out = out.replace(/(পুনরায়\s*শুনতে)/g, '[pause short] $1');
+  out = out.replace(/(ধন্যবাদ)/g, '[pause] $1');
 
   // Collapse stacked pauses / whitespace
-  out = out.replace(/(\[pause(?: short| long)?\]\s*){2,}/g, '[pause short] ');
+  out = out.replace(/(\[pause(?: short| long)?\]\s*){2,}/g, '[pause] ');
   return out.replace(/\s+/g, ' ').trim();
 }
 

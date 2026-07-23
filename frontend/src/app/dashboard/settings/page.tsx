@@ -301,10 +301,9 @@ export default function SettingsPage() {
             <div>
               <h3 className="section-title">AI ভয়েস বাছুন</h3>
               <p className="page-subtitle">
-                টেক্সট→ভয়েস Maskara Chirp3 (<strong>Algieba পুরুষ</strong>) করে। ePBX শুধু কল
-                করে ও Maskara MP3 প্লে করে — পোর্টাল WaveNet/eAI ব্যবহার হয় না। ePBX-এ{' '}
-                <strong>Save Voice Profile</strong> দরকার নেই ভয়েসের জন্য; IVR Menus ব্যবহার করবেন
-                না।
+                ভয়েস <strong>Maskara Chirp3</strong> দিয়ে তৈরি হয় — ePBX শুধু ফোন কল করে ও
+                সেই অডিও প্লে করে। পোর্টাল WaveNet / eAI ব্যবহার হয় না। নারী ভয়েসের জন্য{' '}
+                <strong>Aoede</strong> বাছুন, প্রিভিউ শুনে সেভ করুন — লাইভ কলেও একই ভয়েস যাবে।
               </p>
             </div>
 
@@ -376,28 +375,20 @@ export default function SettingsPage() {
             </div>
 
             <div className="rounded-xl border border-brand-100 bg-brand-50/50 px-4 py-3 text-[13px] text-slate-700">
-              নির্বাচিত: <strong>{selected.label}</strong> ({selected.provider})
+              নির্বাচিত: <strong>{selected.label}</strong> (
+              {selected.gender === 'female' ? 'নারী' : 'পুরুষ'} · {selected.provider})
               {selected.requiresGoogleTts ? (
                 <>
                   {' '}
-                  — লাইভ ePBX Google Chirp3:{' '}
-                  <strong>
-                    {selected.gender === 'male'
-                      ? 'bn-IN-Chirp3-HD-Algenib'
-                      : selected.id.replace(/^google:/, '')}
-                  </strong>{' '}
-                  ({selected.gender === 'male' ? 'পুরুষ' : 'নারী'})
+                  — লাইভ কল অডিও:{' '}
+                  <strong>{selected.id.replace(/^google:/, '')}</strong>
                 </>
-              ) : (
-                <> — রিয়েল কলেও ePBX Google পোর্টাল ভয়েস প্রোফাইল ব্যবহার হবে।</>
-              )}
+              ) : null}
             </div>
             {saved && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
-                সেভ হয়েছে। এখন ePBX (<strong>maskara.epbx.bd</strong>) → Developer API Settings-এ{' '}
-                <strong>Algenib (MALE)</strong> সিলেক্ট করে <strong>Save Voice Profile</strong>{' '}
-                চাপুন। ডিপ্লয়ের পর Maskara Algieba + ePBX Algenib দুটোই পুরুষ থাকলে লাইভ কল পুরুষ
-                শোনাবে।
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-900">
+                সেভ হয়েছে। পরের অর্ডার কলে এই ভয়েসই বাজবে — ePBX-এ আলাদা Voice Profile সেভ
+                করার দরকার নেই।
               </div>
             )}
 
