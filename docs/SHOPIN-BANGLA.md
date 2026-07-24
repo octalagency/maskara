@@ -13,6 +13,23 @@ ShopIn COD order
   → ShopIn confirm + (optional) Pathao auto-deploy
 ```
 
+### Physical call center (WordPress-এর মতো Manual Complete)
+
+ShopIn-এ মানুষ কল করে Confirm করলে (Pending → Confirmed / Pickup Pending), ShopIn যেন **আবার** Maskara webhook পাঠায় `status` সহ। Maskara তখন:
+
+- অর্ডার **Manual Complete / VERIFIED** করে
+- AI কল বন্ধ করে (`nextCallAt` clear + queued jobs remove)
+- ড্যাশবোর্ডে Manual Complete দেখায়
+
+মানে WooCommerce-এ website `completed` sync-এর মতোই।
+
+**ShopIn → Maskara status values that trigger Manual Complete:**  
+`confirmed`, `confirm`, `completed`, `pickup_pending`, `ready_for_delivery`, `in_transit`, `delivered`, …
+
+**Cancel:** `cancelled` / `rejected` → Maskara cancel + stop calls.
+
+> ShopIn যদি status-change webhook না পাঠায়, Manual Complete হবে না — ShopIn Maskara settings-এ status sync চালু আছে কিনা চেক করুন।
+
 ## Maskara endpoints
 
 | Method | Path | Auth | Purpose |

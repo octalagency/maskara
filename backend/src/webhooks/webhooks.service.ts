@@ -30,6 +30,10 @@ const SHOPIN_EXCLUDE_STATUSES = new Set([
   'rejected',
 ]);
 
+/**
+ * ShopIn (or physical call center) confirmed the order — Manual Complete, stop AI calls.
+ * Mirrors WooCommerce "completed" → markManualCompleteFromWebsite.
+ */
 const SHOPIN_MANUAL_COMPLETE_STATUSES = new Set([
   'completed',
   'complete',
@@ -39,7 +43,41 @@ const SHOPIN_MANUAL_COMPLETE_STATUSES = new Set([
   'success',
   'manual_complete',
   'manual-complete',
+  // ShopIn UI tabs after human confirm (before / at courier handoff)
+  'pickup_pending',
+  'pickuppending',
+  'ready_for_delivery',
+  'readyfordelivery',
+  'in_transit',
+  'intransit',
 ]);
+
+function normalizeShopInStatus(raw: unknown): string {
+  return String(raw ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_')
+    .replace(/_+/g, '_');
+}
+
+function extractShopInStatus(payload: Record<string, unknown>): string {
+  const candidates = [
+    payload.status,
+    payload.orderStatus,
+    payload.order_status,
+    payload.currentStatus,
+    payload.current_status,
+    payload.fulfillmentStatus,
+    payload.fulfillment_status,
+    (payload.order as Record<string, unknown> | undefined)?.status,
+    (payload.data as Record<string, unknown> | undefined)?.status,
+  ];
+  for (const c of candidates) {
+    const n = normalizeShopInStatus(c);
+    if (n) return n;
+  }
+  return '';
+}
 
 function normalizeWooStatus(raw: unknown): string {
   const s = String(raw ?? '')
@@ -232,7 +270,7 @@ export class WebhooksService {
     }
 
     const externalId = orderData.externalId || orderData.orderNumber;
-    const status = String(payload.status || payload.orderStatus || '').toLowerCase();
+    const status = extractShopInStatus(payload);
 
     const existing = await this.prisma.order.findFirst({
       where: {
@@ -447,7 +485,8 @@ export class WebhooksService {
         provider: 'shopin',
         shopId: shopId || undefined,
         shopinOrderId: externalId,
-        rawStatus: payload.status ?? payload.orderStatus,
+        rawStatus: payload.status ?? payload.orderStatus ?? payload.order_status,
+        shopInStatus: extractShopInStatus(payload) || undefined,
       },
     };
   }
