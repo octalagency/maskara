@@ -14,6 +14,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { ApiKeyGuard } from '../common/guards/api-key.guard';
+import { JwtOrApiKeyGuard } from '../common/guards/jwt-or-api-key.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { OrderStatus } from '@prisma/client';
 
@@ -72,20 +73,25 @@ export class OrdersController {
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtOrApiKeyGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get order details' })
+  @ApiSecurity('api-key')
+  @ApiOperation({ summary: 'Get order details (JWT or API key)' })
   findOne(
     @CurrentUser('merchantId') merchantId: string,
     @Param('id') id: string,
   ) {
-    return this.ordersService.findOne(merchantId, id);
+    return this.ordersService.findOneFlexible(merchantId, id);
   }
 
   @Patch(':id/status')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtOrApiKeyGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Update order status manually' })
+  @ApiSecurity('api-key')
+  @ApiOperation({
+    summary:
+      'Update order status — JWT or X-API-Key (ShopIn Staff). :id = Maskara id or ORD-…',
+  })
   updateStatus(
     @CurrentUser('merchantId') merchantId: string,
     @Param('id') id: string,

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { Prisma, OrderStatus } from '@prisma/client';
@@ -310,45 +310,84 @@ export class OrdersService {
     return order;
   }
 
+  /** Lookup by Maskara id, ShopIn ORD-…, or externalId */
+  async findOneFlexible(merchantId: string, idOrNumber: string) {
+    const key = String(idOrNumber || '').trim().replace(/^#/, '');
+    const order = await this.prisma.order.findFirst({
+      where: {
+        merchantId,
+        OR: [{ id: key }, { orderNumber: key }, { externalId: key }],
+      },
+      include: {
+        calls: { orderBy: { createdAt: 'desc' } },
+        notifications: { orderBy: { createdAt: 'desc' } },
+      },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+    return order;
+  }
+
+  private mapIncomingStatus(raw: string): OrderStatus {
+    const s = String(raw || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_');
+    if (
+      ['verified', 'confirmed', 'confirm', 'manual_complete', 'manual_confirm', 'completed', 'complete'].includes(
+        s,
+      )
+    ) {
+      return 'VERIFIED';
+    }
+    if (['cancelled', 'canceled', 'cancel', 'rejected'].includes(s)) {
+      return 'CANCELLED';
+    }
+    const upper = String(raw || '').trim().toUpperCase();
+    if (upper === 'VERIFIED' || upper === 'CANCELLED') return upper as OrderStatus;
+    throw new BadRequestException(`Unsupported status: ${raw}`);
+  }
+
   async updateStatus(
     merchantId: string,
     orderId: string,
     dto: UpdateOrderStatusDto,
   ) {
-    const order = await this.findOne(merchantId, orderId);
+    const order = await this.findOneFlexible(merchantId, orderId);
+    const status = this.mapIncomingStatus(dto.status);
+    const meta =
+      order.metadata && typeof order.metadata === 'object' && !Array.isArray(order.metadata)
+        ? (order.metadata as Record<string, unknown>)
+        : {};
+    const source = String(dto.source || 'api').toLowerCase();
+    const fromShopIn =
+      meta.provider === 'shopin' ||
+      source.includes('shopin') ||
+      source.includes('staff') ||
+      source === 'staff';
 
-    const updateData: Prisma.OrderUpdateInput = {
-      status: dto.status,
-      ...(dto.status === 'VERIFIED' && { verifiedAt: new Date(), nextCallAt: null }),
-      ...(dto.status === 'CANCELLED' && { cancelledAt: new Date(), nextCallAt: null }),
-    };
-
-    const updated = await this.prisma.order.update({
-      where: { id: order.id },
-      data: updateData,
-    });
-
-    if (dto.status === 'VERIFIED') {
-      await this.updateDailyUsage(merchantId, 'ordersVerified');
-      await this.subscriptions.consumeOrderQuota(merchantId, order.id);
-    } else if (dto.status === 'CANCELLED') {
-      await this.updateDailyUsage(merchantId, 'ordersCancelled');
-      await this.subscriptions.consumeOrderQuota(merchantId, order.id);
+    // Staff / store Confirm → Manual Confirm + stop AI calls
+    if (status === 'VERIFIED') {
+      return this.markManualCompleteFromWebsite(merchantId, order.id, {
+        shopInStatus: 'confirmed',
+        staffConfirm: true,
+        updateSource: dto.source || 'patch_status',
+        ...(fromShopIn ? { provider: 'shopin' } : {}),
+      });
     }
-
-    const merchant = await this.prisma.merchant.findUnique({ where: { id: merchantId } });
-    if (merchant && (dto.status === 'VERIFIED' || dto.status === 'CANCELLED')) {
-      await this.notifications.pushOrderUpdate(merchant, updated, {
-        outcome: dto.status === 'VERIFIED' ? 'CONFIRMED' : 'CANCELLED',
-        verifyStatus: dto.status === 'VERIFIED' ? 'verified' : 'cancelled',
+    if (status === 'CANCELLED') {
+      return this.markCancelledFromWebsite(merchantId, order.id, {
+        shopInStatus: 'cancelled',
+        staffCancel: true,
+        updateSource: dto.source || 'patch_status',
+        ...(fromShopIn ? { provider: 'shopin' } : {}),
       });
     }
 
-    return updated;
+    throw new BadRequestException(`Unsupported status: ${dto.status}`);
   }
 
   async retryCall(merchantId: string, orderId: string) {
-    const order = await this.findOne(merchantId, orderId);
+    const order = await this.findOneFlexible(merchantId, orderId);
 
     if (order.status === 'VERIFIED' || order.status === 'CANCELLED') {
       throw new NotFoundException('Order already finalized');

@@ -42,17 +42,27 @@ ShopIn অর্ডার রোতে দুই অপশন — **Maskara** �
 | 4 | স্টাফ Confirm → Maskara **Manual Confirm (ShopIn)** + কল বন্ধ |
 | 5 | স্টাফ না করলে → Maskara দিনে সর্বোচ্চ **১০** কল চালিয়ে যায় (মোট **২০**) |
 
-Callback body extras (Maskara → ShopIn):
+## Staff → Maskara (PATCH status)
+
+ShopIn Staff Confirm syncs via:
+
+```http
+PATCH https://api.maskara.bd/orders/{orderNumber}/status
+X-API-Key: msk_…
+Content-Type: application/json
+
+{ "status": "VERIFIED", "source": "shopin_staff" }
+```
+
+- `{orderNumber}` = `ORD-…` or Maskara order id
+- Also accepts `confirmed` / `cancelled` as status aliases
+- Auth: **X-API-Key** (or `Authorization: Bearer msk_…`) — JWT not required
+- Result: Maskara shows **Manual Confirm (ShopIn)** and stops AI calls
+
+Cancel:
 
 ```json
-{
-  "callAttempts": 2,
-  "dailyCallLimit": 10,
-  "lifetimeCallLimit": 20,
-  "staffCallEligible": true,
-  "staffCallUnlockAfterAttempts": 2,
-  "outcome": "STAFF_CALL_ELIGIBLE"
-}
+{ "status": "CANCELLED", "source": "shopin_staff" }
 ```
 
 ## Maskara endpoints

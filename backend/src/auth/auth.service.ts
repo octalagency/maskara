@@ -175,7 +175,8 @@ export class AuthService {
           where: { id: key.id },
           data: { lastUsedAt: new Date() },
         });
-        return key.merchant;
+        // merchantId alias so controllers using CurrentUser('merchantId') work with API keys
+        return { ...key.merchant, merchantId: key.merchant.id };
       }
     }
 
