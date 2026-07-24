@@ -125,6 +125,7 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
+      RUN_AS_WORKER: 'true'
       DATABASE_URL: postgresql://${POSTGRES_USER:-maskara}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-maskara}
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET}

@@ -1,8 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bull';
+import { Queue } from 'bull';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { lifetimeLimitOf } from '../common/utils/dial-merchant.util';
+
+/** ePBX often returns failed within <1s when channels are contended — not a real ring. */
+const TECH_FAIL_MAX_SEC = 3;
+const TECH_FAIL_RETRY_DELAY_MS = 25_000;
+const TECH_FAIL_MAX_PER_ORDER = 6;
 
 @Injectable()
 export class VoiceWebhookService {
@@ -12,6 +20,7 @@ export class VoiceWebhookService {
     private prisma: PrismaService,
     private notifications: NotificationsService,
     private subscriptions: SubscriptionsService,
+    @InjectQueue('calls') private callsQueue: Queue,
   ) {}
 
   /** Normalize ePBX / ippbx webhook payloads (POST body or GET query). */
@@ -65,9 +74,36 @@ export class VoiceWebhookService {
     ];
     for (const key of keys) {
       const val = body[key];
-      if (typeof val === 'string') return val.toLowerCase().replace(/_/g, ' ').trim();
+      if (typeof val === 'string') {
+        return this.normalizeStatus(val);
+      }
     }
     return null;
+  }
+
+  /** Map ePBX wording → stable keys used by processStatus. */
+  normalizeStatus(raw: string): string {
+    const s = String(raw || '')
+      .toLowerCase()
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (
+      [
+        'no response',
+        'no answer',
+        'noanswer',
+        'unanswered',
+        'not answered',
+        'customer no answer',
+      ].includes(s)
+    ) {
+      return 'no-answer';
+    }
+    if (s === 'fail' || s === 'call failed') return 'failed';
+    if (s === 'confirm') return 'confirmed';
+    if (s === 'reject') return 'rejected';
+    return s;
   }
 
   extractPhone(body: Record<string, unknown>): string | null {
@@ -123,7 +159,6 @@ export class VoiceWebhookService {
       const orderPhone = call.order?.customerPhone;
       if (!orderPhone) continue;
       if (this.normalizeBdPhone(orderPhone) === needle) {
-        // Prefer unfinished / still CALLING orders
         if (
           call.order.status === 'CALLING' ||
           ['QUEUED', 'RINGING', 'IN_PROGRESS'].includes(call.status)
@@ -133,7 +168,6 @@ export class VoiceWebhookService {
       }
     }
 
-    // Fallback: any match in last 24h
     for (const call of recent) {
       const orderPhone = call.order?.customerPhone;
       if (orderPhone && this.normalizeBdPhone(orderPhone) === needle) {
@@ -212,7 +246,6 @@ export class VoiceWebhookService {
         action: 'replay',
         replay: true,
         digit: '0',
-        // Common aliases for ePBX / IVR engines that honor webhook response
         play: 'repeat',
         repeat: true,
         next_action: 'replay_prompt',
@@ -271,6 +304,7 @@ export class VoiceWebhookService {
     const statusMap: Record<string, string> = {
       answered: 'IN_PROGRESS',
       'in-progress': 'IN_PROGRESS',
+      'in progress': 'IN_PROGRESS',
       completed: 'COMPLETED',
       busy: 'BUSY',
       'no-answer': 'NO_ANSWER',
@@ -283,61 +317,127 @@ export class VoiceWebhookService {
     };
 
     const mapped = statusMap[status] || 'FAILED';
+    const call = await this.prisma.call.findUnique({
+      where: { id: callId },
+      include: { merchant: true, order: true },
+    });
+    if (!call) return { ok: true };
+
+    const elapsedSec =
+      duration && duration > 0
+        ? duration
+        : call.startedAt
+          ? (Date.now() - call.startedAt.getTime()) / 1000
+          : 0;
+
+    const isTechFail =
+      mapped === 'FAILED' && status === 'failed' && elapsedSec < TECH_FAIL_MAX_SEC;
+
     await this.prisma.call.update({
       where: { id: callId },
       data: {
         status: mapped as 'COMPLETED',
-        duration,
+        duration: duration && duration > 0 ? duration : Math.round(elapsedSec) || undefined,
         endedAt: ['COMPLETED', 'BUSY', 'NO_ANSWER', 'FAILED', 'CANCELLED'].includes(
           mapped,
         )
           ? new Date()
           : undefined,
+        ...(isTechFail ? { errorMessage: 'epbx_instant_fail' } : {}),
       },
     });
 
-    const failStatuses = ['no-answer', 'no answer', 'busy', 'failed'];
-    if (failStatuses.includes(status)) {
-      const call = await this.prisma.call.findUnique({
-        where: { id: callId },
-        include: { merchant: true },
+    const failStatuses = ['no-answer', 'busy', 'failed'];
+    if (!failStatuses.includes(status) && mapped !== 'FAILED') {
+      return { ok: true };
+    }
+
+    const order = call.order;
+    if (
+      order &&
+      (order.status === 'VERIFIED' ||
+        order.status === 'CANCELLED' ||
+        order.status === 'ESCALATED')
+    ) {
+      return { ok: true };
+    }
+
+    // Instant ePBX fail → refund attempt + quick redial (do not miss the customer)
+    if (isTechFail && order) {
+      const prevMeta =
+        order.metadata && typeof order.metadata === 'object' && !Array.isArray(order.metadata)
+          ? ({ ...(order.metadata as Record<string, unknown>) } as Record<string, unknown>)
+          : {};
+      const techFails = Number(prevMeta.epbxTechFails || 0) + 1;
+      const refundedAttempts = Math.max(0, (order.callAttempts || 1) - 1);
+
+      const pending = await this.prisma.order.update({
+        where: { id: order.id },
+        data: {
+          status: 'PENDING',
+          callAttempts: refundedAttempts,
+          nextCallAt: new Date(Date.now() + TECH_FAIL_RETRY_DELAY_MS),
+          metadata: {
+            ...prevMeta,
+            epbxTechFails: techFails,
+            lastEpbxTechFailAt: new Date().toISOString(),
+          } as Prisma.InputJsonValue,
+        },
       });
-      if (!call) return { ok: true };
 
-      // Don't overwrite a verified/cancelled order
-      const order = await this.prisma.order.findUnique({ where: { id: call.orderId } });
-      if (
-        order &&
-        (order.status === 'VERIFIED' ||
-          order.status === 'CANCELLED' ||
-          order.status === 'ESCALATED')
-      ) {
-        return { ok: true };
-      }
+      this.logger.warn(
+        `ePBX tech fail (${elapsedSec.toFixed(2)}s) call=${callId} order=${order.orderNumber} — refunded attempt → ${refundedAttempts}, techFails=${techFails}`,
+      );
 
-      if (call.attemptNumber < lifetimeLimitOf(call.merchant)) {
-        const pending = await this.prisma.order.update({
-          where: { id: call.orderId },
-          data: { status: 'PENDING' },
-        });
-        const staffReady = pending.callAttempts >= 2;
-        await this.notifications.pushOrderUpdate(call.merchant, pending, {
-          verifyStatus: 'pending',
-          outcome: staffReady ? 'STAFF_CALL_ELIGIBLE' : 'NO_RESPONSE',
-          staffCallEligible: staffReady,
-        });
-      } else {
-        // Lifetime exhausted — stop auto-dial; merchant cancels manually
-        const pending = await this.prisma.order.update({
-          where: { id: call.orderId },
-          data: { status: 'PENDING', nextCallAt: null },
-        });
-        await this.notifications.pushOrderUpdate(call.merchant, pending, {
-          verifyStatus: 'pending',
-          outcome: 'NO_RESPONSE',
-          staffCallEligible: true,
-        });
+      await this.notifications.pushOrderUpdate(call.merchant, pending, {
+        verifyStatus: 'pending',
+        outcome: 'NO_RESPONSE',
+        staffCallEligible: false,
+      });
+
+      if (techFails <= TECH_FAIL_MAX_PER_ORDER) {
+        try {
+          await this.callsQueue.add(
+            'initiate-call',
+            { orderId: order.id, merchantId: call.merchantId, isRetry: true },
+            {
+              delay: TECH_FAIL_RETRY_DELAY_MS,
+              attempts: 1,
+              removeOnComplete: true,
+              removeOnFail: true,
+              jobId: `call-tech-${order.id}-t${techFails}`,
+            },
+          );
+        } catch (err) {
+          this.logger.warn(
+            `Tech-fail requeue skipped: ${err instanceof Error ? err.message : err}`,
+          );
+        }
       }
+      return { ok: true, techFail: true };
+    }
+
+    if (call.attemptNumber < lifetimeLimitOf(call.merchant)) {
+      const pending = await this.prisma.order.update({
+        where: { id: call.orderId },
+        data: { status: 'PENDING' },
+      });
+      const staffReady = pending.callAttempts >= 2;
+      await this.notifications.pushOrderUpdate(call.merchant, pending, {
+        verifyStatus: 'pending',
+        outcome: staffReady ? 'STAFF_CALL_ELIGIBLE' : 'NO_RESPONSE',
+        staffCallEligible: staffReady,
+      });
+    } else {
+      const pending = await this.prisma.order.update({
+        where: { id: call.orderId },
+        data: { status: 'PENDING', nextCallAt: null },
+      });
+      await this.notifications.pushOrderUpdate(call.merchant, pending, {
+        verifyStatus: 'pending',
+        outcome: 'NO_RESPONSE',
+        staffCallEligible: true,
+      });
     }
 
     return { ok: true };

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bull';
 import { VoiceWebhookGuard } from '../common/guards/voice-webhook.guard';
 import { TwilioWebhookGuard } from '../common/guards/twilio-webhook.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -16,7 +17,11 @@ import { TtsPreviewService } from './tts-preview.service';
 import { GoogleTtsService } from './google-tts.service';
 
 @Module({
-  imports: [NotificationsModule, SubscriptionsModule],
+  imports: [
+    NotificationsModule,
+    SubscriptionsModule,
+    BullModule.registerQueue({ name: 'calls' }),
+  ],
   controllers: [VoiceController],
   providers: [
     VoiceSettingsService,

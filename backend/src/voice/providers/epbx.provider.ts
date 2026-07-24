@@ -455,6 +455,76 @@ export class EpbxProvider implements VoiceProvider {
       redisCached: boolean;
     },
   ): Promise<InitiateCallResult> {
+    return this.withEpbxDialLock(callId, () =>
+      this.postOriginateUnlocked(apiKey, payload, callId, dialPhone, meta),
+    );
+  }
+
+  /** Serialize originates — concurrent ePBX dials often fail in <1s. */
+  private async withEpbxDialLock<T>(
+    callId: string,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    const redisUrl = this.settings.get('REDIS_URL') || process.env.REDIS_URL;
+    if (!redisUrl) return fn();
+
+    let Redis: typeof import('ioredis').default;
+    try {
+      Redis = (await import('ioredis')).default;
+    } catch {
+      return fn();
+    }
+
+    const redis = new Redis(redisUrl, {
+      maxRetriesPerRequest: 1,
+      enableReadyCheck: false,
+      lazyConnect: true,
+    });
+    const lockKey = 'maskara:epbx:dial-lock';
+    const token = `${callId}:${Date.now()}`;
+    const lockTtlMs = 90_000;
+    const waitMs = 120_000;
+    const start = Date.now();
+
+    try {
+      await redis.connect().catch(() => undefined);
+      while (Date.now() - start < waitMs) {
+        const ok = await redis.set(lockKey, token, 'PX', lockTtlMs, 'NX');
+        if (ok === 'OK') {
+          this.logger.log(`[voice] ePBX dial lock acquired callId=${callId}`);
+          try {
+            return await fn();
+          } finally {
+            const cur = await redis.get(lockKey);
+            if (cur === token) await redis.del(lockKey);
+          }
+        }
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+      this.logger.warn(
+        `[voice] ePBX dial lock timeout callId=${callId} — dialing without lock`,
+      );
+      return await fn();
+    } finally {
+      try {
+        await redis.quit();
+      } catch {
+        redis.disconnect();
+      }
+    }
+  }
+
+  private async postOriginateUnlocked(
+    apiKey: string,
+    payload: Record<string, unknown>,
+    callId: string,
+    dialPhone: string,
+    meta: {
+      portalVoiceId: string;
+      maskaraVoiceId: string;
+      redisCached: boolean;
+    },
+  ): Promise<InitiateCallResult> {
     const customerId = this.settings.get('EPBX_CUSTOMER_ID');
     // /calls/verify is the live order-verification route; initiate 404s on this workspace
     const paths = customerId
@@ -488,6 +558,8 @@ export class EpbxProvider implements VoiceProvider {
         this.logger.log(
           `[voice] ePBX OK ${path} callId=${callId} portalVoice=${meta.portalVoiceId} maskara=${meta.maskaraVoiceId} redis_cached=${meta.redisCached} → ${dialPhone} providerId=${providerCallId}`,
         );
+        // Hold the dial lock briefly so the previous call can leave the channel
+        await new Promise((r) => setTimeout(r, 2500));
         return { providerCallId: String(providerCallId), status: 'RINGING' };
       }
 

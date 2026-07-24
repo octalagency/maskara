@@ -51,10 +51,12 @@ export async function countCallsTodayForOrder(
     cfg.callWindowStartMin ?? DEFAULT_WINDOW_START_MIN,
     cfg.callWindowEndMin ?? DEFAULT_WINDOW_END_MIN,
   );
+  // Instant ePBX tech fails must not burn the daily dial budget
   return prisma.call.count({
     where: {
       orderId,
       createdAt: { gte: start },
+      NOT: { errorMessage: 'epbx_instant_fail' },
     },
   });
 }

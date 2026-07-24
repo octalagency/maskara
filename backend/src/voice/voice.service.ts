@@ -69,6 +69,35 @@ export class VoiceService {
       return;
     }
 
+    // Skip garbage numbers (e.g. +88010…) — they instant-fail on ePBX and burn attempts
+    const phoneDigits = String(order.customerPhone || '').replace(/\D/g, '');
+    const national =
+      phoneDigits.startsWith('880') && phoneDigits.length >= 13
+        ? phoneDigits.slice(3)
+        : phoneDigits.startsWith('0')
+          ? phoneDigits.slice(1)
+          : phoneDigits;
+    if (!/^1[3-9]\d{8}$/.test(national)) {
+      this.logger.warn(
+        `Invalid BD mobile for ${order.orderNumber}: ${order.customerPhone} — skipping dial`,
+      );
+      await this.prisma.order.update({
+        where: { id: orderId },
+        data: {
+          nextCallAt: null,
+          metadata: {
+            ...(order.metadata &&
+            typeof order.metadata === 'object' &&
+            !Array.isArray(order.metadata)
+              ? (order.metadata as Record<string, unknown>)
+              : {}),
+            dialSkippedInvalidPhone: true,
+          } as object,
+        },
+      });
+      return;
+    }
+
     const cfg = merchantDialConfig(merchant);
     // Attempts 1–2 may dial outside the daily window (new-order burst)
     if (
