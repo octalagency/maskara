@@ -320,8 +320,11 @@ export class VoiceWebhookService {
           where: { id: call.orderId },
           data: { status: 'PENDING' },
         });
+        const staffReady = pending.callAttempts >= 2;
         await this.notifications.pushOrderUpdate(call.merchant, pending, {
           verifyStatus: 'pending',
+          outcome: staffReady ? 'STAFF_CALL_ELIGIBLE' : 'NO_RESPONSE',
+          staffCallEligible: staffReady,
         });
       } else {
         // Lifetime exhausted — stop auto-dial; merchant cancels manually
@@ -331,6 +334,8 @@ export class VoiceWebhookService {
         });
         await this.notifications.pushOrderUpdate(call.merchant, pending, {
           verifyStatus: 'pending',
+          outcome: 'NO_RESPONSE',
+          staffCallEligible: true,
         });
       }
     }

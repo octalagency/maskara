@@ -109,27 +109,28 @@ export default function CallSystemPage() {
         </div>
 
         <div className="card space-y-3 text-sm text-slate-600">
-          <p className="font-semibold text-slate-900">ডিফল্ট টাইমলাইন</p>
+          <p className="font-semibold text-slate-900">ShopIn · Maskara + স্টাফ কল (একই রুল)</p>
           <ol className="list-decimal space-y-1.5 pl-5">
             <li>
-              অর্ডারের ~২০ সেকেন্ডের মধ্যে প্রথম কল — যেকোনো সময় (রাত{' '}
-              {minsToTime(form.callWindowEndMin)} এর পরও)
+              অর্ডার আসার সাথে সাথে ~২০ সেকেন্ডের মধ্যে <strong>Maskara</strong> প্রথম কল
             </li>
-            <li>~২ মিনিট পর দ্বিতীয় কল — যেকোনো সময়</li>
+            <li>রিসিভ না হলে ~২ মিনিটের মধ্যে Maskara দ্বিতীয় কল</li>
             <li>
-              তৃতীয় কল থেকে উইন্ডো প্রযোজ্য ({minsToTime(form.callWindowStartMin)}–
-              {minsToTime(form.callWindowEndMin)}) · প্রথম ১ ঘন্টার মধ্যে তৃতীয়
-            </li>
-            <li>বাকি কলগুলো দিনভর stagger — রাত {minsToTime(form.callWindowEndMin)} এর মধ্যে</li>
-            <li>
-              দিনে সর্বোচ্চ {form.dailyCallLimit} · বাকি থাকলে পরের দিন সকাল{' '}
-              {minsToTime(form.callWindowStartMin)} থেকে
+              দুইবার মিস হলে ShopIn-এ <strong>স্টাফ কল</strong> সুযোগ খোলে — স্টাফ Confirm করলে
+              Maskara-তে <strong>Manual Confirm (ShopIn)</strong>
             </li>
             <li>
-              মোট {form.lifetimeCallLimit} কলের পর অটো-ডায়াল বন্ধ · অর্ডার পেজে ম্যানুয়াল
-              ক্যান্সেল
+              স্টাফ না করলে / অ্যাসাইন না হলে Maskara নিজের সিডিউলে কল চালিয়ে যায় — দিনে সর্বোচ্চ{' '}
+              {form.dailyCallLimit} বার (মোট {form.lifetimeCallLimit})
+            </li>
+            <li>
+              কল উইন্ডো {minsToTime(form.callWindowStartMin)}–{minsToTime(form.callWindowEndMin)} ·
+              প্রথম দুই কল যেকোনো সময়
             </li>
           </ol>
+          <p className="rounded-lg bg-slate-50 px-3 py-2 text-[13px] text-slate-500">
+            নিশ্চিত হলে পাঠানো যাবে — AI বা স্টাফ যেকোনো Confirm-এ কল বন্ধ + স্ট্যাটাস আপডেট।
+          </p>
         </div>
 
         {loading ? (

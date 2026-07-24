@@ -117,6 +117,7 @@ export class NotificationsService {
       outcome?: string;
       verifyStatus?: string;
       courierStatus?: string;
+      staffCallEligible?: boolean;
     } = {},
   ) {
 
@@ -178,6 +179,7 @@ export class NotificationsService {
       outcome?: string;
       verifyStatus?: string;
       courierStatus?: string;
+      staffCallEligible?: boolean;
     } = {},
   ) {
     const meta = (order.metadata || {}) as Record<string, unknown>;
@@ -190,6 +192,16 @@ export class NotificationsService {
     const orderNumber = isShopIn
       ? String(order.orderNumber || '').replace(/^#/, '')
       : order.orderNumber;
+
+    const dailyLimit = Math.max(1, Math.min(20, merchant.dailyCallLimit ?? 10));
+    const lifetimeLimit = Math.max(
+      1,
+      merchant.lifetimeCallLimit ?? merchant.maxCallRetries ?? 20,
+    );
+    const staffCallEligible =
+      extra.staffCallEligible === true ||
+      (order.callAttempts >= 2 &&
+        !['VERIFIED', 'CANCELLED'].includes(order.status));
 
     const secret =
       merchant.webhookSecret ||
@@ -206,7 +218,12 @@ export class NotificationsService {
       verifyStatus: extra.verifyStatus || order.status.toLowerCase(),
       outcome: extra.outcome,
       callAttempts: order.callAttempts,
-      maxCallAttempts: merchant.maxCallRetries,
+      maxCallAttempts: lifetimeLimit,
+      dailyCallLimit: dailyLimit,
+      lifetimeCallLimit: lifetimeLimit,
+      /** After 2 Maskara misses — ShopIn may show Staff Call button */
+      staffCallEligible,
+      staffCallUnlockAfterAttempts: 2,
       courierStatus: extra.courierStatus || 'processing',
       customerName: order.customerName,
       customerPhone: order.customerPhone,
@@ -341,6 +358,7 @@ export class NotificationsService {
       ESCALATED: 'প্রতিনিধির কাছে পাঠানো',
       NO_RESPONSE: 'উত্তর নেই',
       INVALID_INPUT: 'অবৈধ ইনপুট',
+      STAFF_CALL_ELIGIBLE: 'স্টাফ কলের সুযোগ',
     };
     return map[outcome] || outcome;
   }

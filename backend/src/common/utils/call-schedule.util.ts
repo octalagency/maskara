@@ -1,10 +1,10 @@
 /**
- * Call schedule:
- * 1) Attempt 1 — ASAP any time (~20s backup cron) — window exempt
+ * Call schedule (aligned with ShopIn Maskara + Staff Call UI):
+ * 1) Attempt 1 — ~20s ASAP, any time — window exempt
  * 2) Attempt 2 — 2 minutes later, any time — window exempt
- * 3) Attempt 3 — within first hour (~15–20 min after attempt 2), inside window
- * 4) Attempts 4..dailyCap — staggered until window end
- * 5) Next day resumes at window open until lifetime cap (manual cancel, no auto-cancel)
+ *    → ShopIn may unlock Staff Call (staffCallEligible)
+ * 3) Attempt 3+ — Maskara continues on its schedule if staff did not confirm
+ * 4) Daily cap 10 / lifetime 20 — staff Confirm → Manual Confirm stops dials
  */
 
 import {

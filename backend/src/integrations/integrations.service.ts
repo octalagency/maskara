@@ -399,8 +399,9 @@ export class IntegrationsService {
           'Maskara Dashboard → API Keys → Create Key',
           'ShopIn → Maskara AI Call Center → API Key + Webhook Secret সেভ করুন',
           'API টেস্ট চাপুন (GET /integrations/shopin/ping)',
-          'Connect (বা প্রথম sync) → Maskara callback = ShopIn /webhooks/maskara/{shopId}',
-          'পেন্ডিং সিঙ্ক / নতুন COD → Maskara কল → confirm হলে ShopIn Pathao deploy',
+          'Connect → callback = ShopIn /webhooks/maskara/{shopId}',
+          'Maskara: ~২০সেকেন্ড + ~২মিনিট কল → তারপর Staff Call → না হলে Maskara দিনে ১০ বার চালিয়ে যায়',
+          'স্টাফ Confirm/Cancel → Maskara Manual Confirm / Cancelled (ShopIn)',
         ],
         webhookUrl: '/webhooks/shopin',
         connectUrl: '/integrations/shopin/connect',
@@ -412,6 +413,13 @@ export class IntegrationsService {
           'customerPhone',
           'totalAmount',
         ],
+        hybridCallFlow: {
+          maskaraFirstCallSec: 20,
+          maskaraSecondCallMin: 2,
+          staffCallAfterAttempts: 2,
+          dailyCallLimit: 10,
+          lifetimeCallLimit: 20,
+        },
       },
       CUSTOM_API: {
         steps: [

@@ -30,6 +30,31 @@ ShopIn-এ মানুষ কল করে Confirm করলে (Pending → Co
 
 > ShopIn যদি status-change webhook না পাঠায়, Manual Complete হবে না — ShopIn Maskara settings-এ status sync চালু আছে কিনা চেক করুন।
 
+## Hybrid: Maskara + Staff Call (ShopIn UI)
+
+ShopIn অর্ডার রোতে দুই অপশন — **Maskara** ও **স্টাফ কল**। একই রুল Maskara সাইডে:
+
+| ধাপ | কী হয় |
+|-----|--------|
+| 1 | অর্ডার → ~২০ সেকেন্ডে Maskara প্রথম কল |
+| 2 | মিস → ~২ মিনিটে Maskara দ্বিতীয় কল |
+| 3 | দুইবার মিস → ShopIn `staffCallEligible: true` (স্টাফ কল বাটন) |
+| 4 | স্টাফ Confirm → Maskara **Manual Confirm (ShopIn)** + কল বন্ধ |
+| 5 | স্টাফ না করলে → Maskara দিনে সর্বোচ্চ **১০** কল চালিয়ে যায় (মোট **২০**) |
+
+Callback body extras (Maskara → ShopIn):
+
+```json
+{
+  "callAttempts": 2,
+  "dailyCallLimit": 10,
+  "lifetimeCallLimit": 20,
+  "staffCallEligible": true,
+  "staffCallUnlockAfterAttempts": 2,
+  "outcome": "STAFF_CALL_ELIGIBLE"
+}
+```
+
 ## Maskara endpoints
 
 | Method | Path | Auth | Purpose |
