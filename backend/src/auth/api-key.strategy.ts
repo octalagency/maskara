@@ -10,7 +10,6 @@ export class ApiKeyStrategy extends PassportStrategy(Strategy, 'api-key') {
     super({
       header: 'X-API-Key',
       passReqToCallback: true,
-      optional: true,
     });
   }
 

@@ -25,28 +25,24 @@ export class JwtOrApiKeyGuard implements CanActivate {
       (!!bearer && (bearer.startsWith('msk_') || !bearer.includes('.')));
 
     if (preferApiKey) {
-      try {
-        const ok = await new (AuthGuard('api-key'))().canActivate(context);
-        if (ok) return true;
-      } catch {
-        /* fall through to JWT */
-      }
+      // Explicit API key present — do not mask failures as JWT errors
+      const ok = await new (AuthGuard('api-key'))().canActivate(context);
+      if (ok) return true;
+      throw new UnauthorizedException('Invalid API key');
     }
 
     try {
       const ok = await new (AuthGuard('jwt'))().canActivate(context);
       if (ok) return true;
     } catch {
-      /* below */
+      /* try api-key as last resort (e.g. odd header shapes) */
     }
 
-    if (!preferApiKey) {
-      try {
-        const ok = await new (AuthGuard('api-key'))().canActivate(context);
-        if (ok) return true;
-      } catch {
-        /* below */
-      }
+    try {
+      const ok = await new (AuthGuard('api-key'))().canActivate(context);
+      if (ok) return true;
+    } catch {
+      /* below */
     }
 
     throw new UnauthorizedException('JWT or API key required');
