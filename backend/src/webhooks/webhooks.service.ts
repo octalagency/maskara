@@ -283,20 +283,12 @@ export class WebhooksService {
     });
 
     if (existing) {
-      if (SHOPIN_EXCLUDE_STATUSES.has(status) && !existing.excludedFromStats) {
-        const cancelled = await this.prisma.order.update({
-          where: { id: existing.id },
-          data: {
-            status: 'CANCELLED',
-            cancelledAt: new Date(),
-            nextCallAt: null,
-            excludedFromStats: true,
-            metadata: mergeMeta(existing.metadata, {
-              cancelledFromWebsite: true,
-              shopInStatus: status,
-            }),
-          },
-        });
+      if (SHOPIN_EXCLUDE_STATUSES.has(status)) {
+        const cancelled = await this.ordersService.markCancelledFromWebsite(
+          merchantId,
+          existing.id,
+          { shopInStatus: status },
+        );
         return { received: true, excluded: true, order: cancelled };
       }
 

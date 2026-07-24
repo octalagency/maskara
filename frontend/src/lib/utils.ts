@@ -40,11 +40,17 @@ export function orderStatusLabel(order: {
   manualComplete?: boolean;
   metadata?: Record<string, unknown> | null;
 }) {
-  if (
-    order.manualComplete ||
-    order.metadata?.manualCompleteFromWebsite === true
-  ) {
-    return 'Manual Complete';
+  const meta = order.metadata || {};
+  const fromShopIn =
+    meta.provider === 'shopin' ||
+    meta.shopInStatus != null ||
+    String(meta.manualCompleteFromWebsiteSource || '').includes('shopin');
+
+  if (order.manualComplete || meta.manualCompleteFromWebsite === true) {
+    return fromShopIn ? 'Manual Confirm (ShopIn)' : 'Manual Complete';
+  }
+  if (order.status === 'CANCELLED' && meta.cancelledFromWebsite === true) {
+    return fromShopIn ? 'Cancelled (ShopIn)' : 'Cancelled (Website)';
   }
   return order.status;
 }

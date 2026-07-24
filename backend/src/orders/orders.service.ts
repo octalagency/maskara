@@ -158,7 +158,47 @@ export class OrdersService {
       },
     });
 
-    // Remove queued call jobs if any
+    await this.clearQueuedCallsForOrder(orderId);
+    return updated;
+  }
+
+  /** ShopIn / store cancelled — stop AI calls, show cancelled-from-website */
+  async markCancelledFromWebsite(
+    merchantId: string,
+    orderId: string,
+    extraMeta: Record<string, unknown> = {},
+  ) {
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, merchantId },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status === 'CANCELLED' && order.excludedFromStats) return order;
+
+    const prevMeta =
+      order.metadata && typeof order.metadata === 'object' && !Array.isArray(order.metadata)
+        ? ({ ...(order.metadata as Record<string, unknown>) } as Record<string, unknown>)
+        : {};
+
+    const updated = await this.prisma.order.update({
+      where: { id: orderId },
+      data: {
+        status: 'CANCELLED',
+        cancelledAt: new Date(),
+        nextCallAt: null,
+        excludedFromStats: true,
+        metadata: {
+          ...prevMeta,
+          ...extraMeta,
+          cancelledFromWebsite: true,
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    await this.clearQueuedCallsForOrder(orderId);
+    return updated;
+  }
+
+  private async clearQueuedCallsForOrder(orderId: string) {
     try {
       const first = await this.callsQueue.getJob(`call-first-${orderId}`);
       if (first) await first.remove();
@@ -166,11 +206,7 @@ export class OrdersService {
       // ignore
     }
     try {
-      const jobs = await this.callsQueue.getJobs([
-        'waiting',
-        'delayed',
-        'paused',
-      ]);
+      const jobs = await this.callsQueue.getJobs(['waiting', 'delayed', 'paused']);
       for (const job of jobs) {
         const data = job.data as { orderId?: string };
         if (data?.orderId === orderId) {
@@ -180,8 +216,6 @@ export class OrdersService {
     } catch {
       // ignore
     }
-
-    return updated;
   }
 
   async findAll(
