@@ -97,6 +97,25 @@ export default function OrdersPage() {
     }
   }
 
+  async function handleManualConfirm(orderId: string) {
+    if (
+      !confirm(
+        'ওয়েবসাইটে ইতিমধ্যে ম্যানেজ করা হয়েছে ধরে Manual Confirm করবেন? AI কল বন্ধ হবে।',
+      )
+    ) {
+      return;
+    }
+    setBusyId(orderId);
+    try {
+      await api.updateOrderStatus(orderId, 'VERIFIED');
+      await loadOrders();
+    } catch {
+      setError('Manual Confirm ব্যর্থ হয়েছে।');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -233,6 +252,16 @@ export default function OrdersPage() {
                       <td className="px-5 py-4 text-slate-500">{formatDate(order.createdAt)}</td>
                       <td className="px-5 py-4">
                         <div className="flex flex-col items-start gap-1.5">
+                          {['PENDING', 'FAILED', 'CALLING'].includes(order.status) && (
+                            <button
+                              type="button"
+                              disabled={busyId === order.id}
+                              onClick={() => handleManualConfirm(order.id)}
+                              className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 hover:text-emerald-800 disabled:opacity-50"
+                            >
+                              Manual Confirm
+                            </button>
+                          )}
                           {atLifetime ? (
                             <button
                               type="button"

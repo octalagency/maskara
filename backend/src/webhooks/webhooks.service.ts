@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { Prisma, OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrdersService } from '../orders/orders.service';
@@ -18,6 +18,16 @@ const WOO_EXCLUDE_STATUSES = new Set([
 const WOO_MANUAL_COMPLETE_STATUSES = new Set([
   'completed',
   'complete',
+]);
+
+/**
+ * For an order Maskara already dials — these WC statuses mean staff managed it on the site.
+ * Do NOT use on create (COD often arrives as processing).
+ */
+const WOO_EXISTING_MANAGED_STATUSES = new Set([
+  'completed',
+  'complete',
+  'processing',
 ]);
 
 const SHOPIN_EXCLUDE_STATUSES = new Set([
@@ -50,6 +60,11 @@ const SHOPIN_MANUAL_COMPLETE_STATUSES = new Set([
   'readyfordelivery',
   'in_transit',
   'intransit',
+  'processing',
+  'courier_assigned',
+  'courierassigned',
+  'shipped',
+  'packed',
 ]);
 
 function normalizeShopInStatus(raw: unknown): string {
@@ -109,6 +124,8 @@ function mergeMeta(
 
 @Injectable()
 export class WebhooksService {
+  private readonly logger = new Logger(WebhooksService.name);
+
   constructor(
     private prisma: PrismaService,
     private ordersService: OrdersService,
@@ -172,7 +189,8 @@ export class WebhooksService {
       }
 
       if (
-        WOO_MANUAL_COMPLETE_STATUSES.has(wooStatus) &&
+        (WOO_MANUAL_COMPLETE_STATUSES.has(wooStatus) ||
+          WOO_EXISTING_MANAGED_STATUSES.has(wooStatus)) &&
         !['VERIFIED', 'CANCELLED'].includes(existing.status)
       ) {
         const completed = await this.ordersService.markManualCompleteFromWebsite(
@@ -182,6 +200,7 @@ export class WebhooksService {
             wooOrderId: String(payload.id),
             status: String(payload.status ?? ''),
             wooStatus,
+            updateSource: 'woocommerce_webhook',
           },
         );
         return { received: true, manualComplete: true, order: completed };
@@ -249,18 +268,17 @@ export class WebhooksService {
   }
 
   /**
-   * ShopIn → Maskara inbound order.
-   * Keeps orderNumber as ShopIn ORD-… (no # prefix) so confirm callback matches.
+   * ShopIn → Maskara inbound order / status sync.
+   * Status-only updates (Staff confirm on ShopIn) may omit phone — allow when order exists.
    */
   async handleShopInWebhook(merchantId: string, payload: Record<string, unknown>) {
     const orderData = this.normalizeShopInPayload(payload);
+    const status = extractShopInStatus(payload);
+    const externalId = orderData.externalId || orderData.orderNumber;
 
-    if (!orderData.customerPhone) {
-      throw new BadRequestException('Customer phone number required for verification');
-    }
-    if (!orderData.orderNumber) {
-      throw new BadRequestException('orderNumber required');
-    }
+    this.logger.log(
+      `ShopIn webhook merchant=${merchantId} order=${orderData.orderNumber || externalId || '?'} status=${status || '(none)'} keys=${Object.keys(payload || {}).join(',')}`,
+    );
 
     const shopId = String(
       (orderData.metadata as Record<string, unknown>)?.shopId || payload.shopId || '',
@@ -269,25 +287,31 @@ export class WebhooksService {
       await this.ensureShopInMerchantCallback(merchantId, shopId);
     }
 
-    const externalId = orderData.externalId || orderData.orderNumber;
-    const status = extractShopInStatus(payload);
+    if (!orderData.orderNumber && !externalId) {
+      throw new BadRequestException('orderNumber required');
+    }
 
     const existing = await this.prisma.order.findFirst({
       where: {
         merchantId,
         OR: [
-          ...(externalId ? [{ externalId }] : []),
-          { orderNumber: orderData.orderNumber },
+          ...(externalId ? [{ externalId: String(externalId) }] : []),
+          ...(orderData.orderNumber ? [{ orderNumber: orderData.orderNumber }] : []),
         ],
       },
     });
 
+    // Existing order: status sync from ShopIn Staff / website manage (phone optional)
     if (existing) {
       if (SHOPIN_EXCLUDE_STATUSES.has(status)) {
         const cancelled = await this.ordersService.markCancelledFromWebsite(
           merchantId,
           existing.id,
-          { shopInStatus: status },
+          {
+            shopInStatus: status,
+            updateSource: 'shopin_webhook',
+            provider: 'shopin',
+          },
         );
         return { received: true, excluded: true, order: cancelled };
       }
@@ -299,12 +323,39 @@ export class WebhooksService {
         const completed = await this.ordersService.markManualCompleteFromWebsite(
           merchantId,
           existing.id,
-          { shopInStatus: status },
+          {
+            shopInStatus: status,
+            updateSource: 'shopin_webhook',
+            provider: 'shopin',
+            staffConfirm: true,
+          },
         );
         return { received: true, manualComplete: true, order: completed };
       }
 
+      // Status present but not finalize — store latest ShopIn status only
+      if (status) {
+        const updated = await this.prisma.order.update({
+          where: { id: existing.id },
+          data: {
+            metadata: mergeMeta(existing.metadata, {
+              shopInStatus: status,
+              lastShopInWebhookAt: new Date().toISOString(),
+            }),
+          },
+        });
+        return { received: true, duplicate: true, statusRecorded: status, order: updated };
+      }
+
       return { received: true, duplicate: true, order: existing };
+    }
+
+    // New order — phone required for AI verification dial
+    if (!orderData.customerPhone) {
+      throw new BadRequestException('Customer phone number required for verification');
+    }
+    if (!orderData.orderNumber) {
+      throw new BadRequestException('orderNumber required');
     }
 
     if (SHOPIN_EXCLUDE_STATUSES.has(status)) {

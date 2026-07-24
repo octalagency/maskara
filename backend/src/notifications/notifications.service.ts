@@ -121,6 +121,17 @@ export class NotificationsService {
     } = {},
   ) {
 
+    const meta = (order.metadata || {}) as Record<string, unknown>;
+    const orderIsShopIn =
+      meta.provider === 'shopin' ||
+      Boolean(meta.shopId) ||
+      Boolean(meta.shopinOrderId) ||
+      String(order.orderNumber || '').startsWith('ORD-');
+    const orderIsWoo =
+      order.source === 'WOOCOMMERCE' ||
+      Boolean(meta.wooOrderId) ||
+      String(order.orderNumber || '').startsWith('#');
+
     const urls = new Set<string>();
 
     const integrations = await this.prisma.integration.findMany({
@@ -133,6 +144,8 @@ export class NotificationsService {
     for (const integration of integrations) {
       const creds = (integration.credentials || {}) as Record<string, string>;
       if (integration.type === 'WOOCOMMERCE') {
+        // Do not POST ShopIn ORD-… updates to WordPress (404 noise)
+        if (orderIsShopIn && !orderIsWoo) continue;
         const storeUrl = (creds.storeUrl || '').replace(/\/$/, '');
         if (storeUrl) {
           urls.add(`${storeUrl}/wp-json/maskara/v1/verification-result`);
@@ -144,6 +157,7 @@ export class NotificationsService {
         (creds.callbackUrl || '').includes('/webhooks/maskara/') ||
         (integration.name || '').startsWith('ShopIn');
       if (isShopIn) {
+        if (orderIsWoo && !orderIsShopIn) continue;
         const callback =
           (creds.callbackUrl || integration.webhookUrl || '').replace(/\/$/, '');
         if (callback) {
@@ -158,7 +172,11 @@ export class NotificationsService {
     }
 
     if (merchant.webhookUrl) {
-      urls.add(merchant.webhookUrl.replace(/\/$/, ''));
+      const wh = merchant.webhookUrl.replace(/\/$/, '');
+      const whIsShopIn = wh.includes('/webhooks/maskara/');
+      if (orderIsShopIn && whIsShopIn) urls.add(wh);
+      else if (orderIsWoo && !whIsShopIn) urls.add(wh);
+      else if (!orderIsShopIn && !orderIsWoo) urls.add(wh);
     }
 
     if (urls.size === 0) {
