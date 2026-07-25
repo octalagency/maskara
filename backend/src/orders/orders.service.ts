@@ -246,9 +246,10 @@ export class OrdersService {
 
     const storeFilter = storeKeyToPrismaFilter(params.store);
 
+    // Include website-cancelled orders in the list (Cancelled / Website label).
+    // Stats/reports still use excludedFromStats so they do not inflate AI cancel totals.
     const where: Prisma.OrderWhereInput = {
       merchantId,
-      excludedFromStats: false,
       ...(params.status && { status: params.status }),
       ...(Object.keys(createdAt).length > 0 && { createdAt }),
       ...(storeFilter || {}),
