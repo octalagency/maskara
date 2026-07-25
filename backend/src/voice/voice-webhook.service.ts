@@ -389,9 +389,10 @@ export class VoiceWebhookService {
         `ePBX tech fail (${elapsedSec.toFixed(2)}s) call=${callId} order=${order.orderNumber} — refunded attempt → ${refundedAttempts}, techFails=${techFails}`,
       );
 
+      // Do not send NO_RESPONSE — older Woo plugins treated that as cancel.
       await this.notifications.pushOrderUpdate(call.merchant, pending, {
         verifyStatus: 'pending',
-        outcome: 'NO_RESPONSE',
+        outcome: 'RETRY_SCHEDULED',
         staffCallEligible: false,
       });
 
@@ -425,7 +426,8 @@ export class VoiceWebhookService {
       const staffReady = pending.callAttempts >= 2;
       await this.notifications.pushOrderUpdate(call.merchant, pending, {
         verifyStatus: 'pending',
-        outcome: staffReady ? 'STAFF_CALL_ELIGIBLE' : 'NO_RESPONSE',
+        // RETRY_SCHEDULED / STAFF_CALL_ELIGIBLE — never NO_RESPONSE (Woo used to auto-cancel).
+        outcome: staffReady ? 'STAFF_CALL_ELIGIBLE' : 'RETRY_SCHEDULED',
         staffCallEligible: staffReady,
       });
     } else {
@@ -435,7 +437,7 @@ export class VoiceWebhookService {
       });
       await this.notifications.pushOrderUpdate(call.merchant, pending, {
         verifyStatus: 'pending',
-        outcome: 'NO_RESPONSE',
+        outcome: 'STAFF_CALL_ELIGIBLE',
         staffCallEligible: true,
       });
     }

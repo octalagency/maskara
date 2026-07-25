@@ -4,16 +4,17 @@ Tags: woocommerce, cod, order verification, bangla, maskara, pathao, courier
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.5.15
+Stable tag: 1.5.16
 License: GPLv2 or later
 
-WooCommerce COD order verification via Maskara AI voice. Confirm = Completed + Pathao; miss/cancel = Cancelled.
+WooCommerce COD order verification via Maskara AI voice. Confirm = Completed + Pathao; only customer cancel (pressed 2) = Cancelled.
 
 == Description ==
 
 * Order sync to Maskara for Bangla AI voice confirmation
 * On confirm: WooCommerce status Completed + Pathao courier auto-deploy
-* On miss / cancel: WooCommerce status Cancelled
+* On customer cancel (pressed 2): WooCommerce status Cancelled
+* Missed / no-answer calls do NOT auto-cancel the WooCommerce order
 * Orders list: Verify, Calls (x/10), Courier stage columns
 * Plugins page: Check for updates
 * Dashboard: Delivered, In Transit, Returned, Success Rate

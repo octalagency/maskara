@@ -1,12 +1,12 @@
 {
   "name": "Maskara Order Verification",
   "slug": "maskara-woocommerce",
-  "version": "1.5.15",
+  "version": "1.5.16",
   "download_url": "https://app.maskara.bd/downloads/maskara-woocommerce.zip",
   "homepage": "https://maskara.bd",
   "requires": "5.8",
   "tested": "6.7",
   "requires_php": "7.4",
-  "description": "AI voice order verification for WooCommerce. Confirm sets Completed + Pathao auto-deploy. Miss/cancel sets Cancelled.",
-  "changelog": "<h4>1.5.15</h4><ul><li>WooCommerce HPOS + Cart/Checkout Blocks compatibility declared (incompatible banner fix)</li></ul><h4>1.5.14</h4><ul><li>Collected Amount + Delivery Charges KPI \u09a0\u09bf\u0995</li><li>Courier dashboard UI polish</li></ul><h4>1.5.13</h4><ul><li>Website Completed \u2192 Maskara Manual Complete + stop calls</li></ul>"
+  "description": "AI voice order verification for WooCommerce. Confirm sets Completed + Pathao auto-deploy. Only customer cancel (pressed 2) sets Cancelled \u2014 missed calls no longer auto-cancel.",
+  "changelog": "<h4>1.5.16</h4><ul><li>Stop auto-cancelling Woo orders on missed / no-answer calls \u2014 only DTMF 2 cancels</li></ul><h4>1.5.15</h4><ul><li>WooCommerce HPOS + Cart/Checkout Blocks compatibility declared (incompatible banner fix)</li></ul><h4>1.5.14</h4><ul><li>Collected Amount + Delivery Charges KPI \u09a0\u09bf\u0995</li><li>Courier dashboard UI polish</li></ul><h4>1.5.13</h4><ul><li>Website Completed \u2192 Maskara Manual Complete + stop calls</li></ul>"
 }

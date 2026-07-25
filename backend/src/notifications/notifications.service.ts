@@ -4,7 +4,6 @@ import * as crypto from 'crypto';
 import * as twilio from 'twilio';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { Merchant, Order } from '@prisma/client';
 
 @Injectable()
@@ -15,7 +14,6 @@ export class NotificationsService {
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
-    private subscriptions: SubscriptionsService,
   ) {
     const accountSid = this.config.get('TWILIO_ACCOUNT_SID');
     const authToken = this.config.get('TWILIO_AUTH_TOKEN');
@@ -66,8 +64,8 @@ export class NotificationsService {
   }
 
   /**
-   * After max unanswered call attempts: CANCEL order, consume plan quota,
-   * push cancelled to ShopIn/Woo so the website cancels too.
+   * After max unanswered call attempts: stop dialing on Maskara only.
+   * Do NOT cancel WooCommerce / ShopIn — merchant must cancel on the website.
    */
   async autoCancelAfterMaxAttempts(merchantId: string, orderId: string) {
     const order = await this.prisma.order.findUnique({
@@ -87,24 +85,23 @@ export class NotificationsService {
     const updated = await this.prisma.order.update({
       where: { id: orderId },
       data: {
-        status: 'CANCELLED',
-        cancelledAt: new Date(),
+        status: 'PENDING',
         nextCallAt: null,
         metadata: {
           ...prevMeta,
-          autoCancelledMaxAttempts: true,
-          autoCancelledAt: new Date().toISOString(),
+          maxAttemptsExhausted: true,
+          maxAttemptsExhaustedAt: new Date().toISOString(),
         } as Prisma.InputJsonValue,
       },
     });
 
-    await this.subscriptions.consumeOrderQuota(merchantId, orderId);
     await this.pushOrderUpdate(order.merchant, updated, {
-      outcome: 'NO_RESPONSE',
-      verifyStatus: 'cancelled',
+      outcome: 'STAFF_CALL_ELIGIBLE',
+      verifyStatus: 'pending',
+      staffCallEligible: true,
     });
     this.logger.log(
-      `Auto-cancelled order ${updated.orderNumber} after max call attempts — website notified`,
+      `Max call attempts exhausted for ${updated.orderNumber} — website status left unchanged`,
     );
     return updated;
   }

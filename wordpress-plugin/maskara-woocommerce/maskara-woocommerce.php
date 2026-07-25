@@ -2,8 +2,8 @@
 /**
  * Plugin Name: Maskara Order Verification
  * Plugin URI: https://maskara.bd
- * Description: WooCommerce COD order verification via Maskara AI voice. Confirm sets Completed + Pathao deploy; miss/cancel sets Cancelled.
- * Version: 1.5.15
+ * Description: WooCommerce COD order verification via Maskara AI voice. Confirm sets Completed + Pathao deploy; only customer cancel (DTMF 2) sets Cancelled.
+ * Version: 1.5.16
  * Author: Maskara
  * Author URI: https://maskara.bd
  * Text Domain: maskara-woocommerce
@@ -18,7 +18,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('MASKARA_VERSION', '1.5.15');
+define('MASKARA_VERSION', '1.5.16');
 define('MASKARA_PLUGIN_FILE', __FILE__);
 define('MASKARA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 
@@ -83,11 +83,11 @@ function maskara_init() {
         new Maskara_Order_Columns();
     }
 
-    if (get_option('maskara_db_version') !== '1.5.15') {
+    if (get_option('maskara_db_version') !== '1.5.16') {
         Maskara_Shipments::create_table();
         Maskara_Shipments::backfill_collected_amounts();
         Maskara_Sync::schedule();
-        update_option('maskara_db_version', '1.5.15');
+        update_option('maskara_db_version', '1.5.16');
     }
 }
 add_action('plugins_loaded', 'maskara_init', 20);

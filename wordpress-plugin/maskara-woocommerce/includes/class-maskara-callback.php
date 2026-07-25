@@ -63,16 +63,19 @@ class Maskara_Callback {
 
         $confirmed = in_array($outcome, array('CONFIRMED', 'VERIFIED'), true)
             || in_array($status, array('VERIFIED', 'CONFIRMED'), true);
-        $cancelled = in_array($outcome, array('CANCELLED'), true)
-            || in_array($status, array('CANCELLED'), true);
-        $calling   = in_array($status, array('CALLING'), true);
-        $failed    = in_array($outcome, array('NO_RESPONSE', 'FAILED'), true)
-            || in_array($status, array('FAILED', 'NO_ANSWER', 'NO ANSWER'), true);
+        // Only customer DTMF 2 (outcome=CANCELLED) may cancel the Woo order.
+        // Do NOT cancel on NO_RESPONSE / FAILED / pending retries — that was auto-cancelling
+        // after the first missed call.
+        $cancelled = in_array($outcome, array('CANCELLED'), true);
+        $calling   = in_array($status, array('CALLING'), true)
+            || in_array(strtolower((string) ($body['verifyStatus'] ?? '')), array('calling', 'pending'), true);
+        $missed = in_array($outcome, array('NO_RESPONSE', 'FAILED', 'RETRY_SCHEDULED', 'CALL_ATTEMPT_FAILED', 'STAFF_CALL_ELIGIBLE'), true)
+            || in_array($status, array('FAILED', 'NO_ANSWER', 'NO ANSWER', 'PENDING'), true);
 
-        if ($calling) {
+        if ($calling && !$confirmed && !$cancelled) {
             $order->update_meta_data('_maskara_verify_status', 'calling');
             $order->add_order_note(sprintf(
-                'Maskara: verification call in progress (attempt %d).',
+                'Maskara: verification call in progress / retry scheduled (attempt %d).',
                 absint($body['callAttempts'] ?? $order->get_meta('_maskara_call_count'))
             ));
             $order->save();
@@ -83,12 +86,10 @@ class Maskara_Callback {
             return $this->handle_confirmed($order, $body);
         }
 
-        if ($cancelled || $failed) {
-            $reason = $cancelled
-                ? 'Maskara: customer cancelled via AI voice call (pressed 2).'
-                : 'Maskara: call not answered / all attempts failed — order cancelled.';
+        if ($cancelled) {
+            $reason = 'Maskara: customer cancelled via AI voice call (pressed 2).';
             $new_status = apply_filters('maskara_cancelled_order_status', 'cancelled', $order, $body);
-            $order->update_meta_data('_maskara_verify_status', $cancelled ? 'cancelled' : 'failed');
+            $order->update_meta_data('_maskara_verify_status', 'cancelled');
             $order->update_meta_data('_maskara_verification', 'cancelled');
             $order->update_status($new_status, $reason);
             $order->save();
@@ -96,7 +97,25 @@ class Maskara_Callback {
                 'ok' => true,
                 'orderId' => $order->get_id(),
                 'status' => $new_status,
-                'verifyStatus' => $cancelled ? 'cancelled' : 'failed',
+                'verifyStatus' => 'cancelled',
+            );
+        }
+
+        if ($missed) {
+            $attempts = absint($body['callAttempts'] ?? $order->get_meta('_maskara_call_count'));
+            $max = absint($body['maxCallAttempts'] ?? 0);
+            $order->update_meta_data('_maskara_verify_status', 'no_answer');
+            $order->add_order_note(sprintf(
+                'Maskara: call not answered (attempt %d%s). WooCommerce status left unchanged — retry/staff may continue.',
+                $attempts,
+                $max > 0 ? " of {$max}" : ''
+            ));
+            $order->save();
+            return array(
+                'ok' => true,
+                'orderId' => $order->get_id(),
+                'verifyStatus' => 'no_answer',
+                'cancelled' => false,
             );
         }
 
