@@ -67,10 +67,31 @@ class Maskara_Callback {
         // Do NOT cancel on NO_RESPONSE / FAILED / pending retries — that was auto-cancelling
         // after the first missed call.
         $cancelled = in_array($outcome, array('CANCELLED'), true);
+        $reopen = in_array($outcome, array('REOPEN', 'RESTORE', 'REOPEN_PROCESSING'), true)
+            || (!empty($body['reopen']) && filter_var($body['reopen'], FILTER_VALIDATE_BOOLEAN));
         $calling   = in_array($status, array('CALLING'), true)
             || in_array(strtolower((string) ($body['verifyStatus'] ?? '')), array('calling', 'pending'), true);
         $missed = in_array($outcome, array('NO_RESPONSE', 'FAILED', 'RETRY_SCHEDULED', 'CALL_ATTEMPT_FAILED', 'STAFF_CALL_ELIGIBLE'), true)
             || in_array($status, array('FAILED', 'NO_ANSWER', 'NO ANSWER', 'PENDING'), true);
+
+        if ($reopen && !$confirmed && !$cancelled) {
+            $order->update_meta_data('_maskara_verify_status', 'pending');
+            $order->update_meta_data('_maskara_verification', 'pending');
+            $order->delete_meta_data('_maskara_courier_block_reason');
+            if ($order->get_status() !== 'processing') {
+                $order->update_status('processing', 'Maskara: restored to Processing after false auto-cancel.');
+            } else {
+                $order->add_order_note('Maskara: order already Processing — reopen acknowledged.');
+                $order->save();
+            }
+            return array(
+                'ok' => true,
+                'orderId' => $order->get_id(),
+                'status' => 'processing',
+                'verifyStatus' => 'pending',
+                'reopened' => true,
+            );
+        }
 
         if ($calling && !$confirmed && !$cancelled) {
             $order->update_meta_data('_maskara_verify_status', 'calling');
