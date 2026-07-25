@@ -60,6 +60,8 @@ export class AuthService {
         phone: dto.phone,
         role: 'MERCHANT_OWNER',
         merchantId: merchant.id,
+        // SMTP often unset in prod — don't lock new merchants out of login
+        emailVerified: !this.email.isConfigured(),
       },
     });
 
@@ -76,7 +78,12 @@ export class AuthService {
     });
 
     const tokens = await this.generateTokens(user.id, user.email, user.role, merchant.id);
-    await this.sendVerificationEmail(user.id, user.email);
+    try {
+      await this.sendVerificationEmail(user.id, user.email);
+    } catch (err) {
+      // Never fail signup because of email delivery
+      console.warn('Verification email skipped:', err);
+    }
     return tokens;
   }
 
@@ -91,7 +98,15 @@ export class AuthService {
     }
 
     if (!user.emailVerified && process.env.NODE_ENV === 'production') {
-      throw new UnauthorizedException('Email not verified. Check your inbox.');
+      // Auto-heal: SMTP often unset — verify on first successful password login
+      if (!this.email.isConfigured()) {
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { emailVerified: true },
+        });
+      } else {
+        throw new UnauthorizedException('Email not verified. Check your inbox.');
+      }
     }
 
     const valid = await bcrypt.compare(dto.password, user.passwordHash);

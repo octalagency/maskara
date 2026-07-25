@@ -14,14 +14,17 @@ import { enableOfflineMode, getDemoMerchants, isOfflineMode, saveDemoMerchants }
 function resolveApiUrl(): string {
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
+    // Same-origin proxy on app (see next.config.js rewrites) — no CORS
     if (host === 'app.maskara.bd' || host === 'maskara.bd' || host === 'www.maskara.bd') {
-      return 'https://api.maskara.bd';
+      return `${window.location.origin}/maskara-api`;
     }
   }
   return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 }
 
-const API_URL = resolveApiUrl();
+function apiBase(): string {
+  return resolveApiUrl();
+}
 
 class ApiClient {
   private token: string | null = null;
@@ -50,7 +53,7 @@ class ApiClient {
   async checkBackend(): Promise<boolean> {
     if (isOfflineMode()) return false;
     try {
-      const res = await fetch(`${API_URL}/health/live`, { signal: AbortSignal.timeout(5000) });
+      const res = await fetch(`${apiBase()}/health/live`, { signal: AbortSignal.timeout(5000) });
       this.backendAvailable = res.ok;
     } catch {
       this.backendAvailable = false;
@@ -72,9 +75,11 @@ class ApiClient {
 
     let res: Response;
     try {
-      res = await fetch(`${API_URL}${path}`, { ...options, headers });
+      res = await fetch(`${apiBase()}${path}`, { ...options, headers });
     } catch {
-      throw new Error('BACKEND_OFFLINE');
+      throw new Error(
+        'সার্ভারে সংযোগ করা যায়নি। ইন্টারনেট চেক করে আবার চেষ্টা করুন।',
+      );
     }
 
     if (!res.ok) {
@@ -180,9 +185,9 @@ class ApiClient {
       return {
         connected: false,
         integration: null,
-        apiUrl: API_URL,
-        webhookUrl: `${API_URL}/webhooks/woocommerce`,
-        connectUrl: `${API_URL}/integrations/woocommerce/connect`,
+        apiUrl: apiBase(),
+        webhookUrl: `${apiBase()}/webhooks/woocommerce`,
+        connectUrl: `${apiBase()}/integrations/woocommerce/connect`,
         pluginVersion: '1.0.0',
       } as T;
     }

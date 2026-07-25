@@ -3,7 +3,16 @@ const nextConfig = {
   output: 'standalone',
   images: { unoptimized: true },
   async rewrites() {
+    // Browser → same-origin /maskara-api/* → Nest (avoids CORS / Cloudflare cross-origin flakes)
+    const apiInternal =
+      process.env.API_INTERNAL_URL ||
+      process.env.INTERNAL_API_URL ||
+      'http://backend:4000';
     return [
+      {
+        source: '/maskara-api/:path*',
+        destination: `${apiInternal.replace(/\/$/, '')}/:path*`,
+      },
       {
         source: '/downloads/maskara-woocommerce.zip',
         destination: '/api/download/woocommerce-plugin',

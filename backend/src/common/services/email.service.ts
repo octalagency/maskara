@@ -22,6 +22,10 @@ export class EmailService {
     }
   }
 
+  isConfigured(): boolean {
+    return Boolean(this.transporter);
+  }
+
   async send(to: string, subject: string, html: string): Promise<boolean> {
     const from = this.config.get('SMTP_FROM', 'Maskara <noreply@maskara.bd>');
 
