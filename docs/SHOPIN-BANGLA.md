@@ -23,8 +23,10 @@ ShopIn-এ মানুষ কল করে Confirm করলে (Pending → Co
 
 মানে WooCommerce-এ website `completed` sync-এর মতোই।
 
-**ShopIn → Maskara status values that trigger Manual Complete:**  
-`confirmed`, `confirm`, `completed`, `pickup_pending`, `ready_for_delivery`, `in_transit`, `delivered`, …
+**ShopIn → Maskara status values that trigger Manual Complete (existing order):**  
+`confirmed`, `confirm`, `completed`, `pickup_pending`, `ready_for_delivery`, `in_transit`, `processing`, `delivered`, …
+
+On **new** order create, only clear confirm statuses (`confirmed` / `completed` / …) skip the AI call — COD `processing` still dials.
 
 **Cancel:** `cancelled` / `rejected` → Maskara cancel + stop calls.
 

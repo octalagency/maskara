@@ -41,10 +41,10 @@ const SHOPIN_EXCLUDE_STATUSES = new Set([
 ]);
 
 /**
- * ShopIn (or physical call center) confirmed the order — Manual Complete, stop AI calls.
- * Mirrors WooCommerce "completed" → markManualCompleteFromWebsite.
+ * ShopIn Staff confirmed — Manual Complete on an *existing* Maskara order.
+ * Includes mid-fulfillment tabs (processing, packed, …).
  */
-const SHOPIN_MANUAL_COMPLETE_STATUSES = new Set([
+const SHOPIN_EXISTING_MANUAL_COMPLETE_STATUSES = new Set([
   'completed',
   'complete',
   'confirmed',
@@ -53,7 +53,6 @@ const SHOPIN_MANUAL_COMPLETE_STATUSES = new Set([
   'success',
   'manual_complete',
   'manual-complete',
-  // ShopIn UI tabs after human confirm (before / at courier handoff)
   'pickup_pending',
   'pickuppending',
   'ready_for_delivery',
@@ -65,6 +64,21 @@ const SHOPIN_MANUAL_COMPLETE_STATUSES = new Set([
   'courierassigned',
   'shipped',
   'packed',
+]);
+
+/**
+ * On *create* only — never treat COD "processing" as already confirmed
+ * (same pitfall as WooCommerce; would skip the AI call).
+ */
+const SHOPIN_CREATE_SKIP_CALL_STATUSES = new Set([
+  'completed',
+  'complete',
+  'confirmed',
+  'confirm',
+  'delivered',
+  'success',
+  'manual_complete',
+  'manual-complete',
 ]);
 
 function normalizeShopInStatus(raw: unknown): string {
@@ -317,7 +331,7 @@ export class WebhooksService {
       }
 
       if (
-        SHOPIN_MANUAL_COMPLETE_STATUSES.has(status) &&
+        SHOPIN_EXISTING_MANUAL_COMPLETE_STATUSES.has(status) &&
         !['VERIFIED', 'CANCELLED'].includes(existing.status)
       ) {
         const completed = await this.ordersService.markManualCompleteFromWebsite(
@@ -374,7 +388,7 @@ export class WebhooksService {
       data: { lastSyncAt: new Date() },
     });
 
-    if (SHOPIN_MANUAL_COMPLETE_STATUSES.has(status)) {
+    if (SHOPIN_CREATE_SKIP_CALL_STATUSES.has(status)) {
       const order = await this.ordersService.create(
         merchantId,
         { ...orderData, externalId, source: 'CUSTOM_API' },
@@ -406,7 +420,8 @@ export class WebhooksService {
       });
     }
 
-    const existing = await this.prisma.integration.findFirst({
+    // Prefer the integration row for THIS shopId — never overwrite another ShopIn shop
+    const integrations = await this.prisma.integration.findMany({
       where: {
         merchantId,
         OR: [
@@ -415,10 +430,21 @@ export class WebhooksService {
         ],
       },
     });
+    const existing =
+      integrations.find((i) => {
+        const c = (i.credentials || {}) as Record<string, unknown>;
+        return String(c.shopId || '') === shopId;
+      }) ||
+      integrations.find((i) => (i.webhookUrl || '').includes(`/webhooks/maskara/${shopId}`)) ||
+      null;
+
     const credentials = {
       provider: 'shopin',
       shopId,
-      shopName: existing?.name || `ShopIn ${shopId}`,
+      shopName:
+        ((existing?.credentials || {}) as Record<string, unknown>).shopName ||
+        existing?.name ||
+        `ShopIn ${shopId}`,
       callbackUrl,
       connectedAt: new Date().toISOString(),
     };
