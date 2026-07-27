@@ -1,7 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { ApiKeysSection } from '@/components/settings/ApiKeysSection';
+import { IntegrationsSection } from '@/components/settings/IntegrationsSection';
 import { api, Merchant } from '@/lib/api';
 import {
   clampSpeechRate,
@@ -16,13 +19,35 @@ import {
   voiceOptionsForConfig,
 } from '@/lib/voice';
 import { cn } from '@/lib/utils';
-import { Pause, Play, Volume2, Check, User } from 'lucide-react';
+import { Pause, Play, Volume2, Check, User, Store, Plug } from 'lucide-react';
+
+type SettingsTab = 'store' | 'integrations';
 
 const DEFAULT_VOICE = 'google:bn-IN-Chirp3-HD-Algieba';
 const DEFAULT_SCRIPT =
   'আসসালামু আলাইকুম। {{storeName}} থেকে আপনি {{products}} অর্ডার করেছেন। আপনার মোট বিল {{amount}} টাকা। অর্ডারটি কনফার্ম করতে ১ চাপুন এবং বাতিল করতে ২ চাপুন। আমরা সারা বাংলাদেশ ক্যাশ অন ডেলিভারি দিয়ে থাকি। ডেলিভারির সময় ঢাকার মধ্যে ১ থেকে ২ দিন, ঢাকার বাইরে ২ থেকে ৩ দিন।';
 
 export default function SettingsPage() {
+  return (
+    <Suspense
+      fallback={
+        <DashboardLayout>
+          <div className="mx-auto max-w-3xl text-sm text-slate-500">সেটিংস লোড হচ্ছে…</div>
+        </DashboardLayout>
+      }
+    >
+      <SettingsPageInner />
+    </Suspense>
+  );
+}
+
+function SettingsPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const tab: SettingsTab =
+    tabParam === 'integrations' || tabParam === 'api-keys' ? 'integrations' : 'store';
+
   const [merchant, setMerchant] = useState<Partial<Merchant>>({});
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -32,6 +57,11 @@ export default function SettingsPage() {
   const [googleTtsConfigured, setGoogleTtsConfigured] = useState(true);
   const voiceChoices = voiceOptionsForConfig(googleTtsConfigured);
   const rate = clampSpeechRate(merchant.speechRate);
+
+  function setTab(next: SettingsTab) {
+    const q = next === 'integrations' ? '?tab=integrations' : '';
+    router.replace(`/dashboard/settings${q}`);
+  }
 
   useEffect(() => {
     api
@@ -203,12 +233,51 @@ export default function SettingsPage() {
 
   return (
     <DashboardLayout>
-      <div className="mx-auto max-w-3xl space-y-6">
+      <div className={cn('mx-auto space-y-6', tab === 'integrations' ? 'max-w-4xl' : 'max-w-3xl')}>
         <div>
           <h2 className="page-title">সেটিংস</h2>
-          <p className="page-subtitle">স্টোর, কল স্ক্রিপ্ট ও রিয়েল হিউম্যান ভয়েস</p>
+          <p className="page-subtitle">
+            স্টোর, ভয়েস, ইন্টিগ্রেশন ও API Keys — এক জায়গায়
+          </p>
         </div>
 
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setTab('store')}
+            className={cn(
+              'inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition',
+              tab === 'store'
+                ? 'bg-brand-600 text-white'
+                : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50',
+            )}
+          >
+            <Store className="h-4 w-4" />
+            স্টোর ও ভয়েস
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('integrations')}
+            className={cn(
+              'inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition',
+              tab === 'integrations'
+                ? 'bg-brand-600 text-white'
+                : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50',
+            )}
+          >
+            <Plug className="h-4 w-4" />
+            ইন্টিগ্রেশন ও API Keys
+          </button>
+        </div>
+
+        {tab === 'integrations' ? (
+          <div className="space-y-8">
+            <IntegrationsSection />
+            <div id="api-keys" className="scroll-mt-24 border-t border-slate-200 pt-8">
+              <ApiKeysSection />
+            </div>
+          </div>
+        ) : (
         <form onSubmit={handleSave} className="space-y-5">
           {saved && (
             <div className="rounded-xl bg-emerald-50 px-4 py-3 text-[14px] text-emerald-700">
@@ -443,6 +512,7 @@ export default function SettingsPage() {
             {saving ? 'সেভ হচ্ছে…' : 'সেটিংস সেভ করুন'}
           </button>
         </form>
+        )}
       </div>
     </DashboardLayout>
   );
