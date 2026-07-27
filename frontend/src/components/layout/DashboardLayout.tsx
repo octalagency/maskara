@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -9,13 +9,14 @@ import {
   Settings,
   FileText,
   BarChart3,
+  Plug,
   LogOut,
   Menu,
   X,
   CreditCard,
   Clock,
 } from 'lucide-react';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
@@ -25,12 +26,74 @@ const navItems = [
   { href: '/dashboard/call-system', label: 'কল সিস্টেম', icon: Clock },
   { href: '/dashboard/reports', label: 'রিপোর্ট', icon: BarChart3 },
   { href: '/dashboard/subscription', label: 'সাবস্ক্রিপশন', icon: CreditCard },
-  { href: '/dashboard/settings', label: 'সেটিংস', icon: Settings },
+  {
+    href: '/dashboard/settings?tab=integrations',
+    label: 'ইন্টিগ্রেশন ও API Keys',
+    icon: Plug,
+    tab: 'integrations' as const,
+  },
+  { href: '/dashboard/settings', label: 'সেটিংস', icon: Settings, tab: 'store' as const },
   { href: '/docs', label: 'API Docs', icon: FileText },
 ];
 
-export function DashboardLayout({ children }: { children: React.ReactNode }) {
+function isNavActive(
+  item: (typeof navItems)[number],
+  pathname: string,
+  tab: string | null,
+) {
+  if (item.href === '/dashboard') return pathname === '/dashboard';
+  if ('tab' in item && item.tab === 'integrations') {
+    return (
+      pathname.startsWith('/dashboard/settings') &&
+      (tab === 'integrations' || tab === 'api-keys')
+    );
+  }
+  if ('tab' in item && item.tab === 'store') {
+    return (
+      pathname.startsWith('/dashboard/settings') &&
+      tab !== 'integrations' &&
+      tab !== 'api-keys'
+    );
+  }
+  return pathname === item.href || pathname.startsWith(item.href);
+}
+
+function SidebarNav({ onNavigate }: { onNavigate: () => void }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const tab = searchParams.get('tab');
+
+  return (
+    <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+      {navItems.map((item) => {
+        const active = isNavActive(item, pathname, tab);
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={onNavigate}
+            className={cn(
+              'flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-medium transition',
+              active
+                ? 'bg-brand-50 text-brand-700'
+                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',
+            )}
+          >
+            <item.icon
+              className={cn(
+                'h-[18px] w-[18px] shrink-0',
+                active ? 'text-brand-600' : 'text-slate-400',
+              )}
+            />
+            <span className="leading-none">{item.label}</span>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
@@ -49,32 +112,33 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             <p className="font-latin text-[16px] font-bold text-slate-900">Maskara</p>
             <p className="text-[12px] text-slate-500">মার্চেন্ট প্যানেল</p>
           </div>
-          <button type="button" className="ml-auto rounded-lg p-1 text-slate-400 lg:hidden" onClick={() => setSidebarOpen(false)}>
+          <button
+            type="button"
+            className="ml-auto rounded-lg p-1 text-slate-400 lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          {navItems.map((item) => {
-            const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setSidebarOpen(false)}
-                className={cn(
-                  'flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-medium transition',
-                  active
-                    ? 'bg-brand-50 text-brand-700'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',
-                )}
-              >
-                <item.icon className={cn('h-[18px] w-[18px] shrink-0', active ? 'text-brand-600' : 'text-slate-400')} />
-                <span className="leading-none">{item.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
+        <Suspense
+          fallback={
+            <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+              {navItems.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-medium text-slate-600"
+                >
+                  <item.icon className="h-[18px] w-[18px] shrink-0 text-slate-400" />
+                  <span className="leading-none">{item.label}</span>
+                </Link>
+              ))}
+            </nav>
+          }
+        >
+          <SidebarNav onNavigate={() => setSidebarOpen(false)} />
+        </Suspense>
 
         <div className="border-t border-slate-100 p-3">
           <button
@@ -93,19 +157,30 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex h-[64px] items-center border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur lg:px-8">
-          <button type="button" className="mr-3 rounded-lg p-1 text-slate-600 lg:hidden" onClick={() => setSidebarOpen(true)}>
+          <button
+            type="button"
+            className="mr-3 rounded-lg p-1 text-slate-600 lg:hidden"
+            onClick={() => setSidebarOpen(true)}
+          >
             <Menu className="h-6 w-6" />
           </button>
           <div>
-            <h1 className="text-[16px] font-bold text-slate-900 sm:text-[17px]">মার্চেন্ট ড্যাশবোর্ড</h1>
-            <p className="hidden text-[12px] text-slate-500 sm:block">AI ভয়েস দিয়ে COD অর্ডার ভেরিফিকেশন</p>
+            <h1 className="text-[16px] font-bold text-slate-900 sm:text-[17px]">
+              মার্চেন্ট ড্যাশবোর্ড
+            </h1>
+            <p className="hidden text-[12px] text-slate-500 sm:block">
+              AI ভয়েস দিয়ে COD অর্ডার ভেরিফিকেশন
+            </p>
           </div>
         </header>
         <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
       </div>
 
       {sidebarOpen && (
-        <div className="fixed inset-0 z-40 bg-slate-900/40 lg:hidden" onClick={() => setSidebarOpen(false)} />
+        <div
+          className="fixed inset-0 z-40 bg-slate-900/40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
       )}
     </div>
   );
