@@ -183,7 +183,7 @@ export default function SubscriptionPage() {
             )}
             {usage && (
               <p className="mt-2 text-sm font-medium text-slate-700">
-                মোট কোটা: {usage.callLimit.toLocaleString()} order confirmed
+                মোট কোটা: {usage.callLimit.toLocaleString()} কল রিসিভ (কনফার্ম + রিটার্ন)
               </p>
             )}
             {data.merchant.subscriptionEnds && (
@@ -207,11 +207,14 @@ export default function SubscriptionPage() {
           {usage && (
             <div className="card lg:col-span-2">
               <h3 className="font-semibold">Usage This Month</h3>
+              <p className="mt-1 text-xs text-slate-500">
+                কাস্টমার কল ধরে ১ (কনফার্ম) বা ২ (রিটার্ন/বাতিল) চাপলেই ১ কোটা কাটে — মিসড কল কাটে না
+              </p>
               <div className="mt-4 space-y-4">
                 <div>
                   <div className="flex justify-between text-sm">
                     <span>
-                      Order confirmed: {usage.callsUsed} / {usage.callLimit}
+                      কল রিসিভ (কনফার্ম + রিটার্ন): {usage.callsUsed} / {usage.callLimit}
                     </span>
                     <span>{usagePct}%</span>
                   </div>
@@ -231,7 +234,7 @@ export default function SubscriptionPage() {
           <h3 className="text-lg font-semibold">Upgrade Plan</h3>
           <p className="text-sm text-slate-500">
             bKash Merchant SIM-এ পেমেন্ট → TrxID দিয়ে Verify Paid। নতুন প্ল্যান কিনলে{' '}
-            <strong>order confirm কোটা যোগ</strong> হয় (আগের কোটা থাকে)।
+            <strong>কল রিসিভ কোটা যোগ</strong> হয় (আগের কোটা থাকে)।
           </p>
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {data.availablePlans.map((plan) => {
@@ -251,7 +254,7 @@ export default function SubscriptionPage() {
                     <span className="text-sm font-normal">/mo</span>
                   </p>
                   <p className="mt-1 text-sm text-slate-500">
-                    +{plan.callLimit} order confirmed · {plan.smsLimit} SMS
+                    +{plan.callLimit} কল রিসিভ · {plan.smsLimit} SMS
                   </p>
                   <ul className="mt-3 flex-1 space-y-1 text-xs text-slate-600">
                     {features.slice(0, 3).map((f) => (

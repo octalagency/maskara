@@ -3,6 +3,7 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PlansService } from '../plans/plans.service';
 
@@ -61,6 +62,16 @@ export class SubscriptionsService {
       (b) => b.status === 'PAID' && b.planCode !== 'FREE' && Number(b.amount) > 0,
     );
 
+    // Quota = answered AI calls that ended in confirm (1) or return/cancel (2)
+    let usageCalls = subscription?.callsUsed ?? 0;
+    if (subscription) {
+      usageCalls = await this.syncAnsweredCallQuota(subscription.id, merchantId, {
+        startsAt: subscription.startsAt,
+        endsAt: subscription.endsAt,
+        callsUsed: subscription.callsUsed,
+      });
+    }
+
     return {
       merchant: {
         id: merchant.id,
@@ -69,7 +80,9 @@ export class SubscriptionsService {
         subscriptionPlan: merchant.subscriptionPlan,
         subscriptionEnds: merchant.subscriptionEnds,
       },
-      subscription,
+      subscription: subscription
+        ? { ...subscription, callsUsed: usageCalls }
+        : null,
       currentPlan,
       availablePlans: plans,
       billingHistory: recentBilling,
@@ -81,24 +94,45 @@ export class SubscriptionsService {
       })),
       usage: subscription
         ? {
-            // Plan quota = finalized orders (confirm + cancel), not dial attempts
-            callsUsed: subscription.callsUsed,
+            callsUsed: usageCalls,
             callLimit: subscription.callLimit,
-            ordersUsed: subscription.callsUsed,
+            ordersUsed: usageCalls,
             orderLimit: subscription.callLimit,
             smsUsed: subscription.smsUsed,
             smsLimit: subscription.smsLimit,
-            callsRemaining: Math.max(
-              0,
-              subscription.callLimit - subscription.callsUsed,
-            ),
-            ordersRemaining: Math.max(
-              0,
-              subscription.callLimit - subscription.callsUsed,
-            ),
+            callsRemaining: Math.max(0, subscription.callLimit - usageCalls),
+            ordersRemaining: Math.max(0, subscription.callLimit - usageCalls),
           }
         : null,
     };
+  }
+
+  /**
+   * Recompute quota from answered DTMF outcomes (confirm + return) in the plan window.
+   * Keeps callsUsed honest if increments were missed or double-counted.
+   */
+  private async syncAnsweredCallQuota(
+    subscriptionId: string,
+    merchantId: string,
+    sub: { startsAt: Date; endsAt: Date; callsUsed: number },
+  ): Promise<number> {
+    const rows = await this.prisma.$queryRaw<Array<{ n: bigint | number }>>`
+      SELECT COUNT(DISTINCT o.id) AS n
+      FROM "Order" o
+      INNER JOIN "Call" c ON c."orderId" = o.id
+      WHERE o."merchantId" = ${merchantId}
+        AND c.outcome IN ('CONFIRMED', 'CANCELLED')
+        AND c."createdAt" >= ${sub.startsAt}
+        AND c."createdAt" <= ${sub.endsAt}
+    `;
+    const answered = Number(rows[0]?.n ?? 0);
+    if (answered !== sub.callsUsed) {
+      await this.prisma.subscription.update({
+        where: { id: subscriptionId },
+        data: { callsUsed: answered },
+      });
+    }
+    return answered;
   }
 
   /**
@@ -438,10 +472,16 @@ export class SubscriptionsService {
       return { allowed: false, reason: 'Subscription expired' };
     }
 
-    if (subscription.callsUsed >= subscription.callLimit) {
+    const used = await this.syncAnsweredCallQuota(subscription.id, merchantId, {
+      startsAt: subscription.startsAt,
+      endsAt: subscription.endsAt,
+      callsUsed: subscription.callsUsed,
+    });
+
+    if (used >= subscription.callLimit) {
       return {
         allowed: false,
-        reason: `মাসিক অর্ডার লিমিট শেষ (${subscription.callsUsed}/${subscription.callLimit} order confirmed/cancelled)`,
+        reason: `মাসিক কল রিসিভ কোটা শেষ (${used}/${subscription.callLimit} কনফার্ম+রিটার্ন)`,
       };
     }
 
@@ -455,7 +495,8 @@ export class SubscriptionsService {
   }
 
   /**
-   * Consume 1 plan unit when an order is confirmed OR cancelled (once per order).
+   * Consume 1 plan unit when the customer answers and presses 1 (confirm) or 2 (return/cancel).
+   * Website manual complete / website cancel do not consume quota.
    */
   async consumeOrderQuota(
     merchantId: string,
@@ -464,6 +505,15 @@ export class SubscriptionsService {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order || order.merchantId !== merchantId) return;
     if (!['VERIFIED', 'CANCELLED'].includes(order.status)) return;
+    // Website-managed cancels are not AI call outcomes — do not bill quota
+    if (order.excludedFromStats) return;
+    if (order.manualComplete) {
+      const meta0 =
+        order.metadata && typeof order.metadata === 'object' && !Array.isArray(order.metadata)
+          ? (order.metadata as Record<string, unknown>)
+          : {};
+      if (meta0.manualCompleteFromWebsite === true) return;
+    }
 
     const meta =
       order.metadata && typeof order.metadata === 'object' && !Array.isArray(order.metadata)
@@ -485,7 +535,12 @@ export class SubscriptionsService {
     await this.prisma.order.update({
       where: { id: orderId },
       data: {
-        metadata: { ...meta, quotaConsumed: true, quotaConsumedAt: new Date().toISOString() },
+        metadata: {
+          ...meta,
+          quotaConsumed: true,
+          quotaConsumedAt: new Date().toISOString(),
+          quotaReason: order.status === 'VERIFIED' ? 'call_confirm' : 'call_return',
+        } as Prisma.InputJsonValue,
       },
     });
   }
