@@ -370,8 +370,8 @@ function SettingsPageInner() {
             <div>
               <h3 className="section-title">AI ভয়েস বাছুন</h3>
               <p className="page-subtitle">
-                প্রিভিউ ও লাইভ কল — একই Chirp3 ভয়েস। সেভ করলে পরের কল থেকে নতুন ভয়েস
-                বাজবে (পুরুষ/মহিলা আলাদা শোনা যাবে)।
+                প্রিভিউ Maskara Chirp3। লাইভ ePBX WaveNet গেটওয়েতে পুরুষ = Standard-B,
+                মহিলা = Wavenet-A (Chirp3 রেডিও WaveNet মডেলে কাজ করে না)।
               </p>
             </div>
 

@@ -1,6 +1,5 @@
 import {
   DEFAULT_MERCHANT_VOICE_ID,
-  EPBX_PORTAL_MALE_CHIRP3,
   azureTwinForMerchantVoice,
   epbxPortalGoogleVoice,
   extractProductNamesFromItems,
@@ -70,28 +69,28 @@ describe('resolveLiveEpbxVoice', () => {
 });
 
 describe('epbxPortalGoogleVoice', () => {
-  it('maps Algieba / Pradeep / Nabanita to portal male Algenib', () => {
+  it('maps male merchants to WaveNet-compatible Standard-B', () => {
     expect(epbxPortalGoogleVoice('google:bn-IN-Chirp3-HD-Algieba').voiceId).toBe(
-      EPBX_PORTAL_MALE_CHIRP3,
+      'bn-IN-Standard-B',
     );
     expect(epbxPortalGoogleVoice('azure:bn-BD-PradeepNeural').voiceId).toBe(
-      EPBX_PORTAL_MALE_CHIRP3,
+      'bn-IN-Standard-B',
     );
-    expect(epbxPortalGoogleVoice('azure:bn-BD-NabanitaNeural').voiceId).toBe(
-      EPBX_PORTAL_MALE_CHIRP3,
+    expect(epbxPortalGoogleVoice('google:bn-IN-Chirp3-HD-Orus').voiceId).toBe(
+      'bn-IN-Standard-B',
     );
     expect(epbxPortalGoogleVoice('google:bn-IN-Chirp3-HD-Algieba').gender).toBe(
       'male',
     );
-    expect(epbxPortalGoogleVoice(null).shortName).toBe('Algenib');
+    expect(epbxPortalGoogleVoice(null).gateway).toBe('google_wavenet');
   });
 
-  it('keeps Orus / Aoede as their Chirp3 ids for portal Google gateway', () => {
-    expect(epbxPortalGoogleVoice('google:bn-IN-Chirp3-HD-Orus').voiceId).toBe(
-      'bn-IN-Chirp3-HD-Orus',
-    );
+  it('maps female merchants to WaveNet-A', () => {
     expect(epbxPortalGoogleVoice('google:bn-IN-Chirp3-HD-Aoede').voiceId).toBe(
-      'bn-IN-Chirp3-HD-Aoede',
+      'bn-IN-Wavenet-A',
+    );
+    expect(epbxPortalGoogleVoice('google:bn-IN-Chirp3-HD-Leda').voiceId).toBe(
+      'bn-IN-Wavenet-A',
     );
     expect(epbxPortalGoogleVoice('google:bn-IN-Chirp3-HD-Aoede').gender).toBe(
       'female',

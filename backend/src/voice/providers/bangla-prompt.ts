@@ -233,11 +233,16 @@ export const MERCHANT_VOICE_OPTIONS = [
 export const DEFAULT_MERCHANT_VOICE_ID = 'google:bn-IN-Chirp3-HD-Algieba';
 export const AZURE_FALLBACK_VOICE_ID = 'azure:bn-BD-PradeepNeural';
 /**
- * ePBX portal primary male Chirp3 (maskara.epbx.bd Voice Profile).
- * Maskara UI recommends Algieba; portal radio uses Algenib — map Algieba→Algenib
- * so live dials match the saved Google gateway voice (never WaveNet female default).
+ * Chirp3 male id shown in portal radios (often ignored when Active Model = WaveNet).
  */
 export const EPBX_PORTAL_MALE_CHIRP3 = 'bn-IN-Chirp3-HD-Algenib';
+/**
+ * Live portal Active Model is Google WaveNet/Neural2 — Chirp3 voice ids fall back
+ * to default WaveNet female. Speak with WaveNet-compatible Google voice names:
+ * Standard-B = male, Wavenet-A = female.
+ */
+export const EPBX_PORTAL_MALE_WAVENET = 'bn-IN-Standard-B';
+export const EPBX_PORTAL_FEMALE_WAVENET = 'bn-IN-Wavenet-A';
 /** Slightly under 1.0 for clearer, warmer call-center pacing. */
 export const DEFAULT_SPEECH_RATE = 0.95;
 /** Phone-friendly clarity without sounding loud. */
@@ -494,9 +499,9 @@ export function resolveLiveEpbxVoice(
 }
 
 /**
- * Voice name + provider fields for ePBX initiate when portal Active Gateway = Google.
- * Algieba / Pradeep / soft-migrated নবনীতা → bn-IN-Chirp3-HD-Algenib (portal male primary).
- * Female Chirp3 kept as-is. Never Nabanita / azure voice names on this path.
+ * Voice spoken by ePBX when Active Model = Google WaveNet/Neural2.
+ * Chirp3 ids are rejected → female WaveNet default. Map gender to WaveNet-
+ * compatible names (Standard-B male / Wavenet-A female).
  */
 export function epbxPortalGoogleVoice(voiceId?: string | null): {
   provider: 'google';
@@ -505,46 +510,21 @@ export function epbxPortalGoogleVoice(voiceId?: string | null): {
   shortName: string;
   gender: 'male' | 'female';
   languageCode: 'bn-IN';
+  gateway: 'google_wavenet';
 } {
   const gender = merchantVoiceGender(voiceId);
-  if (gender === 'female') {
-    const female = resolveMerchantVoice(voiceId);
-    const voiceName = /Chirp3-HD-/i.test(female.voiceId)
-      ? female.voiceId
-      : 'bn-IN-Chirp3-HD-Aoede';
-    return {
-      provider: 'google',
-      voiceId: voiceName,
-      id: `google:${voiceName}`,
-      shortName: voiceName.replace(/^bn-IN-Chirp3-HD-/i, ''),
-      gender: 'female',
-      languageCode: 'bn-IN',
-    };
-  }
-
-  // Male path: ALWAYS portal Algenib for default/Algieba/Azure — never WaveNet female.
-  // Explicit other male Chirp3 (Orus, …) kept; female Chirp3 only when merchant picks female.
-  const resolved = resolveLiveEpbxVoice(voiceId, true);
-  let voiceName = resolved.voiceId;
-  if (
-    !/Chirp3-HD-/i.test(voiceName) ||
-    /Algieba|Algenib|Pradeep|Nabanita/i.test(voiceName) ||
-    shouldMigrateMerchantVoiceId(voiceId) ||
-    resolved.provider === 'azure'
-  ) {
-    voiceName = EPBX_PORTAL_MALE_CHIRP3;
-  }
-  // Soft-safety: if somehow female Chirp3 name landed on male path, still Algenib
-  if (/Achernar|Aoede|Kore|Leda/i.test(voiceName) && gender === 'male') {
-    voiceName = EPBX_PORTAL_MALE_CHIRP3;
-  }
+  const voiceName =
+    gender === 'female'
+      ? EPBX_PORTAL_FEMALE_WAVENET
+      : EPBX_PORTAL_MALE_WAVENET;
   return {
     provider: 'google',
     voiceId: voiceName,
     id: `google:${voiceName}`,
-    shortName: voiceName.replace(/^bn-IN-Chirp3-HD-/i, ''),
-    gender: 'male',
+    shortName: voiceName.replace(/^bn-IN-/i, ''),
+    gender,
     languageCode: 'bn-IN',
+    gateway: 'google_wavenet',
   };
 }
 

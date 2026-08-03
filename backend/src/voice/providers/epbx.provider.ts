@@ -17,12 +17,11 @@ import {
 /**
  * ePBX `/calls/verify` owns the live speak path.
  *
- * Evidence (prod nginx): ePBX never GETs Maskara `/voice/tts-audio/*`.
- * So Fixed Audio + skip_tts=true falls through to the portal Active Profile
- * (often WaveNet/eAI female) and merchant voice selection appears broken.
- *
- * Working path: portal Google Chirp3 TTS with merchant voice fields
- * (skip_tts=false). Keep audio_url as optional prefer-only.
+ * Evidence: ePBX never GETs Maskara `/voice/tts-audio/*`. Portal Active Model
+ * on maskara.epbx.bd is Google WaveNet/Neural2 — Chirp3 radio ids are ignored
+ * and WaveNet falls back to female. So we speak with WaveNet-compatible
+ * Google voices (bn-IN-Standard-B male / bn-IN-Wavenet-A female) matching
+ * merchant gender, while Maskara still synths Chirp3 MP3 as prefer-only.
  */
 @Injectable()
 export class EpbxProvider implements VoiceProvider {
@@ -293,32 +292,36 @@ export class EpbxProvider implements VoiceProvider {
       eai_enabled: false,
       use_elevenlabs: false,
       elevenlabs: false,
-      use_wavenet: false,
-      wavenet: false,
+      // Match portal Active Model = Google WaveNet/Neural2
+      use_wavenet: true,
+      wavenet: true,
       use_azure: false,
       azure_tts: false,
       use_portal_default_voice: false,
       use_google: true,
       google_tts: true,
 
-      // Portal Google Chirp3 — merchant voice selection maps here
       provider: 'google',
       ai_tts_provider: 'google',
       tts_provider: 'google',
-      tts_engine: 'chirp3',
+      tts_engine: 'wavenet',
       speech_provider: 'google',
-      voice_gateway: 'google',
-      tts_gateway: 'google',
-      active_voice_model: 'google',
-      use_chirp3: true,
-      google_tts_model: 'chirp3-hd',
-      tts_model: 'chirp3-hd',
+      voice_gateway: 'google_wavenet',
+      ai_tts_gateway: 'google_wavenet',
+      tts_gateway: 'google_wavenet',
+      active_voice_gateway: 'google_wavenet',
+      active_voice_model: 'google_wavenet',
+      use_chirp3: false,
+      google_tts_model: 'wavenet',
+      tts_model: 'wavenet',
+      model: 'wavenet',
 
       google_tts_voice_id: speakVoiceId,
       google_voice: speakVoiceId,
       google_voice_name: speakVoiceId,
       google_voice_id: speakVoiceId,
-      chirp3_voice: speakVoiceId,
+      wavenet_voice: speakVoiceId,
+      wavenet_voice_id: speakVoiceId,
       voice_id: speakVoiceId,
       tts_voice: speakVoiceId,
       tts_voice_id: speakVoiceId,
@@ -327,8 +330,8 @@ export class EpbxProvider implements VoiceProvider {
       voice_name: speakVoiceId,
       neural_voice: speakVoiceId,
       ai_voice: speakVoiceId,
-      voice_label: speakVoiceId.replace(/^bn-IN-Chirp3-HD-/i, ''),
-      tts_voice_label: speakVoiceId.replace(/^bn-IN-Chirp3-HD-/i, ''),
+      voice_label: speakVoiceId.replace(/^bn-IN-/i, ''),
+      tts_voice_label: speakVoiceId.replace(/^bn-IN-/i, ''),
       voice_gender: gender,
       tts_gender: gender,
       gender,
@@ -337,7 +340,6 @@ export class EpbxProvider implements VoiceProvider {
       speech_rate: String(speechRate),
       rate: String(speechRate),
 
-      // CRITICAL: skip_tts=true made portal ignore voice fields → Active Profile female
       skip_tts: false,
       disable_tts: false,
       tts_enabled: true,
