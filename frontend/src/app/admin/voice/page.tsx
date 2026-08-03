@@ -115,8 +115,8 @@ export default function AdminVoiceStudioPage() {
           </div>
           <h2 className="text-2xl font-bold text-slate-900">Voice Studio</h2>
           <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            Live Engine Console — Maskara synthesize করে; ePBX শুধু নম্বর দিয়ে কল করে।
-            Portal-এর eAI / WaveNet voice ব্যবহার হয় না।
+            Live Engine Console — Maskara Chirp3 synth + ePBX portal Google Chirp3
+            TTS (merchant voice)। WaveNet/eAI Active Profile ignore করার চেষ্টা হয়।
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

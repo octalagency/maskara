@@ -370,9 +370,8 @@ function SettingsPageInner() {
             <div>
               <h3 className="section-title">AI ভয়েস বাছুন</h3>
               <p className="page-subtitle">
-                প্রিভিউ Maskara Chirp3 (Aoede)। লাইভ কলে শুনতে ePBX Developer-এ Active
-                Voice Model = <strong>Fixed Audio Upload</strong> সেট করুন — WaveNet
-                থাকলে পুরনো ভয়েসই বাজবে। Chirp3 ড্রপডাউনে নেই।
+                প্রিভিউ ও লাইভ কল — একই Chirp3 ভয়েস। সেভ করলে পরের কল থেকে নতুন ভয়েস
+                বাজবে (পুরুষ/মহিলা আলাদা শোনা যাবে)।
               </p>
             </div>
 
