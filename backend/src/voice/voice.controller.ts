@@ -122,19 +122,20 @@ export class VoiceController {
     });
     const storeName =
       call?.merchant.storeNameBangla || call?.merchant.name || 'স্টোর';
-    res.send(
-      this.voiceService.generateTwiml(callId, {
-        storeName,
-        customerName: call?.order?.customerName,
-        orderNumber: call?.order?.orderNumber,
-        totalAmount:
-          call?.order?.totalAmount != null
-            ? Number(call.order.totalAmount)
-            : undefined,
-        customGreeting: call?.merchant.customGreeting,
-        productNames: extractProductNamesFromItems(call?.order?.items),
-      }),
-    );
+    const twiml = await this.voiceService.generateTwiml(callId, {
+      storeName,
+      customerName: call?.order?.customerName,
+      orderNumber: call?.order?.orderNumber,
+      totalAmount:
+        call?.order?.totalAmount != null
+          ? Number(call.order.totalAmount)
+          : undefined,
+      customGreeting: call?.merchant.customGreeting,
+      productNames: extractProductNamesFromItems(call?.order?.items),
+      voiceId: call?.merchant.voiceId,
+      speechRate: call?.merchant.speechRate,
+    });
+    res.send(twiml);
   }
 
   @Post('gather/:callId')
@@ -271,6 +272,34 @@ export class VoiceController {
   @UseGuards(VoiceWebhookGuard)
   @ApiExcludeEndpoint()
   async ippbxStatus(
+    @Body() body: Record<string, unknown>,
+    @Query() query: Record<string, unknown>,
+  ) {
+    return this.webhooks.handleEpbxPayload({ ...query, ...body });
+  }
+
+  // --- Maskara Own Dialer (FreeSWITCH) webhooks ---
+  @Post('webhook/maskara-dialer/dtmf')
+  @UseGuards(VoiceWebhookGuard)
+  @ApiExcludeEndpoint()
+  async maskaraDialerDtmf(
+    @Body() body: Record<string, unknown>,
+    @Query() query: Record<string, unknown>,
+  ) {
+    return this.webhooks.handleEpbxPayload({ ...query, ...body });
+  }
+
+  @Get('webhook/maskara-dialer/dtmf')
+  @UseGuards(VoiceWebhookGuard)
+  @ApiExcludeEndpoint()
+  async maskaraDialerDtmfGet(@Query() query: Record<string, unknown>) {
+    return this.webhooks.handleEpbxPayload(query);
+  }
+
+  @Post('webhook/maskara-dialer')
+  @UseGuards(VoiceWebhookGuard)
+  @ApiExcludeEndpoint()
+  async maskaraDialerWebhook(
     @Body() body: Record<string, unknown>,
     @Query() query: Record<string, unknown>,
   ) {

@@ -11,6 +11,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { TwilioProvider } from './providers/twilio.provider';
 import { EpbxProvider } from './providers/epbx.provider';
 import { IppbxProvider } from './providers/ippbx.provider';
+import { MaskaraDialerProvider } from './providers/maskara-dialer.provider';
 import { VoiceProviderFactory } from './providers/voice-provider.factory';
 import { VoiceSettingsService } from './voice-settings.service';
 import { TtsPreviewService } from './tts-preview.service';
@@ -34,6 +35,7 @@ import { GoogleTtsService } from './google-tts.service';
     TwilioProvider,
     EpbxProvider,
     IppbxProvider,
+    MaskaraDialerProvider,
     VoiceProviderFactory,
     TtsPreviewService,
   ],

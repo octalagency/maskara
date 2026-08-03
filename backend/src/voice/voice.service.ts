@@ -5,8 +5,10 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { VoiceProviderFactory } from './providers/voice-provider.factory';
 import {
   DEFAULT_MERCHANT_VOICE_ID,
+  DEFAULT_SPEECH_RATE,
   buildOrderVerificationPrompt,
   extractProductNamesFromItems,
+  resolveLiveEpbxVoice,
   shouldMigrateMerchantVoiceId,
 } from './providers/bangla-prompt';
 import { S3StorageService } from '../common/services/s3-storage.service';
@@ -22,6 +24,7 @@ import {
 } from '../common/utils/dial-merchant.util';
 import { VoiceSettingsService } from './voice-settings.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { GoogleTtsService } from './google-tts.service';
 
 @Injectable()
 export class VoiceService {
@@ -36,6 +39,7 @@ export class VoiceService {
     private s3: S3StorageService,
     private voiceSettings: VoiceSettingsService,
     private subscriptions: SubscriptionsService,
+    private googleTts: GoogleTtsService,
   ) {
     this.apiUrl =
       this.config.get('PUBLIC_API_URL') ||
@@ -47,9 +51,17 @@ export class VoiceService {
     return {
       provider: name,
       epbx: this.providers.getActiveProvider()?.name === 'epbx',
+      maskaraDialer:
+        this.providers.getActiveProvider()?.name === 'maskara_dialer',
       configured: name !== 'simulate',
       estimatedRateBdt:
-        name === 'epbx' || name === 'ippbx' ? '0.35-0.45/min' : name === 'twilio' ? '6-7/min' : '0',
+        name === 'maskara_dialer'
+          ? 'sip-trunk'
+          : name === 'epbx' || name === 'ippbx'
+            ? '0.35-0.45/min'
+            : name === 'twilio'
+              ? '6-7/min'
+              : '0',
     };
   }
 
@@ -280,7 +292,7 @@ export class VoiceService {
     });
   }
 
-  generateTwiml(
+  async generateTwiml(
     callId: string,
     params: {
       storeName: string;
@@ -289,8 +301,10 @@ export class VoiceService {
       totalAmount?: number;
       customGreeting?: string | null;
       productNames?: string[];
+      voiceId?: string | null;
+      speechRate?: number | null;
     },
-  ): string {
+  ): Promise<string> {
     const greeting = buildOrderVerificationPrompt({
       storeName: params.storeName,
       customerName: params.customerName,
@@ -301,10 +315,37 @@ export class VoiceService {
     });
     const gatherUrl = `${this.apiUrl}/voice/gather/${callId}`;
 
+    // Prefer Maskara Chirp3 MP3 (Leda/Algieba) over Polly
+    let playUrl: string | null = null;
+    try {
+      if (this.googleTts.isConfigured()) {
+        const voice = resolveLiveEpbxVoice(params.voiceId, true);
+        const synth = await this.googleTts.synthesize(
+          greeting,
+          voice.voiceId,
+          params.speechRate ?? DEFAULT_SPEECH_RATE,
+        );
+        const hosted = await this.googleTts.hostAudio(
+          synth.buffer,
+          synth.mimeType,
+          `twilio-${callId}`,
+        );
+        playUrl = hosted.url;
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Twilio Chirp3 synth failed, Polly fallback: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+
+    const promptXml = playUrl
+      ? `<Play>${this.escapeXml(playUrl)}</Play>`
+      : `<Say voice="Polly.Aditi" language="bn-IN">${this.escapeXml(greeting)}</Say>`;
+
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Gather numDigits="1" action="${gatherUrl}" method="POST" timeout="10" language="bn-BD">
-    <Say voice="Polly.Aditi" language="bn-IN">${this.escapeXml(greeting)}</Say>
+    ${promptXml}
   </Gather>
   <Say voice="Polly.Aditi" language="bn-IN">কোনো উত্তর পাওয়া যায়নি। আবার চেষ্টা করুন।</Say>
   <Redirect>${this.apiUrl}/voice/twiml/${callId}</Redirect>
@@ -518,8 +559,7 @@ export class VoiceService {
   }
 
   /**
-   * Admin test dial — uses real ePBX + portal Chirp3 (same path as live orders).
-   * Pass voiceId (e.g. google:bn-IN-Chirp3-HD-Aoede) to hear that voice on the phone.
+   * Admin test dial — active provider (maskara_dialer preferred for Leda Chirp3).
    */
   async initiateTestCall(
     phone: string,
@@ -532,13 +572,20 @@ export class VoiceService {
     }
 
     const provider = this.providers.getActiveProvider();
-    if (!provider || provider.name !== 'epbx') {
-      throw new Error('ePBX not configured as active voice provider');
+    if (
+      !provider ||
+      (provider.name !== 'epbx' &&
+        provider.name !== 'maskara_dialer' &&
+        provider.name !== 'twilio')
+    ) {
+      throw new Error(
+        'No active voice provider — configure Maskara dialer (SIP) or ePBX',
+      );
     }
 
     const callId = `test_${Date.now()}`;
     const resolvedVoice =
-      voiceId?.trim() || 'google:bn-IN-Chirp3-HD-Aoede';
+      voiceId?.trim() || 'google:bn-IN-Chirp3-HD-Leda';
     const result = await provider.initiateCall({
       callId,
       to: phone.trim(),
@@ -555,15 +602,16 @@ export class VoiceService {
     });
 
     this.logger.log(
-      `Admin test call queued callId=${callId} to=${phone} voiceId=${resolvedVoice} providerId=${result.providerCallId}`,
+      `Admin test call queued callId=${callId} provider=${provider.name} to=${phone} voiceId=${resolvedVoice} providerId=${result.providerCallId}`,
     );
 
     return {
       success: true,
       callId,
       providerCallId: result.providerCallId,
+      provider: provider.name,
       voiceId: resolvedVoice,
-      message: `Test call queued to ${phone} (${resolvedVoice})`,
+      message: `Test call queued to ${phone} via ${provider.name} (${resolvedVoice})`,
       details: result,
     };
   }
@@ -592,12 +640,15 @@ export class VoiceService {
         null,
       ivrId: null,
       googleTts: this.voiceSettings.isGoogleTtsConfigured(),
+      maskaraDialer: this.voiceSettings.isMaskaraDialerConfigured(),
+      activeProvider: this.providers.getProviderName(),
       webhooks: {
         general: `${publicApi}/voice/webhook/epbx`,
         dtmf: `${publicApi}/voice/webhook/epbx/dtmf`,
         status: `${publicApi}/voice/webhook/epbx/status`,
+        maskaraDialerDtmf: `${publicApi}/voice/webhook/maskara-dialer/dtmf`,
       },
-      note: 'IVR not used on Maskara dials — Chirp3 audio only',
+      note: 'Prefer VOICE_PROVIDER=maskara_dialer for Chirp3 Leda over SIP trunk',
     };
   }
 }

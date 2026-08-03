@@ -30,6 +30,20 @@ export interface VoiceProviderConfig {
     enabled?: boolean;
     apiKey?: string;
   };
+  /** Maskara Own Dialer (FreeSWITCH + SIP trunk) */
+  maskaraDialer?: {
+    enabled?: boolean;
+    sipHost?: string;
+    sipUser?: string;
+    sipPassword?: string;
+    sipProxy?: string;
+    sipRealm?: string;
+    sipCallerId?: string;
+    sipGatewayName?: string;
+    eslHost?: string;
+    eslPort?: string;
+    eslPassword?: string;
+  };
 }
 
 @Injectable()
@@ -79,6 +93,16 @@ export class VoiceSettingsService implements OnModuleInit {
       TWILIO_PHONE_NUMBER: this.dbConfig.twilio?.phoneNumber,
       GOOGLE_TTS_API_KEY: this.dbConfig.googleTts?.apiKey,
       GOOGLE_CLOUD_TTS_API_KEY: this.dbConfig.googleTts?.apiKey,
+      SIP_TRUNK_HOST: this.dbConfig.maskaraDialer?.sipHost,
+      SIP_TRUNK_USER: this.dbConfig.maskaraDialer?.sipUser,
+      SIP_TRUNK_PASSWORD: this.dbConfig.maskaraDialer?.sipPassword,
+      SIP_TRUNK_PROXY: this.dbConfig.maskaraDialer?.sipProxy,
+      SIP_TRUNK_REALM: this.dbConfig.maskaraDialer?.sipRealm,
+      SIP_TRUNK_CALLER_ID: this.dbConfig.maskaraDialer?.sipCallerId,
+      SIP_GATEWAY_NAME: this.dbConfig.maskaraDialer?.sipGatewayName,
+      FREESWITCH_ESL_HOST: this.dbConfig.maskaraDialer?.eslHost,
+      FREESWITCH_ESL_PORT: this.dbConfig.maskaraDialer?.eslPort,
+      FREESWITCH_ESL_PASSWORD: this.dbConfig.maskaraDialer?.eslPassword,
     };
     const fromDb = map[key];
     if (fromDb) return fromDb;
@@ -105,6 +129,12 @@ export class VoiceSettingsService implements OnModuleInit {
         this.get('GOOGLE_TTS_API_KEY') || this.get('GOOGLE_CLOUD_TTS_API_KEY'),
       )
     );
+  }
+
+  isMaskaraDialerConfigured(): boolean {
+    if (this.dbConfig.maskaraDialer?.enabled === false) return false;
+    // ESL defaults to docker service "freeswitch"; trunk host+user required
+    return Boolean(this.get('SIP_TRUNK_HOST') && this.get('SIP_TRUNK_USER'));
   }
 
   maskSecret(value?: string): string {
@@ -157,11 +187,32 @@ export class VoiceSettingsService implements OnModuleInit {
         apiKey: googleKey ? this.maskSecret(googleKey) : '',
         apiKeySet: Boolean(googleKey),
       },
+      maskaraDialer: {
+        enabled: this.dbConfig.maskaraDialer?.enabled ?? true,
+        configured: this.isMaskaraDialerConfigured(),
+        sipHost: this.get('SIP_TRUNK_HOST') || '',
+        sipUser: this.get('SIP_TRUNK_USER') || '',
+        sipPassword: this.get('SIP_TRUNK_PASSWORD')
+          ? this.maskSecret(this.get('SIP_TRUNK_PASSWORD'))
+          : '',
+        sipPasswordSet: Boolean(this.get('SIP_TRUNK_PASSWORD')),
+        sipProxy: this.get('SIP_TRUNK_PROXY') || '',
+        sipRealm: this.get('SIP_TRUNK_REALM') || '',
+        sipCallerId: this.get('SIP_TRUNK_CALLER_ID') || '',
+        sipGatewayName: this.get('SIP_GATEWAY_NAME') || 'maskara_trunk',
+        eslHost: this.get('FREESWITCH_ESL_HOST') || 'freeswitch',
+        eslPort: this.get('FREESWITCH_ESL_PORT') || '8021',
+        eslPassword: this.get('FREESWITCH_ESL_PASSWORD')
+          ? this.maskSecret(this.get('FREESWITCH_ESL_PASSWORD'))
+          : '',
+        eslPasswordSet: Boolean(this.get('FREESWITCH_ESL_PASSWORD')),
+      },
       status: {
         epbx: this.isEpbxConfigured(),
         ippbx: this.isIppbxConfigured(),
         twilio: this.isTwilioConfigured(),
         googleTts: this.isGoogleTtsConfigured(),
+        maskaraDialer: this.isMaskaraDialerConfigured(),
       },
     };
   }
@@ -177,6 +228,7 @@ export class VoiceSettingsService implements OnModuleInit {
       ippbx: { ...current.ippbx, ...updates.ippbx },
       twilio: { ...current.twilio, ...updates.twilio },
       googleTts: { ...current.googleTts, ...updates.googleTts },
+      maskaraDialer: { ...current.maskaraDialer, ...updates.maskaraDialer },
     };
 
     // Keep existing secrets if masked/empty submitted
@@ -198,6 +250,12 @@ export class VoiceSettingsService implements OnModuleInit {
     // Avoid wiping saved key when client omits apiKey (undefined)
     if (updates.googleTts && updates.googleTts.apiKey === undefined) {
       merged.googleTts!.apiKey = current.googleTts?.apiKey;
+    }
+    if (updates.maskaraDialer?.sipPassword?.startsWith('••••')) {
+      merged.maskaraDialer!.sipPassword = current.maskaraDialer?.sipPassword;
+    }
+    if (updates.maskaraDialer?.eslPassword?.startsWith('••••')) {
+      merged.maskaraDialer!.eslPassword = current.maskaraDialer?.eslPassword;
     }
 
     await this.prisma.systemSetting.upsert({

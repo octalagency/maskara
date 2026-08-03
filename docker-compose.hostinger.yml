@@ -50,11 +50,12 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-maskara_local_jwt_secret_minimum_32_characters_long}
       JWT_EXPIRES_IN: 7d
-      VOICE_PROVIDER: ${VOICE_PROVIDER:-epbx}
+      VOICE_PROVIDER: ${VOICE_PROVIDER:-auto}
       EPBX_API_URL: ${EPBX_API_URL:-https://maskara.epbx.bd/api/v1}
       EPBX_API_KEY: ${EPBX_API_KEY:-}
       EPBX_CUSTOMER_ID: ${EPBX_CUSTOMER_ID:-}
       EPBX_IVR_ID: ${EPBX_IVR_ID:-}
+      EPBX_CALLER_ID: ${EPBX_CALLER_ID:-}
       GOOGLE_TTS_API_KEY: ${GOOGLE_TTS_API_KEY:-}
       APP_URL: ${APP_URL:-https://app.maskara.bd}
       API_URL: ${API_URL:-https://api.maskara.bd}
@@ -64,6 +65,17 @@ services:
       WOOCOMMERCE_WEBHOOK_SECRET: ${WOOCOMMERCE_WEBHOOK_SECRET:-maskara_local_woocommerce_webhook_secret_ok}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@maskara.bd}
       ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-Admin@123}
+      # Maskara Own Dialer (FreeSWITCH + SIP)
+      SIP_TRUNK_HOST: ${SIP_TRUNK_HOST:-}
+      SIP_TRUNK_USER: ${SIP_TRUNK_USER:-}
+      SIP_TRUNK_PASSWORD: ${SIP_TRUNK_PASSWORD:-}
+      SIP_TRUNK_PROXY: ${SIP_TRUNK_PROXY:-}
+      SIP_TRUNK_REALM: ${SIP_TRUNK_REALM:-}
+      SIP_TRUNK_CALLER_ID: ${SIP_TRUNK_CALLER_ID:-${EPBX_CALLER_ID:-09639444146}}
+      SIP_GATEWAY_NAME: ${SIP_GATEWAY_NAME:-maskara_trunk}
+      FREESWITCH_ESL_HOST: ${FREESWITCH_ESL_HOST:-freeswitch}
+      FREESWITCH_ESL_PORT: ${FREESWITCH_ESL_PORT:-8021}
+      FREESWITCH_ESL_PASSWORD: ${FREESWITCH_ESL_PASSWORD:-ClueCon}
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:4000/health/live >/dev/null || exit 1']
       interval: 15s
@@ -113,9 +125,10 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-maskara}:${POSTGRES_PASSWORD:-maskara_local_postgres_password}@postgres:5432/${POSTGRES_DB:-maskara}
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-maskara_local_jwt_secret_minimum_32_characters_long}
-      VOICE_PROVIDER: ${VOICE_PROVIDER:-epbx}
+      VOICE_PROVIDER: ${VOICE_PROVIDER:-auto}
       EPBX_API_URL: ${EPBX_API_URL:-https://maskara.epbx.bd/api/v1}
       EPBX_API_KEY: ${EPBX_API_KEY:-}
+      EPBX_CALLER_ID: ${EPBX_CALLER_ID:-}
       GOOGLE_TTS_API_KEY: ${GOOGLE_TTS_API_KEY:-}
       API_URL: ${API_URL:-https://api.maskara.bd}
       PUBLIC_API_URL: ${PUBLIC_API_URL:-https://api.maskara.bd}
@@ -123,6 +136,50 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-https://app.maskara.bd}
       VOICE_WEBHOOK_SECRET: ${VOICE_WEBHOOK_SECRET:-maskara_local_voice_webhook_secret_32chars}
       WOOCOMMERCE_WEBHOOK_SECRET: ${WOOCOMMERCE_WEBHOOK_SECRET:-maskara_local_woocommerce_webhook_secret_ok}
+      SIP_TRUNK_HOST: ${SIP_TRUNK_HOST:-}
+      SIP_TRUNK_USER: ${SIP_TRUNK_USER:-}
+      SIP_TRUNK_PASSWORD: ${SIP_TRUNK_PASSWORD:-}
+      SIP_TRUNK_PROXY: ${SIP_TRUNK_PROXY:-}
+      SIP_TRUNK_REALM: ${SIP_TRUNK_REALM:-}
+      SIP_TRUNK_CALLER_ID: ${SIP_TRUNK_CALLER_ID:-${EPBX_CALLER_ID:-09639444146}}
+      SIP_GATEWAY_NAME: ${SIP_GATEWAY_NAME:-maskara_trunk}
+      FREESWITCH_ESL_HOST: ${FREESWITCH_ESL_HOST:-freeswitch}
+      FREESWITCH_ESL_PORT: ${FREESWITCH_ESL_PORT:-8021}
+      FREESWITCH_ESL_PASSWORD: ${FREESWITCH_ESL_PASSWORD:-ClueCon}
+
+  freeswitch:
+    build:
+      context: ./docker/freeswitch
+      dockerfile: Dockerfile
+    image: maskara-freeswitch:local
+    pull_policy: never
+    container_name: maskara-freeswitch
+    restart: unless-stopped
+    environment:
+      SIP_TRUNK_HOST: ${SIP_TRUNK_HOST:-}
+      SIP_TRUNK_USER: ${SIP_TRUNK_USER:-}
+      SIP_TRUNK_PASSWORD: ${SIP_TRUNK_PASSWORD:-}
+      SIP_TRUNK_PROXY: ${SIP_TRUNK_PROXY:-}
+      SIP_TRUNK_REALM: ${SIP_TRUNK_REALM:-}
+      SIP_TRUNK_CALLER_ID: ${SIP_TRUNK_CALLER_ID:-${EPBX_CALLER_ID:-09639444146}}
+      SIP_TRUNK_REGISTER: ${SIP_TRUNK_REGISTER:-true}
+      SIP_GATEWAY_NAME: ${SIP_GATEWAY_NAME:-maskara_trunk}
+      FREESWITCH_ESL_PASSWORD: ${FREESWITCH_ESL_PASSWORD:-ClueCon}
+    ports:
+      - '5060:5060/udp'
+      - '5060:5060/tcp'
+      - '5080:5080/udp'
+      - '5080:5080/tcp'
+      - '8021:8021'
+      - '16384-16484:16384-16484/udp'
+    volumes:
+      - freeswitch_audio:/var/lib/freeswitch/maskara-audio
+    healthcheck:
+      test: ['CMD-SHELL', 'fs_cli -x status >/dev/null 2>&1 || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   nginx:
     image: nginx:alpine
@@ -143,3 +200,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  freeswitch_audio:

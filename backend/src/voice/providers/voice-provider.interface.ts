@@ -1,4 +1,9 @@
-export type VoiceProviderName = 'twilio' | 'epbx' | 'ippbx' | 'simulate';
+export type VoiceProviderName =
+  | 'twilio'
+  | 'epbx'
+  | 'ippbx'
+  | 'maskara_dialer'
+  | 'simulate';
 
 export interface InitiateCallParams {
   callId: string;

@@ -23,6 +23,22 @@ interface IppbxForm {
   apiSecretSet: boolean;
 }
 
+interface DialerForm {
+  enabled: boolean;
+  sipHost: string;
+  sipUser: string;
+  sipPassword: string;
+  sipPasswordSet: boolean;
+  sipProxy: string;
+  sipRealm: string;
+  sipCallerId: string;
+  sipGatewayName: string;
+  eslHost: string;
+  eslPort: string;
+  eslPassword: string;
+  eslPasswordSet: boolean;
+}
+
 interface VoiceForm {
   provider: string;
   publicApiUrl: string;
@@ -30,10 +46,27 @@ interface VoiceForm {
   googleTtsApiKeySet: boolean;
   epbx: EpbxForm;
   ippbx: IppbxForm;
+  dialer: DialerForm;
 }
 
+const DEFAULT_DIALER: DialerForm = {
+  enabled: true,
+  sipHost: '',
+  sipUser: '',
+  sipPassword: '',
+  sipPasswordSet: false,
+  sipProxy: '',
+  sipRealm: '',
+  sipCallerId: '09639444146',
+  sipGatewayName: 'maskara_trunk',
+  eslHost: 'freeswitch',
+  eslPort: '8021',
+  eslPassword: '',
+  eslPasswordSet: false,
+};
+
 const DEFAULT_VOICE: VoiceForm = {
-  provider: 'epbx',
+  provider: 'auto',
   publicApiUrl: 'http://localhost:4000',
   googleTtsApiKey: '',
   googleTtsApiKeySet: false,
@@ -53,6 +86,7 @@ const DEFAULT_VOICE: VoiceForm = {
     apiSecret: '',
     apiSecretSet: false,
   },
+  dialer: DEFAULT_DIALER,
 };
 
 export default function AdminConfigPage() {
@@ -64,7 +98,7 @@ export default function AdminConfigPage() {
   const [probe, setProbe] = useState<EpbxProbe | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [testPhone, setTestPhone] = useState('');
-  const [testVoiceId, setTestVoiceId] = useState('google:bn-IN-Chirp3-HD-Aoede');
+  const [testVoiceId, setTestVoiceId] = useState('google:bn-IN-Chirp3-HD-Leda');
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
 
@@ -72,12 +106,19 @@ export default function AdminConfigPage() {
     api.getPlatformConfig().then((c) => {
       setConfig(c);
       const v = c.voice as VoiceForm & {
-        status?: { epbx: boolean; ippbx: boolean; twilio: boolean; googleTts?: boolean };
+        status?: {
+          epbx: boolean;
+          ippbx: boolean;
+          twilio: boolean;
+          googleTts?: boolean;
+          maskaraDialer?: boolean;
+        };
         googleTts?: { apiKey?: string; apiKeySet?: boolean; configured?: boolean };
+        maskaraDialer?: Partial<DialerForm> & { configured?: boolean };
       };
       if (v) {
         setVoice({
-          provider: v.provider || 'epbx',
+          provider: v.provider || 'auto',
           publicApiUrl: v.publicApiUrl || 'http://localhost:4000',
           googleTtsApiKey: v.googleTts?.apiKey || '',
           googleTtsApiKeySet: v.googleTts?.apiKeySet ?? false,
@@ -96,6 +137,14 @@ export default function AdminConfigPage() {
             apiKeySet: v.ippbx?.apiKeySet ?? false,
             apiSecret: v.ippbx?.apiSecret || '',
             apiSecretSet: v.ippbx?.apiSecretSet ?? false,
+          },
+          dialer: {
+            ...DEFAULT_DIALER,
+            ...v.maskaraDialer,
+            sipPassword: v.maskaraDialer?.sipPassword || '',
+            sipPasswordSet: v.maskaraDialer?.sipPasswordSet ?? false,
+            eslPassword: v.maskaraDialer?.eslPassword || '',
+            eslPasswordSet: v.maskaraDialer?.eslPasswordSet ?? false,
           },
         });
       }
@@ -153,6 +202,19 @@ export default function AdminConfigPage() {
             apiKey: voice.ippbx.apiKey || undefined,
             apiSecret: voice.ippbx.apiSecret || undefined,
           },
+          maskaraDialer: {
+            enabled: voice.dialer.enabled,
+            sipHost: voice.dialer.sipHost,
+            sipUser: voice.dialer.sipUser,
+            sipPassword: voice.dialer.sipPassword || undefined,
+            sipProxy: voice.dialer.sipProxy,
+            sipRealm: voice.dialer.sipRealm,
+            sipCallerId: voice.dialer.sipCallerId,
+            sipGatewayName: voice.dialer.sipGatewayName,
+            eslHost: voice.dialer.eslHost,
+            eslPort: voice.dialer.eslPort,
+            eslPassword: voice.dialer.eslPassword || undefined,
+          },
         },
       });
       setSaved(true);
@@ -160,6 +222,7 @@ export default function AdminConfigPage() {
       const updated = await api.getPlatformConfig();
       const v = updated.voice as VoiceForm & {
         googleTts?: { apiKey?: string; apiKeySet?: boolean };
+        maskaraDialer?: Partial<DialerForm>;
       };
       if (v) setVoice((prev) => ({
         ...prev,
@@ -169,6 +232,14 @@ export default function AdminConfigPage() {
         googleTtsApiKeySet: v.googleTts?.apiKeySet ?? prev.googleTtsApiKeySet,
         epbx: { ...prev.epbx, ...v.epbx, apiKey: v.epbx?.apiKey || '' },
         ippbx: { ...prev.ippbx, ...v.ippbx, apiKey: v.ippbx?.apiKey || '', apiSecret: v.ippbx?.apiSecret || '' },
+        dialer: {
+          ...prev.dialer,
+          ...v.maskaraDialer,
+          sipPassword: v.maskaraDialer?.sipPassword || '',
+          sipPasswordSet: v.maskaraDialer?.sipPasswordSet ?? prev.dialer.sipPasswordSet,
+          eslPassword: v.maskaraDialer?.eslPassword || '',
+          eslPasswordSet: v.maskaraDialer?.eslPasswordSet ?? prev.dialer.eslPasswordSet,
+        },
       }));
       api.getVoiceProvider().then(setProviderInfo).catch(() => {});
       api.getEpbxProbe().then(setProbe).catch(() => {});
@@ -185,8 +256,21 @@ export default function AdminConfigPage() {
     );
   }
 
-  const status = (config.voice as { status?: { epbx: boolean; ippbx: boolean; twilio: boolean; googleTts?: boolean } })?.status
-    || { epbx: false, ippbx: false, twilio: false, googleTts: false };
+  const status = (config.voice as {
+    status?: {
+      epbx: boolean;
+      ippbx: boolean;
+      twilio: boolean;
+      googleTts?: boolean;
+      maskaraDialer?: boolean;
+    };
+  })?.status || {
+    epbx: false,
+    ippbx: false,
+    twilio: false,
+    googleTts: false,
+    maskaraDialer: false,
+  };
 
   const epbxInfo =
     providerInfo?.epbx && typeof providerInfo.epbx === 'object'
@@ -203,13 +287,30 @@ export default function AdminConfigPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-8">
       <div>
-        <h2 className="text-2xl font-bold text-slate-900">Voice / ePBX</h2>
+        <h2 className="text-2xl font-bold text-slate-900">Voice / Maskara Dialer</h2>
         <p className="text-sm text-slate-500">
-          লাইভ স্পিকার = ePBX Active Voice Profile (API voice fields প্রায়ই
-          ইগনোর হয়)। Developer-এ Google + Algenib Save করুন ·{' '}
+          ManyDial-স্টাইল: Maskara Chirp3 (Leda) MP3 + ০৯৬ SIP trunk। ePBX শুধু
+          legacy fallback ·{' '}
           <a href="/admin/voice" className="text-brand-600 hover:underline">
             Voice Studio
           </a>
+          {' · '}
+          <a href="/docs/MASKARA-DIALER.md" className="text-brand-600 hover:underline">
+            Dialer docs
+          </a>
+        </p>
+      </div>
+
+      <div className="card border-emerald-200 bg-emerald-50/40">
+        <h3 className="font-semibold text-emerald-950">Maskara Own Dialer (recommended)</h3>
+        <p className="mt-1 text-sm text-slate-600">
+          নম্বর: ePBX Extensions / AmberIT / BTCL / BDCOM থেকে ০৯৬ SIP credentials।
+          ভয়েস: Settings-এ Leda/Algieba — portal WaveNet ইগনোর।
+        </p>
+        <p className="mt-2 text-xs text-slate-500">
+          Active: {probe?.activeProvider || providerInfo?.provider || '—'} · Dialer{' '}
+          {status.maskaraDialer ? 'ready' : 'needs SIP'} · Webhook{' '}
+          {probe?.webhooks?.maskaraDialerDtmf || ''}
         </p>
       </div>
 
@@ -313,6 +414,9 @@ export default function AdminConfigPage() {
           <div className="rounded-lg border p-3">
             <p className="text-sm text-slate-500">Providers</p>
             <div className="mt-1 flex flex-wrap gap-2 text-xs">
+              <span className={status.maskaraDialer ? 'badge-success' : 'badge-warning'}>
+                Dialer {status.maskaraDialer ? '✓' : '—'}
+              </span>
               <span className={status.epbx ? 'badge-success' : 'badge-warning'}>ePBX {status.epbx ? '✓' : '—'}</span>
               <span className={status.ippbx ? 'badge-success' : 'badge-warning'}>ippbx {status.ippbx ? '✓' : '—'}</span>
               <span className={status.twilio ? 'badge-success' : 'badge-warning'}>Twilio {status.twilio ? '✓' : '—'}</span>
@@ -340,8 +444,9 @@ export default function AdminConfigPage() {
               value={voice.provider}
               onChange={(e) => setVoice({ ...voice, provider: e.target.value })}
             >
-              <option value="auto">Auto (ePBX → ippbx → Twilio)</option>
-              <option value="epbx">ePBX only</option>
+              <option value="auto">Auto (Dialer → ePBX → ippbx → Twilio)</option>
+              <option value="maskara_dialer">Maskara Dialer (Chirp3 + SIP)</option>
+              <option value="epbx">ePBX only (legacy)</option>
               <option value="ippbx">ippbx only</option>
               <option value="twilio">Twilio only</option>
               <option value="simulate">Simulate (test)</option>
@@ -385,12 +490,100 @@ export default function AdminConfigPage() {
           </div>
         </div>
 
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="font-semibold text-slate-900">Maskara Own Dialer — SIP trunk (096)</h4>
+              <p className="text-xs text-slate-500">
+                FreeSWITCH plays Chirp3 Leda/Algieba. Get SIP from ePBX Extensions or IPTSP.
+              </p>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={voice.dialer.enabled}
+                onChange={(e) =>
+                  setVoice({ ...voice, dialer: { ...voice.dialer, enabled: e.target.checked } })
+                }
+              />
+              Enabled
+            </label>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-slate-700">SIP Host</label>
+              <input
+                className="input mt-1 font-mono text-sm"
+                value={voice.dialer.sipHost}
+                onChange={(e) =>
+                  setVoice({ ...voice, dialer: { ...voice.dialer, sipHost: e.target.value } })
+                }
+                placeholder="sip.provider.example"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700">SIP User</label>
+              <input
+                className="input mt-1 font-mono text-sm"
+                value={voice.dialer.sipUser}
+                onChange={(e) =>
+                  setVoice({ ...voice, dialer: { ...voice.dialer, sipUser: e.target.value } })
+                }
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700">
+                SIP Password {voice.dialer.sipPasswordSet ? '(set)' : ''}
+              </label>
+              <input
+                className="input mt-1 font-mono text-sm"
+                type="password"
+                value={voice.dialer.sipPassword}
+                onChange={(e) =>
+                  setVoice({ ...voice, dialer: { ...voice.dialer, sipPassword: e.target.value } })
+                }
+                placeholder={voice.dialer.sipPasswordSet ? '••••••••' : ''}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700">Caller ID (096…)</label>
+              <input
+                className="input mt-1 font-mono text-sm"
+                value={voice.dialer.sipCallerId}
+                onChange={(e) =>
+                  setVoice({ ...voice, dialer: { ...voice.dialer, sipCallerId: e.target.value } })
+                }
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700">SIP Proxy (optional)</label>
+              <input
+                className="input mt-1 font-mono text-sm"
+                value={voice.dialer.sipProxy}
+                onChange={(e) =>
+                  setVoice({ ...voice, dialer: { ...voice.dialer, sipProxy: e.target.value } })
+                }
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700">ESL Host</label>
+              <input
+                className="input mt-1 font-mono text-sm"
+                value={voice.dialer.eslHost}
+                onChange={(e) =>
+                  setVoice({ ...voice, dialer: { ...voice.dialer, eslHost: e.target.value } })
+                }
+              />
+            </div>
+          </div>
+        </div>
+
         <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4 space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h4 className="font-semibold text-slate-900">Telephony (dial only) — ePBX</h4>
+              <h4 className="font-semibold text-slate-900">Legacy telephony — ePBX</h4>
               <p className="text-xs text-slate-500">
-                শুধু নম্বর দিয়ে originate + webhooks — Maskara MP3 play করে। Portal TTS / eAI voice নয়।
+                Portal TTS often ignores Maskara voice — use Own Dialer instead.
               </p>
             </div>
             <label className="flex items-center gap-2 text-sm">

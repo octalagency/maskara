@@ -1,0 +1,8 @@
+<include>
+  <!-- Maskara Own Dialer: play Chirp3 MP3 + DTMF 1/2/0 -->
+  <extension name="maskara_verify">
+    <condition field="destination_number" expression="^maskara_verify$">
+      <action application="lua" data="maskara/verify.lua"/>
+    </condition>
+  </extension>
+</include>

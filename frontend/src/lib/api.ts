@@ -1027,9 +1027,18 @@ export interface EpbxProbe {
   apiKeySet: boolean;
   customerId: string | null;
   ivrId: string | null;
-  webhooks: { general: string; dtmf: string; status: string };
-  probe: Array<{ path: string; status: number; ok: boolean; preview: string }>;
-  dashboard: { login: string; home: string; developer: string; ivr: string };
+  googleTts?: boolean;
+  maskaraDialer?: boolean;
+  activeProvider?: string;
+  webhooks: {
+    general: string;
+    dtmf: string;
+    status: string;
+    maskaraDialerDtmf?: string;
+  };
+  probe?: Array<{ path: string; status: number; ok: boolean; preview: string }>;
+  dashboard?: { login: string; home: string; developer: string; ivr: string };
+  note?: string;
 }
 
 export interface AdminCallAnalytics {
