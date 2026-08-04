@@ -57,15 +57,21 @@ export class CallsRetryScheduler {
     }
   }
 
-  /** Clear dialer RINGING that never got a hangup webhook (bgapi + SIP fail). */
+  /** Clear dialer/ePBX RINGING that never got a proper hangup status. */
   @Cron(CronExpression.EVERY_MINUTE)
   async finalizeStaleRinging() {
     const cutoff = new Date(Date.now() - STALE_RINGING_MS);
     const result = await this.prisma.call.updateMany({
       where: {
         status: 'RINGING',
-        endedAt: null,
-        createdAt: { lt: cutoff },
+        OR: [
+          { endedAt: null, createdAt: { lt: cutoff } },
+          // Bad rows: ended but still RINGING — blocks retries forever
+          { endedAt: { not: null } },
+          { errorMessage: 'epbx_instant_fail' },
+          { errorMessage: 'force_clear_for_redial' },
+          { errorMessage: 'snjra_priority_redial' },
+        ],
       },
       data: {
         status: 'NO_ANSWER',
@@ -168,16 +174,24 @@ export class CallsRetryScheduler {
       if (!lastCall) continue;
 
       const timeSinceLastCall = Date.now() - lastCall.createdAt.getTime();
+      const lastEnded = lastCall.endedAt != null;
+      const lastIsLiveRing =
+        ['RINGING', 'QUEUED', 'IN_PROGRESS'].includes(lastCall.status) &&
+        !lastEnded &&
+        timeSinceLastCall < STALE_RINGING_MS;
 
       // Do not double-dial while a live attempt is still young
-      if (
-        ['RINGING', 'QUEUED', 'IN_PROGRESS'].includes(lastCall.status) &&
-        timeSinceLastCall < STALE_RINGING_MS
-      ) {
+      if (lastIsLiveRing) {
         continue;
       }
 
-      const retryable = RETRYABLE_CALL_STATUSES.includes(lastCall.status);
+      const retryable =
+        RETRYABLE_CALL_STATUSES.includes(lastCall.status) ||
+        // Stuck RINGING with endedAt / tech-fail must be redialable
+        (lastCall.status === 'RINGING' &&
+          (lastEnded ||
+            timeSinceLastCall >= STALE_RINGING_MS ||
+            Boolean(lastCall.errorMessage)));
       if (!retryable) continue;
 
       const dueBySchedule =
@@ -191,8 +205,8 @@ export class CallsRetryScheduler {
           order.nextCallAt.getTime() <= now.getTime() ||
           isCallWindowExempt(order.callAttempts));
 
-      // Unanswered / failed → catch-up every ~2.5 min so pending backlog clears today
-      const catchUpStatuses = ['NO_ANSWER', 'BUSY', 'FAILED', 'QUEUED'];
+      // Unanswered / failed / stuck ringing → catch-up every ~2.5 min
+      const catchUpStatuses = ['NO_ANSWER', 'BUSY', 'FAILED', 'QUEUED', 'RINGING'];
       const spacingMs = catchUpStatuses.includes(lastCall.status)
         ? CATCH_UP_RETRY_MS
         : minSpacingMs;
