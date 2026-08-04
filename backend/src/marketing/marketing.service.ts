@@ -12,6 +12,7 @@ export type MarketingPixel = {
 };
 
 export type MarketingSettings = {
+  brandName: string;
   storePublicUrl: string;
   sitemapUrl: string;
   productFeedUrl: string;
@@ -19,10 +20,14 @@ export type MarketingSettings = {
   eventsManagerUrl: string;
 };
 
-type StoredCreds = {
+type StoredValue = {
   storePublicUrl?: string;
   pixels?: MarketingPixel[];
 };
+
+const SETTING_KEY = 'platform_marketing';
+const DEFAULT_BRAND = 'Maskara';
+const DEFAULT_PUBLIC_URL = 'https://maskara.bd';
 
 @Injectable()
 export class MarketingService {
@@ -43,84 +48,49 @@ export class MarketingService {
     };
   }
 
-  private async resolveDefaultStoreUrl(merchantId: string): Promise<string> {
-    const merchant = await this.prisma.merchant.findUnique({
-      where: { id: merchantId },
-      select: { website: true },
-    });
-    if (merchant?.website) return this.normalizeBase(merchant.website);
-
-    const integrations = await this.prisma.integration.findMany({
-      where: { merchantId, isActive: true },
-      orderBy: { createdAt: 'desc' },
-    });
-    for (const i of integrations) {
-      const creds = (i.credentials || {}) as Record<string, string>;
-      const url = creds.storeUrl || creds.callbackUrl || '';
-      if (creds.provider === 'shopin' && creds.storeUrl) {
-        return this.normalizeBase(creds.storeUrl);
-      }
-      if (i.type === 'WOOCOMMERCE' && creds.storeUrl) {
-        return this.normalizeBase(creds.storeUrl);
-      }
-      // ShopIn storefront often in credentials.storeUrl / shop domain
-      if (url && !url.includes('/webhooks/')) {
-        try {
-          return this.normalizeBase(new URL(url).origin);
-        } catch {
-          /* ignore */
-        }
-      }
-    }
-    return '';
-  }
-
-  private async getFacebookRow(merchantId: string) {
-    return this.prisma.integration.findFirst({
-      where: { merchantId, type: 'FACEBOOK' },
-      orderBy: { createdAt: 'desc' },
+  private normalizePixels(raw: unknown): MarketingPixel[] {
+    if (!Array.isArray(raw)) return [];
+    return raw.map((p) => {
+      const row = (p || {}) as MarketingPixel;
+      return {
+        id: row.id || randomUUID(),
+        label: String(row.label || row.pixelId || ''),
+        pixelId: String(row.pixelId || ''),
+        testEventCode: String(row.testEventCode || ''),
+        accessToken: String(row.accessToken || ''),
+      };
     });
   }
 
-  async getSettings(merchantId: string): Promise<MarketingSettings> {
-    const row = await this.getFacebookRow(merchantId);
-    const creds = (row?.credentials || {}) as StoredCreds;
+  async getPlatformSettings(): Promise<MarketingSettings> {
+    const row = await this.prisma.systemSetting.findUnique({
+      where: { key: SETTING_KEY },
+    });
+    const stored = (row?.value || {}) as StoredValue;
     const storePublicUrl =
-      this.normalizeBase(creds.storePublicUrl || '') ||
-      (await this.resolveDefaultStoreUrl(merchantId));
+      this.normalizeBase(stored.storePublicUrl || '') || DEFAULT_PUBLIC_URL;
     const urls = this.buildUrls(storePublicUrl);
-    const pixels = Array.isArray(creds.pixels)
-      ? creds.pixels.map((p) => ({
-          id: p.id || randomUUID(),
-          label: String(p.label || p.pixelId || ''),
-          pixelId: String(p.pixelId || ''),
-          testEventCode: String(p.testEventCode || ''),
-          accessToken: String(p.accessToken || ''),
-        }))
-      : [];
 
     return {
+      brandName: DEFAULT_BRAND,
       storePublicUrl,
       ...urls,
-      pixels,
+      pixels: this.normalizePixels(stored.pixels),
       eventsManagerUrl: 'https://business.facebook.com/events_manager2',
     };
   }
 
-  async updateSettings(
-    merchantId: string,
-    body: {
-      storePublicUrl?: string;
-      pixels?: Array<{
-        id?: string;
-        label?: string;
-        pixelId?: string;
-        testEventCode?: string;
-        accessToken?: string;
-      }>;
-    },
-  ): Promise<MarketingSettings> {
-    const current = await this.getSettings(merchantId);
+  async updatePlatformSettings(body: {
+    storePublicUrl?: string;
+    pixels?: Array<{
+      id?: string;
+      label?: string;
+      pixelId?: string;
+      testEventCode?: string;
+      accessToken?: string;
+    }>;
+  }): Promise<MarketingSettings> {
+    const current = await this.getPlatformSettings();
     const storePublicUrl = this.normalizeBase(
       body.storePublicUrl ?? current.storePublicUrl,
     );
@@ -132,19 +102,19 @@ export class MarketingService {
           throw new Error('bad protocol');
         }
       } catch {
-        throw new BadRequestException('স্টোর URL সঠিক নয় (https://…)');
+        throw new BadRequestException('সাইট URL সঠিক নয় (https://…)');
       }
     }
 
-    const pixels: MarketingPixel[] = (body.pixels ?? current.pixels).map(
-      (p) => ({
-        id: p.id || randomUUID(),
-        label: String(p.label || p.pixelId || '').trim(),
-        pixelId: String(p.pixelId || '').trim(),
-        testEventCode: String(p.testEventCode || '').trim(),
-        accessToken: String(p.accessToken || '').trim(),
-      }),
-    );
+    const pixels: MarketingPixel[] = (
+      body.pixels ?? current.pixels
+    ).map((p) => ({
+      id: p.id || randomUUID(),
+      label: String(p.label || p.pixelId || '').trim(),
+      pixelId: String(p.pixelId || '').trim(),
+      testEventCode: String(p.testEventCode || '').trim(),
+      accessToken: String(p.accessToken || '').trim(),
+    }));
 
     for (const p of pixels) {
       if (p.pixelId && !/^\d{5,20}$/.test(p.pixelId)) {
@@ -154,29 +124,18 @@ export class MarketingService {
       }
     }
 
-    const credentials: StoredCreds = { storePublicUrl, pixels };
-    const existing = await this.getFacebookRow(merchantId);
-    if (existing) {
-      await this.prisma.integration.update({
-        where: { id: existing.id },
-        data: {
-          name: 'Facebook & Marketing',
-          isActive: true,
-          credentials: credentials as Prisma.InputJsonValue,
-        },
-      });
-    } else {
-      await this.prisma.integration.create({
-        data: {
-          merchantId,
-          type: 'FACEBOOK',
-          name: 'Facebook & Marketing',
-          isActive: true,
-          credentials: credentials as Prisma.InputJsonValue,
-        },
-      });
-    }
+    const value: StoredValue = { storePublicUrl, pixels };
+    await this.prisma.systemSetting.upsert({
+      where: { key: SETTING_KEY },
+      create: {
+        key: SETTING_KEY,
+        value: value as Prisma.InputJsonValue,
+      },
+      update: {
+        value: value as Prisma.InputJsonValue,
+      },
+    });
 
-    return this.getSettings(merchantId);
+    return this.getPlatformSettings();
   }
 }

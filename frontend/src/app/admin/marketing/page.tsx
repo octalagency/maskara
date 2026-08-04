@@ -10,12 +10,7 @@ import {
   Plus,
   Trash2,
 } from 'lucide-react';
-import {
-  api,
-  AdminMerchantDetail,
-  MarketingPixel,
-  MarketingSettings,
-} from '@/lib/api';
+import { api, MarketingPixel, MarketingSettings } from '@/lib/api';
 
 function newPixel(): MarketingPixel {
   return {
@@ -27,15 +22,7 @@ function newPixel(): MarketingPixel {
   };
 }
 
-function CopyField({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-}) {
+function CopyField({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
 
   async function copy() {
@@ -52,11 +39,10 @@ function CopyField({
   return (
     <div>
       <label className="mb-1 block text-sm font-medium text-slate-700">{label}</label>
-      {hint && <p className="mb-2 text-xs text-slate-500">{hint}</p>}
       <div className="flex gap-2">
         <input
           readOnly
-          value={value || '— স্টোর URL সেভ করুন'}
+          value={value || '— সাইট URL সেভ করুন'}
           className="input font-latin flex-1 text-sm"
         />
         <button
@@ -78,49 +64,29 @@ function CopyField({
 }
 
 export default function AdminMarketingPage() {
-  const [merchants, setMerchants] = useState<AdminMerchantDetail[]>([]);
-  const [merchantId, setMerchantId] = useState('');
   const [data, setData] = useState<MarketingSettings | null>(null);
-  const [storePublicUrl, setStorePublicUrl] = useState('');
+  const [storePublicUrl, setStorePublicUrl] = useState('https://maskara.bd');
   const [pixels, setPixels] = useState<MarketingPixel[]>([]);
-  const [loadingList, setLoadingList] = useState(true);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
-    setLoadingList(true);
-    api
-      .getAdminMerchants({ limit: '200' })
-      .then((res) => {
-        const list = res.merchants || [];
-        setMerchants(list);
-        if (list[0]?.id) setMerchantId(list[0].id);
-      })
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : 'মার্চেন্ট লোড ব্যর্থ'),
-      )
-      .finally(() => setLoadingList(false));
-  }, []);
-
-  useEffect(() => {
-    if (!merchantId) return;
     setLoading(true);
     setError('');
-    setMessage('');
     api
-      .getAdminMerchantMarketing(merchantId)
+      .getAdminMarketing()
       .then((res) => {
         setData(res);
-        setStorePublicUrl(res.storePublicUrl || '');
+        setStorePublicUrl(res.storePublicUrl || 'https://maskara.bd');
         setPixels(res.pixels?.length ? res.pixels : []);
       })
       .catch((err) =>
         setError(err instanceof Error ? err.message : 'Marketing লোড ব্যর্থ'),
       )
       .finally(() => setLoading(false));
-  }, [merchantId]);
+  }, []);
 
   function updatePixel(id: string, patch: Partial<MarketingPixel>) {
     setPixels((prev) =>
@@ -129,20 +95,19 @@ export default function AdminMarketingPage() {
   }
 
   async function save() {
-    if (!merchantId) return;
     setSaving(true);
     setMessage('');
     setError('');
     try {
       const cleaned = pixels.filter((p) => p.pixelId.trim());
-      const res = await api.updateAdminMerchantMarketing(merchantId, {
-        storePublicUrl: storePublicUrl.trim(),
+      const res = await api.updateAdminMarketing({
+        storePublicUrl: storePublicUrl.trim() || 'https://maskara.bd',
         pixels: cleaned,
       });
       setData(res);
-      setStorePublicUrl(res.storePublicUrl || '');
+      setStorePublicUrl(res.storePublicUrl || 'https://maskara.bd');
       setPixels(res.pixels || []);
-      setMessage('সেভ হয়েছে');
+      setMessage('Maskara মার্কেটিং সেটিংস সেভ হয়েছে');
       setTimeout(() => setMessage(''), 2500);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'সেভ ব্যর্থ');
@@ -151,7 +116,6 @@ export default function AdminMarketingPage() {
     }
   }
 
-  const selected = merchants.find((m) => m.id === merchantId);
   const storeBase = storePublicUrl.trim().replace(/\/+$/, '');
   const sitemapUrl = storeBase
     ? `${storeBase}/sitemap.xml`
@@ -171,35 +135,12 @@ export default function AdminMarketingPage() {
             Facebook Boost & মার্কেটিং
           </h2>
           <p className="text-sm text-slate-500">
-            Super Admin — মার্চেন্ট বেছে Sitemap, Feed ও Pixel/CAPI সেট করুন
+            Maskara প্ল্যাটফর্ম ব্র্যান্ডিং — Sitemap, Product Feed ও Pixel / CAPI
+          </p>
+          <p className="mt-1 inline-flex rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700">
+            Brand: Maskara
           </p>
         </div>
-      </div>
-
-      <div className="card space-y-3">
-        <label className="block text-sm font-medium text-slate-700">
-          মার্চেন্ট
-        </label>
-        {loadingList ? (
-          <p className="text-sm text-slate-500">মার্চেন্ট লোড হচ্ছে…</p>
-        ) : (
-          <select
-            className="input"
-            value={merchantId}
-            onChange={(e) => setMerchantId(e.target.value)}
-          >
-            {merchants.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name} — {m.email}
-              </option>
-            ))}
-          </select>
-        )}
-        {selected && (
-          <p className="text-xs text-slate-500">
-            প্ল্যান: {selected.subscriptionPlan} · স্ট্যাটাস: {selected.status}
-          </p>
-        )}
       </div>
 
       {message && (
@@ -222,14 +163,14 @@ export default function AdminMarketingPage() {
         <>
           <div className="card space-y-4">
             <div>
-              <h3 className="font-semibold text-slate-900">স্টোর পাবলিক URL</h3>
+              <h3 className="font-semibold text-slate-900">Maskara পাবলিক URL</h3>
               <p className="mt-1 text-xs text-slate-500">
-                যে ডোমেইনে শপ চলে (যেমন https://filo.bd)
+                প্ল্যাটফর্ম ডোমেইন (ডিফল্ট https://maskara.bd)
               </p>
             </div>
             <input
               className="input font-latin"
-              placeholder="https://yourstore.com"
+              placeholder="https://maskara.bd"
               value={storePublicUrl}
               onChange={(e) => setStorePublicUrl(e.target.value)}
             />
@@ -265,7 +206,7 @@ export default function AdminMarketingPage() {
                 </h3>
                 <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs text-slate-600">
                   <li>Meta Business Suite → Events Manager</li>
-                  <li>Pixel ID এখানে পেস্ট করুন</li>
+                  <li>Maskara Pixel ID এখানে পেস্ট করুন</li>
                   <li>CAPI Access Token দিন</li>
                   <li>টেস্টে Test Event Code ব্যবহার করুন</li>
                 </ol>
@@ -327,7 +268,7 @@ export default function AdminMarketingPage() {
                         onChange={(e) =>
                           updatePixel(p.id, { label: e.target.value })
                         }
-                        placeholder={p.pixelId || 'Main Pixel'}
+                        placeholder="Maskara Main"
                       />
                     </div>
                     <div>
@@ -390,7 +331,7 @@ export default function AdminMarketingPage() {
             <button
               type="button"
               className="btn-primary min-w-[140px]"
-              disabled={saving || !merchantId}
+              disabled={saving}
               onClick={() => void save()}
             >
               {saving ? (

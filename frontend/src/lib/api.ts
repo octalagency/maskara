@@ -379,26 +379,18 @@ class ApiClient {
     return this.request<Merchant>('/merchants/me', { method: 'PATCH', body: JSON.stringify(data) });
   }
 
-  getAdminMerchantMarketing(merchantId: string) {
-    return this.request<MarketingSettings>(
-      `/admin/merchants/${merchantId}/marketing`,
-    );
+  getAdminMarketing() {
+    return this.request<MarketingSettings>('/admin/marketing');
   }
 
-  updateAdminMerchantMarketing(
-    merchantId: string,
-    data: {
-      storePublicUrl?: string;
-      pixels?: MarketingPixel[];
-    },
-  ) {
-    return this.request<MarketingSettings>(
-      `/admin/merchants/${merchantId}/marketing`,
-      {
-        method: 'PUT',
-        body: JSON.stringify(data),
-      },
-    );
+  updateAdminMarketing(data: {
+    storePublicUrl?: string;
+    pixels?: MarketingPixel[];
+  }) {
+    return this.request<MarketingSettings>('/admin/marketing', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
   }
 
   // API Keys
@@ -777,6 +769,7 @@ export interface MarketingPixel {
 }
 
 export interface MarketingSettings {
+  brandName?: string;
   storePublicUrl: string;
   sitemapUrl: string;
   productFeedUrl: string;

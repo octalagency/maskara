@@ -142,16 +142,15 @@ export class AdminController {
     return this.adminService.updateSystemSetting(key, value);
   }
 
-  @Get('merchants/:id/marketing')
-  @ApiOperation({ summary: 'Facebook & Marketing settings for a merchant' })
-  getMerchantMarketing(@Param('id') id: string) {
-    return this.marketing.getSettings(id);
+  @Get('marketing')
+  @ApiOperation({ summary: 'Maskara platform Facebook & Marketing settings' })
+  getPlatformMarketing() {
+    return this.marketing.getPlatformSettings();
   }
 
-  @Put('merchants/:id/marketing')
-  @ApiOperation({ summary: 'Save Facebook & Marketing settings for a merchant' })
-  updateMerchantMarketing(
-    @Param('id') id: string,
+  @Put('marketing')
+  @ApiOperation({ summary: 'Save Maskara platform Facebook & Marketing settings' })
+  updatePlatformMarketing(
     @Body()
     body: {
       storePublicUrl?: string;
@@ -164,6 +163,6 @@ export class AdminController {
       }>;
     },
   ) {
-    return this.marketing.updateSettings(id, body);
+    return this.marketing.updatePlatformSettings(body);
   }
 }
