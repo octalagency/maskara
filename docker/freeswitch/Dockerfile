@@ -1,15 +1,13 @@
 FROM safarov/freeswitch:latest
 
-# Overlay Maskara dialer pieces onto stock FreeSWITCH (keep stock modules)
-COPY conf/autoload_configs/event_socket.conf.xml /etc/freeswitch/autoload_configs/event_socket.conf.xml
-COPY conf/dialplan/public/maskara_verify.xml /etc/freeswitch/dialplan/public/00_maskara_verify.xml
+# Keep stock /docker-entrypoint.sh (bootstraps vanilla conf). Overlay Maskara pieces.
+COPY conf/autoload_configs/event_socket.conf.xml /usr/share/freeswitch/conf/vanilla/autoload_configs/event_socket.conf.xml
+COPY conf/dialplan/public/maskara_verify.xml /usr/share/freeswitch/conf/vanilla/dialplan/public/00_maskara_verify.xml
 COPY scripts/verify.lua /usr/share/freeswitch/scripts/maskara/verify.lua
-COPY docker-entrypoint.sh /docker-entrypoint.sh
+COPY maskara-entrypoint.sh /maskara-entrypoint.sh
 
-RUN chmod +x /docker-entrypoint.sh \
-  && mkdir -p /var/lib/freeswitch/maskara-audio \
-             /etc/freeswitch/sip_profiles/external \
-             /usr/share/freeswitch/scripts/maskara
+RUN chmod +x /maskara-entrypoint.sh \
+  && mkdir -p /usr/share/freeswitch/scripts/maskara \
+             /var/lib/freeswitch/maskara-audio
 
-ENTRYPOINT ["/bin/sh", "/docker-entrypoint.sh"]
-CMD ["freeswitch", "-nonat", "-nf"]
+ENTRYPOINT ["/maskara-entrypoint.sh"]
