@@ -5,7 +5,7 @@ describe('SubscriptionsService.canMakeCall', () => {
   const mockPrisma = {
     merchant: { findUnique: jest.fn() },
     subscription: { findFirst: jest.fn(), update: jest.fn() },
-    $queryRaw: jest.fn(),
+    order: { count: jest.fn() },
   };
 
   const service = new SubscriptionsService(
@@ -31,7 +31,7 @@ describe('SubscriptionsService.canMakeCall', () => {
       startsAt: new Date(Date.now() - 86400000),
       endsAt: new Date(Date.now() + 86400000),
     });
-    mockPrisma.$queryRaw.mockResolvedValue([{ n: 100 }]);
+    mockPrisma.order.count.mockResolvedValue(100);
     mockPrisma.subscription.update.mockResolvedValue({});
     const result = await service.canMakeCall('m1');
     expect(result.allowed).toBe(false);
@@ -47,7 +47,7 @@ describe('SubscriptionsService.canMakeCall', () => {
       startsAt: new Date(Date.now() - 86400000),
       endsAt: new Date(Date.now() + 86400000),
     });
-    mockPrisma.$queryRaw.mockResolvedValue([{ n: 50 }]);
+    mockPrisma.order.count.mockResolvedValue(50);
     mockPrisma.subscription.update.mockResolvedValue({});
     const result = await service.canMakeCall('m1');
     expect(result.allowed).toBe(true);

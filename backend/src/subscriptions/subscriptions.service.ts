@@ -62,16 +62,6 @@ export class SubscriptionsService {
       (b) => b.status === 'PAID' && b.planCode !== 'FREE' && Number(b.amount) > 0,
     );
 
-    // Quota = billable order outcomes (confirm / return) in the plan window
-    let usageCalls = subscription?.callsUsed ?? 0;
-    if (subscription) {
-      usageCalls = await this.syncAnsweredCallQuota(subscription.id, merchantId, {
-        startsAt: subscription.startsAt,
-        endsAt: subscription.endsAt,
-        callsUsed: subscription.callsUsed,
-      });
-    }
-
     const [totalOrders, verifiedOrders, cancelledOrders, pendingOrders] =
       await Promise.all([
         this.prisma.order.count({ where: { merchantId } }),
@@ -85,6 +75,16 @@ export class SubscriptionsService {
           where: { merchantId, status: { in: ['PENDING', 'CALLING'] } },
         }),
       ]);
+
+    // Quota used = total orders (same number as মোট অর্ডার / admin order count)
+    let usageCalls = totalOrders;
+    if (subscription) {
+      usageCalls = await this.syncOrderQuota(
+        subscription.id,
+        merchantId,
+        subscription.callsUsed,
+      );
+    }
 
     return {
       merchant: {
@@ -129,40 +129,21 @@ export class SubscriptionsService {
   }
 
   /**
-   * Recompute quota from billable orders in the plan window (matches consumeOrderQuota).
-   * VERIFIED / CANCELLED, not website-cancelled; includes merchant manual confirm.
+   * Quota used = every order for this merchant (matches মোট অর্ডার / admin count).
    */
-  private async syncAnsweredCallQuota(
+  private async syncOrderQuota(
     subscriptionId: string,
     merchantId: string,
-    sub: { startsAt: Date; endsAt: Date; callsUsed: number },
+    previousUsed: number,
   ): Promise<number> {
-    const rows = await this.prisma.$queryRaw<Array<{ n: bigint | number }>>`
-      SELECT COUNT(*)::int AS n
-      FROM "Order" o
-      WHERE o."merchantId" = ${merchantId}
-        AND o.status IN ('VERIFIED', 'CANCELLED')
-        AND o."excludedFromStats" = false
-        AND NOT (COALESCE(o.metadata->>'manualCompleteFromWebsite', '') = 'true')
-        AND (
-          (o."updatedAt" >= ${sub.startsAt} AND o."updatedAt" <= ${sub.endsAt})
-          OR EXISTS (
-            SELECT 1 FROM "Call" c
-            WHERE c."orderId" = o.id
-              AND c.outcome IN ('CONFIRMED', 'CANCELLED')
-              AND c."createdAt" >= ${sub.startsAt}
-              AND c."createdAt" <= ${sub.endsAt}
-          )
-        )
-    `;
-    const answered = Number(rows[0]?.n ?? 0);
-    if (answered !== sub.callsUsed) {
+    const totalOrders = await this.prisma.order.count({ where: { merchantId } });
+    if (totalOrders !== previousUsed) {
       await this.prisma.subscription.update({
         where: { id: subscriptionId },
-        data: { callsUsed: answered },
+        data: { callsUsed: totalOrders },
       });
     }
-    return answered;
+    return totalOrders;
   }
 
   /**
@@ -474,8 +455,7 @@ export class SubscriptionsService {
   }
 
   /**
-   * Quota gate: plan limit = monthly order outcomes (confirm OR cancel).
-   * Dialing unanswered calls does not consume quota.
+   * Quota gate: plan limit = total orders (same as মোট অর্ডার).
    */
   async canMakeCall(
     merchantId: string,
@@ -502,16 +482,16 @@ export class SubscriptionsService {
       return { allowed: false, reason: 'Subscription expired' };
     }
 
-    const used = await this.syncAnsweredCallQuota(subscription.id, merchantId, {
-      startsAt: subscription.startsAt,
-      endsAt: subscription.endsAt,
-      callsUsed: subscription.callsUsed,
-    });
+    const used = await this.syncOrderQuota(
+      subscription.id,
+      merchantId,
+      subscription.callsUsed,
+    );
 
     if (used >= subscription.callLimit) {
       return {
         allowed: false,
-        reason: `মাসিক কল রিসিভ কোটা শেষ (${used}/${subscription.callLimit} কনফার্ম+রিটার্ন)`,
+        reason: `অর্ডার কোটা শেষ (${used}/${subscription.callLimit})`,
       };
     }
 

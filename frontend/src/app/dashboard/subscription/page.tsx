@@ -183,7 +183,7 @@ export default function SubscriptionPage() {
             )}
             {usage && (
               <p className="mt-2 text-sm font-medium text-slate-700">
-                মোট কোটা: {usage.callLimit.toLocaleString()} কল রিসিভ (কনফার্ম + রিটার্ন)
+                মোট কোটা: {usage.callLimit.toLocaleString()} অর্ডার
               </p>
             )}
             {data.merchant.subscriptionEnds && (
@@ -231,12 +231,11 @@ export default function SubscriptionPage() {
             {usage && (
               <div className="mt-4 space-y-2">
                 <p className="text-xs text-slate-500">
-                  প্ল্যান কোটা = অর্ডার নিশ্চিত/বাতিল (কল বা ম্যানুয়াল)। মিসড কল কাটে না —
-                  মোট অর্ডারের সাথে এক নয়।
+                  কোটা ব্যবহার = মোট অর্ডার (প্রতি অর্ডারে ১ কোটা)।
                 </p>
                 <div className="flex justify-between text-sm">
                   <span>
-                    কোটা ব্যবহার (কনফার্ম + রিটার্ন): {usage.callsUsed} /{' '}
+                    কোটা ব্যবহার (মোট অর্ডার): {usage.callsUsed} /{' '}
                     {usage.callLimit}
                   </span>
                   <span>{usagePct}%</span>
@@ -256,7 +255,7 @@ export default function SubscriptionPage() {
           <h3 className="text-lg font-semibold">Upgrade Plan</h3>
           <p className="text-sm text-slate-500">
             bKash Merchant SIM-এ পেমেন্ট → TrxID দিয়ে Verify Paid। নতুন প্ল্যান কিনলে{' '}
-            <strong>কল রিসিভ কোটা যোগ</strong> হয় (আগের কোটা থাকে)।
+            <strong>অর্ডার কোটা যোগ</strong> হয় (আগের কোটা থাকে)।
           </p>
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {data.availablePlans.map((plan) => {
