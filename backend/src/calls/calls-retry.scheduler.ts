@@ -157,8 +157,10 @@ export class CallsRetryScheduler {
       if (order.callAttempts === 0) {
         if (!lastCall && order.status === 'PENDING') {
           await this.queueCall(order.id, order.merchantId, false, `call-first-${order.id}`);
+          continue;
         }
-        continue;
+        // Attempts refunded to 0 but prior call rows exist — fall through to retry path
+        if (!lastCall) continue;
       }
 
       if (!lastCall) continue;
