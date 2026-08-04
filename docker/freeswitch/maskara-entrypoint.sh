@@ -27,12 +27,16 @@ if [ -f /usr/share/freeswitch/conf/vanilla/autoload_configs/acl.conf.xml ]; then
     /etc/freeswitch/autoload_configs/acl.conf.xml
 fi
 
-# Enable mod_curl (MP3 download + DTMF webhooks from verify.lua)
+# Enable mod_curl (HTTP) + mod_shout (MP3 playback for Chirp3 files)
 MODULES_CONF="/etc/freeswitch/autoload_configs/modules.conf.xml"
 if [ -f "$MODULES_CONF" ]; then
   sed -i 's|<!-- *<load module="mod_curl"/> *-->|<load module="mod_curl"/>|g' "$MODULES_CONF" || true
+  sed -i 's|<!-- *<load module="mod_shout"/> *-->|<load module="mod_shout"/>|g' "$MODULES_CONF" || true
   if ! grep -q '<load module="mod_curl"/>' "$MODULES_CONF"; then
     sed -i 's|</modules>|<load module="mod_curl"/>\n</modules>|' "$MODULES_CONF" || true
+  fi
+  if ! grep -q '<load module="mod_shout"/>' "$MODULES_CONF"; then
+    sed -i 's|</modules>|<load module="mod_shout"/>\n</modules>|' "$MODULES_CONF" || true
   fi
 fi
 
