@@ -19,7 +19,8 @@ import {
 
 // RINGING is only retryable when stale (see below) — live RINGING must not be re-queued
 const RETRYABLE_CALL_STATUSES = ['NO_ANSWER', 'BUSY', 'FAILED', 'QUEUED'];
-const STALE_RINGING_MS = 3 * 60 * 1000;
+/** Dialer bgapi can report OK while originate parse-fails — clear quickly. */
+const STALE_RINGING_MS = 90 * 1000;
 
 @Injectable()
 export class CallsRetryScheduler {

@@ -104,7 +104,7 @@ export class MaskaraDialerProvider implements VoiceProvider {
     ]);
 
     const webhook = this.webhookUrl('/voice/webhook/maskara-dialer/dtmf');
-    // ^^: separator — api_hangup_hook value contains spaces
+    // Use | delimiter — URLs contain ":" so ^^: breaks FreeSWITCH parse (Parse Error)
     const channelVars = [
       `origination_caller_id_number=${callerId}`,
       `origination_caller_id_name=Maskara`,
@@ -119,9 +119,9 @@ export class MaskaraDialerProvider implements VoiceProvider {
       `maskara_invalid_url=${invalid.url}`,
       `maskara_webhook=${webhook}`,
       `maskara_status_webhook=${webhook}`,
-    ].join(':');
+    ].join('|');
 
-    const originate = `originate {^^:${channelVars}}sofia/gateway/${gateway}/${dialPhone} &lua(maskara/verify.lua)`;
+    const originate = `originate {^^|${channelVars}}sofia/gateway/${gateway}/${dialPhone} &lua(maskara/verify.lua)`;
 
     const eslHost =
       this.settings.get('FREESWITCH_ESL_HOST') || 'freeswitch';
