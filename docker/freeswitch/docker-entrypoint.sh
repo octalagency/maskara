@@ -1,5 +1,5 @@
-#!/bin/bash
-set -euo pipefail
+#!/bin/sh
+set -eu
 
 GATEWAY_NAME="${SIP_GATEWAY_NAME:-maskara_trunk}"
 SIP_HOST="${SIP_TRUNK_HOST:-}"

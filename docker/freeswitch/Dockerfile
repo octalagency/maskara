@@ -11,5 +11,5 @@ RUN chmod +x /docker-entrypoint.sh \
              /etc/freeswitch/sip_profiles/external \
              /usr/share/freeswitch/scripts/maskara
 
-ENTRYPOINT ["/docker-entrypoint.sh"]
+ENTRYPOINT ["/bin/sh", "/docker-entrypoint.sh"]
 CMD ["freeswitch", "-nonat", "-nf"]
