@@ -92,7 +92,7 @@ export default function AdminMarketingPage() {
   useEffect(() => {
     setLoadingList(true);
     api
-      .getMerchants({ limit: '200' })
+      .getAdminMerchants({ limit: '200' })
       .then((res) => {
         const list = res.merchants || [];
         setMerchants(list);
