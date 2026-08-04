@@ -67,6 +67,15 @@ export class EslClient {
           const ctype = (headers['content-type'] || '').toLowerCase();
           const reply = headers['reply-text'] || body;
 
+          if (ctype.includes('rude-rejection') || /access denied/i.test(body)) {
+            fail(
+              new Error(
+                'ESL Access Denied — allow Docker CIDR in event_socket apply-inbound-acl',
+              ),
+            );
+            return;
+          }
+
           if (ctype.includes('auth/request')) {
             socket.write(`auth ${password}\n\n`);
             continue;

@@ -15,17 +15,30 @@ local webhook = session:getVariable("maskara_webhook") or ""
 local audio_dir = "/var/lib/freeswitch/maskara-audio"
 os.execute("mkdir -p " .. audio_dir)
 
+local api = freeswitch.API()
+
 local function download(url, name)
   if not url or url == "" then return nil end
   local path = audio_dir .. "/" .. call_id .. "-" .. name .. ".mp3"
-  -- quote-safe: strip characters that break shell
-  url = url:gsub("[;&|`$]", "")
-  local cmd = string.format("curl -fsSL --max-time 30 -o %s %q", path, url)
-  local ok = os.execute(cmd)
-  if ok == true or ok == 0 then
-    return path
+  -- mod_curl: "<url> get <file> ..."
+  local cmd = string.format(
+    "%s get %s connect-timeout 30 timeout 30",
+    url,
+    path
+  )
+  local res = api:execute("curl", cmd) or ""
+  local f = io.open(path, "rb")
+  if f then
+    local size = f:seek("end")
+    f:close()
+    if size and size > 0 then
+      return path
+    end
   end
-  freeswitch.consoleLog("ERR", "[maskara] download failed " .. name .. " url=" .. url .. "\n")
+  freeswitch.consoleLog(
+    "ERR",
+    "[maskara] download failed " .. name .. " url=" .. url .. " res=" .. res .. "\n"
+  )
   return nil
 end
 
@@ -47,18 +60,13 @@ local function notify(digits)
     call_id,
     digits
   )
-  local tmp = audio_dir .. "/" .. call_id .. "-dtmf.json"
-  local f = io.open(tmp, "w")
-  if f then
-    f:write(payload)
-    f:close()
-  end
-  local wh = webhook:gsub("[;&|`$]", "")
-  os.execute(string.format(
-    "curl -fsS -X POST -H 'Content-Type: application/json' --data-binary @%s --max-time 15 %q >/dev/null 2>&1 &",
-    tmp,
-    wh
-  ))
+  -- fire-and-forget HTTP POST via mod_curl
+  local cmd = string.format(
+    "%s post content-type 'application/json' connect-timeout 15 timeout 15 data '%s'",
+    webhook,
+    payload:gsub("'", "")
+  )
+  api:execute("curl", cmd)
 end
 
 local function play(path)

@@ -22,6 +22,19 @@ if [ -f /usr/share/freeswitch/conf/vanilla/autoload_configs/event_socket.conf.xm
   cp -f /usr/share/freeswitch/conf/vanilla/autoload_configs/event_socket.conf.xml \
     /etc/freeswitch/autoload_configs/event_socket.conf.xml
 fi
+if [ -f /usr/share/freeswitch/conf/vanilla/autoload_configs/acl.conf.xml ]; then
+  cp -f /usr/share/freeswitch/conf/vanilla/autoload_configs/acl.conf.xml \
+    /etc/freeswitch/autoload_configs/acl.conf.xml
+fi
+
+# Enable mod_curl (MP3 download + DTMF webhooks from verify.lua)
+MODULES_CONF="/etc/freeswitch/autoload_configs/modules.conf.xml"
+if [ -f "$MODULES_CONF" ]; then
+  sed -i 's|<!-- *<load module="mod_curl"/> *-->|<load module="mod_curl"/>|g' "$MODULES_CONF" || true
+  if ! grep -q '<load module="mod_curl"/>' "$MODULES_CONF"; then
+    sed -i 's|</modules>|<load module="mod_curl"/>\n</modules>|' "$MODULES_CONF" || true
+  fi
+fi
 
 GATEWAY_NAME="${SIP_GATEWAY_NAME:-maskara_trunk}"
 SIP_HOST="${SIP_TRUNK_HOST:-}"
