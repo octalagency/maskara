@@ -128,13 +128,17 @@ export class MaskaraDialerProvider implements VoiceProvider {
       `[dialer] ESL originate callId=${params.callId} voice=${voice.voiceId} gateway=${gateway} caller=${callerId} → ${dialPhone}`,
     );
 
-    const reply = await EslClient.api(eslHost, eslPort, eslPass, originate);
+    // bgapi: do not block Nest until answer/hangup (api originate waits on ring)
+    const reply = await EslClient.bgapi(eslHost, eslPort, eslPass, originate);
     if (!/^\+OK/i.test(reply.trim())) {
       this.logger.error(`[dialer] ESL fail callId=${params.callId}: ${reply}`);
       throw new Error(`Maskara dialer originate failed: ${reply.slice(0, 200)}`);
     }
 
-    const uuid = reply.replace(/^\+OK\s*/i, '').trim().split(/\s+/)[0] || params.callId;
+    const uuid =
+      reply.match(/Job-UUID:\s*(\S+)/i)?.[1] ||
+      reply.replace(/^\+OK\s*/i, '').trim().split(/\s+/)[0] ||
+      params.callId;
     this.logger.log(
       `[dialer] OK callId=${params.callId} uuid=${uuid} voice=${voice.voiceId} prompt=${prompt.url}`,
     );

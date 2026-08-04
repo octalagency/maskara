@@ -4,12 +4,37 @@ import * as net from 'net';
  * Minimal FreeSWITCH Event Socket (ESL) inbound client.
  */
 export class EslClient {
+  /** Synchronous ESL `api` — waits for FreeSWITCH command completion. */
   static async api(
     host: string,
     port: number,
     password: string,
     command: string,
     timeoutMs = 25_000,
+  ): Promise<string> {
+    return this.send(host, port, password, `api ${command}`, timeoutMs);
+  }
+
+  /**
+   * Background ESL `bgapi` — returns immediately with Job-UUID.
+   * Use for `originate` so ringing/answer does not block the Nest worker.
+   */
+  static async bgapi(
+    host: string,
+    port: number,
+    password: string,
+    command: string,
+    timeoutMs = 10_000,
+  ): Promise<string> {
+    return this.send(host, port, password, `bgapi ${command}`, timeoutMs);
+  }
+
+  private static async send(
+    host: string,
+    port: number,
+    password: string,
+    wireCommand: string,
+    timeoutMs: number,
   ): Promise<string> {
     return new Promise((resolve, reject) => {
       const socket = net.createConnection({ host, port });
@@ -84,7 +109,7 @@ export class EslClient {
           if (!authed) {
             if (/^\+OK/i.test(reply)) {
               authed = true;
-              socket.write(`api ${command}\n\n`);
+              socket.write(`${wireCommand}\n\n`);
               continue;
             }
             if (/^-ERR/i.test(reply)) {
@@ -94,7 +119,7 @@ export class EslClient {
             continue;
           }
 
-          // Command result
+          // Command result (api/response or command/reply for bgapi)
           done(body || reply || '');
           return;
         }

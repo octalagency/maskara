@@ -56,20 +56,30 @@ if [ -f /etc/freeswitch/autoload_configs/event_socket.conf.xml ]; then
     /etc/freeswitch/autoload_configs/event_socket.conf.xml || true
 fi
 
+# XML-escape SIP password / user for gateway XML attributes
+xml_esc() {
+  printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g'
+}
+
 GATEWAY_FILE="/etc/freeswitch/sip_profiles/external/${GATEWAY_NAME}.xml"
 if [ -n "$SIP_HOST" ] && [ -n "$SIP_USER" ]; then
+  SIP_USER_X=$(xml_esc "$SIP_USER")
+  SIP_PASS_X=$(xml_esc "$SIP_PASS")
+  SIP_REALM_X=$(xml_esc "$SIP_REALM")
+  SIP_PROXY_X=$(xml_esc "$SIP_PROXY")
+  CALLER_X=$(xml_esc "$CALLER_ID")
   cat > "$GATEWAY_FILE" <<EOF
 <include>
   <gateway name="${GATEWAY_NAME}">
-    <param name="username" value="${SIP_USER}"/>
-    <param name="password" value="${SIP_PASS}"/>
-    <param name="realm" value="${SIP_REALM}"/>
-    <param name="proxy" value="${SIP_PROXY}"/>
+    <param name="username" value="${SIP_USER_X}"/>
+    <param name="password" value="${SIP_PASS_X}"/>
+    <param name="realm" value="${SIP_REALM_X}"/>
+    <param name="proxy" value="${SIP_PROXY_X}"/>
     <param name="register" value="${SIP_REGISTER}"/>
     <param name="caller-id-in-from" value="true"/>
-    <param name="extension" value="${CALLER_ID}"/>
-    <param name="from-user" value="${SIP_USER}"/>
-    <param name="from-domain" value="${SIP_REALM}"/>
+    <param name="extension" value="${CALLER_X}"/>
+    <param name="from-user" value="${SIP_USER_X}"/>
+    <param name="from-domain" value="${SIP_REALM_X}"/>
     <param name="expire-seconds" value="3600"/>
     <param name="retry-seconds" value="30"/>
     <param name="context" value="public"/>
