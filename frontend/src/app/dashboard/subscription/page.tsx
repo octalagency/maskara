@@ -204,30 +204,52 @@ export default function SubscriptionPage() {
             </p>
           </div>
 
-          {usage && (
-            <div className="card lg:col-span-2">
-              <h3 className="font-semibold">Usage This Month</h3>
-              <p className="mt-1 text-xs text-slate-500">
-                কাস্টমার কল ধরে ১ (কনফার্ম) বা ২ (রিটার্ন/বাতিল) চাপলেই ১ কোটা কাটে — মিসড কল কাটে না
-              </p>
-              <div className="mt-4 space-y-4">
-                <div>
-                  <div className="flex justify-between text-sm">
-                    <span>
-                      কল রিসিভ (কনফার্ম + রিটার্ন): {usage.callsUsed} / {usage.callLimit}
-                    </span>
-                    <span>{usagePct}%</span>
-                  </div>
-                  <div className="mt-1 h-2 rounded-full bg-slate-100">
-                    <div
-                      className="h-2 rounded-full bg-brand-600"
-                      style={{ width: `${Math.min(usagePct, 100)}%` }}
-                    />
-                  </div>
+          <div className="card lg:col-span-2">
+            <h3 className="font-semibold">অর্ডার ও কোটা</h3>
+            {data.orderCounts && (
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg bg-slate-50 px-3 py-2">
+                  <p className="text-xs text-slate-500">মোট অর্ডার</p>
+                  <p className="text-2xl font-bold text-slate-900">
+                    {data.orderCounts.totalOrders.toLocaleString()}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-slate-50 px-3 py-2">
+                  <p className="text-xs text-slate-500">নিশ্চিত</p>
+                  <p className="text-2xl font-bold text-emerald-700">
+                    {data.orderCounts.verifiedOrders.toLocaleString()}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-slate-50 px-3 py-2">
+                  <p className="text-xs text-slate-500">বাতিল</p>
+                  <p className="text-2xl font-bold text-rose-700">
+                    {data.orderCounts.cancelledOrders.toLocaleString()}
+                  </p>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+            {usage && (
+              <div className="mt-4 space-y-2">
+                <p className="text-xs text-slate-500">
+                  প্ল্যান কোটা = অর্ডার নিশ্চিত/বাতিল (কল বা ম্যানুয়াল)। মিসড কল কাটে না —
+                  মোট অর্ডারের সাথে এক নয়।
+                </p>
+                <div className="flex justify-between text-sm">
+                  <span>
+                    কোটা ব্যবহার (কনফার্ম + রিটার্ন): {usage.callsUsed} /{' '}
+                    {usage.callLimit}
+                  </span>
+                  <span>{usagePct}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-slate-100">
+                  <div
+                    className="h-2 rounded-full bg-brand-600"
+                    style={{ width: `${Math.min(usagePct, 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <div>

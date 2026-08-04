@@ -62,7 +62,7 @@ export class SubscriptionsService {
       (b) => b.status === 'PAID' && b.planCode !== 'FREE' && Number(b.amount) > 0,
     );
 
-    // Quota = answered AI calls that ended in confirm (1) or return/cancel (2)
+    // Quota = billable order outcomes (confirm / return) in the plan window
     let usageCalls = subscription?.callsUsed ?? 0;
     if (subscription) {
       usageCalls = await this.syncAnsweredCallQuota(subscription.id, merchantId, {
@@ -71,6 +71,20 @@ export class SubscriptionsService {
         callsUsed: subscription.callsUsed,
       });
     }
+
+    const [totalOrders, verifiedOrders, cancelledOrders, pendingOrders] =
+      await Promise.all([
+        this.prisma.order.count({ where: { merchantId } }),
+        this.prisma.order.count({
+          where: { merchantId, status: 'VERIFIED' },
+        }),
+        this.prisma.order.count({
+          where: { merchantId, status: 'CANCELLED' },
+        }),
+        this.prisma.order.count({
+          where: { merchantId, status: { in: ['PENDING', 'CALLING'] } },
+        }),
+      ]);
 
     return {
       merchant: {
@@ -92,6 +106,13 @@ export class SubscriptionsService {
         amount: b.amount,
         createdAt: b.createdAt,
       })),
+      /** Same lifetime totals as admin merchant row (_count.orders). */
+      orderCounts: {
+        totalOrders,
+        verifiedOrders,
+        cancelledOrders,
+        pendingOrders,
+      },
       usage: subscription
         ? {
             callsUsed: usageCalls,
@@ -108,8 +129,8 @@ export class SubscriptionsService {
   }
 
   /**
-   * Recompute quota from answered DTMF outcomes (confirm + return) in the plan window.
-   * Keeps callsUsed honest if increments were missed or double-counted.
+   * Recompute quota from billable orders in the plan window (matches consumeOrderQuota).
+   * VERIFIED / CANCELLED, not website-cancelled; includes merchant manual confirm.
    */
   private async syncAnsweredCallQuota(
     subscriptionId: string,
@@ -117,13 +138,22 @@ export class SubscriptionsService {
     sub: { startsAt: Date; endsAt: Date; callsUsed: number },
   ): Promise<number> {
     const rows = await this.prisma.$queryRaw<Array<{ n: bigint | number }>>`
-      SELECT COUNT(DISTINCT o.id) AS n
+      SELECT COUNT(*)::int AS n
       FROM "Order" o
-      INNER JOIN "Call" c ON c."orderId" = o.id
       WHERE o."merchantId" = ${merchantId}
-        AND c.outcome IN ('CONFIRMED', 'CANCELLED')
-        AND c."createdAt" >= ${sub.startsAt}
-        AND c."createdAt" <= ${sub.endsAt}
+        AND o.status IN ('VERIFIED', 'CANCELLED')
+        AND o."excludedFromStats" = false
+        AND NOT (COALESCE(o.metadata->>'manualCompleteFromWebsite', '') = 'true')
+        AND (
+          (o."updatedAt" >= ${sub.startsAt} AND o."updatedAt" <= ${sub.endsAt})
+          OR EXISTS (
+            SELECT 1 FROM "Call" c
+            WHERE c."orderId" = o.id
+              AND c.outcome IN ('CONFIRMED', 'CANCELLED')
+              AND c."createdAt" >= ${sub.startsAt}
+              AND c."createdAt" <= ${sub.endsAt}
+          )
+        )
     `;
     const answered = Number(rows[0]?.n ?? 0);
     if (answered !== sub.callsUsed) {

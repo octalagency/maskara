@@ -63,6 +63,7 @@ function ChartTooltip({ active, payload, label }: any) {
 }
 
 const RANGE_CHIPS: { id: DashRange; label: string }[] = [
+  { id: 'all', label: 'সব' },
   { id: 'today', label: 'আজ' },
   { id: 'yesterday', label: 'গততকাল' },
   { id: 'week', label: 'সপ্তাহ' },
@@ -76,7 +77,7 @@ export default function DashboardPage() {
   const [merchant, setMerchant] = useState<Merchant | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [range, setRange] = useState<DashRange>('week');
+  const [range, setRange] = useState<DashRange>('all');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [storeKey, setStoreKey] = useState('all');
@@ -93,10 +94,12 @@ export default function DashboardPage() {
   useEffect(() => {
     if (range === 'custom' && (!customFrom || !customTo)) return;
     setLoading(true);
+    const from = dateWindow.from || undefined;
+    const to = dateWindow.to || undefined;
     Promise.all([
-      api.getOrderStats(dateWindow.from, dateWindow.to, storeKey).catch(() => null),
+      api.getOrderStats(from, to, storeKey).catch(() => null),
       api
-        .getDailyReport(dateWindow.days, dateWindow.from, dateWindow.to, storeKey)
+        .getDailyReport(dateWindow.days, from, to, storeKey)
         .catch(() => [] as DailyReport[]),
     ]).then(([s, r]) => {
       setStats(s);

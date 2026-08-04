@@ -434,10 +434,11 @@ export class OrdersService {
       },
     });
 
+    // Include every order (same total as admin _count.orders). Website-cancelled
+    // rows stay in the total; AI confirm-rate still uses status fields below.
     const orders = await this.prisma.order.findMany({
       where: {
         merchantId,
-        excludedFromStats: false,
         ...(createdFilter ? { createdAt: createdFilter } : {}),
       },
       select: {
@@ -447,6 +448,7 @@ export class OrdersService {
         orderNumber: true,
         createdAt: true,
         manualComplete: true,
+        excludedFromStats: true,
       },
     });
 

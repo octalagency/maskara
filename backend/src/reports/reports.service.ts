@@ -91,7 +91,7 @@ export class ReportsService {
       this.prisma.order.findMany({
         where: {
           merchantId,
-          excludedFromStats: false,
+          // Count all orders (admin parity); website-cancel still listed as cancelled
           ...(storeFilter || {}),
           OR: [
             { createdAt: { gte: startDate, lte: endDate } },

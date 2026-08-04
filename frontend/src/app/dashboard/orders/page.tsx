@@ -25,7 +25,7 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [storeFilter, setStoreFilter] = useState('');
   const [stores, setStores] = useState<{ key: string; label: string }[]>([]);
-  const [period, setPeriod] = useState<Period>('today');
+  const [period, setPeriod] = useState<Period>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [lifetimeCallLimit, setLifetimeCallLimit] = useState(20);

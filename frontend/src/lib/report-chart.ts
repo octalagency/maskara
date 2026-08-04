@@ -63,7 +63,13 @@ export function localYmd(d = new Date()): string {
   return `${y}-${m}-${day}`;
 }
 
-export type DashRange = 'today' | 'yesterday' | 'week' | 'month' | 'custom';
+export type DashRange =
+  | 'today'
+  | 'yesterday'
+  | 'week'
+  | 'month'
+  | 'all'
+  | 'custom';
 
 export function rangeToFromTo(
   range: DashRange,
@@ -72,6 +78,11 @@ export function rangeToFromTo(
 ): { from: string; to: string; days: number; label: string } {
   const today = new Date();
   today.setHours(12, 0, 0, 0);
+
+  if (range === 'all') {
+    // Empty from/to → API returns lifetime totals (matches admin order count)
+    return { from: '', to: '', days: 366, label: 'সব' };
+  }
 
   if (range === 'custom' && customFrom && customTo) {
     const a = new Date(`${customFrom}T12:00:00`);

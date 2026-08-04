@@ -898,6 +898,13 @@ export interface MerchantSubscription {
     nagadNumber?: string;
     instructions?: string;
   };
+  /** Lifetime order totals — same basis as admin merchant order count. */
+  orderCounts?: {
+    totalOrders: number;
+    verifiedOrders: number;
+    cancelledOrders: number;
+    pendingOrders: number;
+  };
   usage?: {
     callsUsed: number;
     callLimit: number;
