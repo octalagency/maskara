@@ -71,12 +71,16 @@ export function extractProductNamesFromItems(items: unknown): string[] {
   return names;
 }
 
+/** Soft cap — long ShopIn marketing titles make telephony TTS stutter. */
+const MAX_PRODUCT_SPEECH_CHARS = 52;
+
 /**
- * Common English ecommerce words → Bangla script (phonetic).
- * Live ePBX speaks WaveNet on `custom_text`; Latin mid-sentence makes
- * Bangla TTS stutter ("ভেঙে ভেঙে") — keep product titles in Bangla script.
+ * Brands / common English ecommerce words → Bangla script (phonetic).
+ * Live ePBX speaks WaveNet on `custom_text`; Latin mid-sentence stutters.
  */
 const PRODUCT_WORD_BN: Record<string, string> = {
+  bmw: 'বিএমডব্লিউ',
+  lego: 'লেগো',
   food: 'ফুড',
   safety: 'সেফটি',
   cover: 'কভার',
@@ -104,16 +108,22 @@ const PRODUCT_WORD_BN: Record<string, string> = {
   soap: 'সাবান',
   bag: 'ব্যাগ',
   bottle: 'বোতল',
+  tiffin: 'টিফিন',
+  parts: 'পার্টস',
+  accessories: 'এক্সেসরিজ',
+  free: 'ফ্রি',
+  gift: 'উপহার',
   size: 'সাইজ',
   large: 'লার্জ',
   small: 'স্মল',
   medium: 'মিডিয়াম',
-  black: 'ব্ল্যাক',
-  white: 'হোয়াইট',
-  pink: 'পিংক',
-  blue: 'ব্লু',
-  red: 'রেড',
-  green: 'গ্রিন',
+  black: 'কালো',
+  white: 'সাদা',
+  pink: 'গোলাপি',
+  blue: 'নীল',
+  red: 'লাল',
+  green: 'সবুজ',
+  yellow: 'হলুদ',
   premium: 'প্রিমিয়াম',
   original: 'অরিজিনাল',
   new: 'নিউ',
@@ -128,19 +138,22 @@ const PRODUCT_WORD_BN: Record<string, string> = {
   pair: 'পেয়ার',
   pairs: 'পেয়ার',
   and: 'এবং',
-  with: 'উইথ',
-  for: 'ফর',
+  with: '',
+  for: '',
   the: '',
   a: '',
   an: '',
   of: '',
+  in: 'ইন',
 };
 
-/** Very small Latin→Bangla fallback when a product word is not in the dictionary. */
+/** Very small Latin→Bangla fallback for pure-English product titles only. */
 function transliterateLatinWord(word: string): string {
   const w = word.toLowerCase().replace(/[^a-z0-9]/g, '');
   if (!w) return '';
   if (/^\d+$/.test(w)) return toBanglaDigits(w);
+  // Unknown short tokens → skip (avoids BMW→বমও style smash)
+  if (w.length <= 3) return '';
 
   const digraphs: [string, string][] = [
     ['sh', 'শ'],
@@ -209,36 +222,52 @@ function transliterateLatinWord(word: string): string {
     out += singles[w[i]] || '';
     i += 1;
   }
-  // Leading vowel marks need a base অ
   if (/^[ােিোু]/.test(out)) out = `অ${out}`;
-  return out || 'পণ্য';
+  return out || '';
 }
 
-function latinWordToBanglaSpeech(word: string): string {
+function latinWordToBanglaSpeech(word: string, allowPhonetic: boolean): string {
   const key = word.toLowerCase().replace(/[^a-z0-9]/g, '');
   if (!key) return '';
   if (Object.prototype.hasOwnProperty.call(PRODUCT_WORD_BN, key)) {
     return PRODUCT_WORD_BN[key];
   }
+  // Mixed Bangla titles: strip unknown Latin (BMW-style letter smash was "বমও")
+  if (!allowPhonetic) return '';
   return transliterateLatinWord(key);
 }
 
+function truncateSpeech(text: string, max = MAX_PRODUCT_SPEECH_CHARS): string {
+  const t = text.trim();
+  if (t.length <= max) return t;
+  return t.slice(0, max).replace(/\s+\S*$/, '').trim() || t.slice(0, max).trim();
+}
+
 /**
- * Make a product title speakable on Bangla telephony TTS (no Latin runs).
+ * Make a product title speakable on Bangla telephony TTS.
+ * Short, Bangla-script only — no marketing blurbs / Latin stutter.
  */
 export function speakableProductName(name: string): string {
   let n = name.replace(/\s+/g, ' ').trim();
   if (!n) return '';
 
-  // Keep Bangla / digits; convert each Latin token to Bangla script.
-  n = n.replace(/[A-Za-z][A-Za-z0-9+._'-]*/g, (w) => latinWordToBanglaSpeech(w));
+  // Drop parenthetical variants and exclaim-marketing tails
+  n = n.split(/[(!]/)[0]?.trim() || n;
+  const danda = n.indexOf('।');
+  if (danda >= 8) n = n.slice(0, danda).trim();
+
+  const hasBangla = /[\u0980-\u09FF]/.test(n);
+  n = n.replace(/[A-Za-z][A-Za-z0-9+._'-]*/g, (w) =>
+    latinWordToBanglaSpeech(w, !hasBangla),
+  );
   n = n
+    .replace(/["'`]/g, '')
     .replace(/[()[\]{}]/g, ' ')
-    .replace(/[^\u0980-\u09FF০-৯\s,.\-_/]/g, ' ')
+    .replace(/[^\u0980-\u09FF০-৯\s.\-_/]/g, ' ')
     .replace(/\s+/g, ' ')
-    .replace(/\s+([,./])/g, '$1')
     .trim();
 
+  n = truncateSpeech(n);
   return n || 'একটি পণ্য';
 }
 
@@ -410,9 +439,9 @@ export const EPBX_PORTAL_MALE_CHIRP3 = 'bn-IN-Chirp3-HD-Algenib';
 /**
  * Live portal Active Model is Google WaveNet/Neural2 — Chirp3 voice ids fall back
  * to default WaveNet female. Speak with WaveNet-compatible Google voice names:
- * Standard-B = male, Wavenet-A = female.
+ * Wavenet-B = male, Wavenet-A = female (Standard-B was choppier on PSTN).
  */
-export const EPBX_PORTAL_MALE_WAVENET = 'bn-IN-Standard-B';
+export const EPBX_PORTAL_MALE_WAVENET = 'bn-IN-Wavenet-B';
 export const EPBX_PORTAL_FEMALE_WAVENET = 'bn-IN-Wavenet-A';
 /** Slightly under 1.0 for clearer, warmer call-center pacing. */
 export const DEFAULT_SPEECH_RATE = 0.95;
@@ -439,40 +468,10 @@ export function toChirpExpressiveMarkup(text: string): string {
   let out = text.replace(/\s+/g, ' ').trim();
   if (!out) return out;
 
-  // Soft open — warm agent greeting
-  if (!/^\[pause/.test(out)) {
-    out = `[pause] ${out}`;
-  }
-
-  // Ellipsis / Bangla danda / sentence end → natural breath
-  out = out.replace(/\.{2,}\s*/g, '... [pause] ');
-  out = out.replace(/([।!?])\s*/g, '$1 [pause] ');
-  // Commas as light breath
-  out = out.replace(/([,،])\s*/g, '$1 [pause short] ');
-
-  // Empathetic beats before key lines
-  out = out.replace(
-    /(আসসালামু\s*আলাইকুম)/g,
-    '[pause short] $1',
-  );
-  out = out.replace(
-    /(অর্ডার\s*করেছেন|অর্ডার\s*করেছেন।)/g,
-    '$1 [pause]',
-  );
-  out = out.replace(
-    /(মোট\s*বিল|মোট\s*টাকা)/g,
-    '[pause short] $1',
-  );
-  out = out.replace(
-    /(অর্ডারটি\s*নিশ্চিত\s*করার\s*জন্য|নিশ্চিত\s*করতে)/g,
-    '[pause] $1',
-  );
-  out = out.replace(/(বাতিল\s*করার\s*জন্য|বাতিল\s*করতে)/g, '[pause] $1');
-  out = out.replace(/(পুনরায়\s*শুনতে)/g, '[pause short] $1');
-  out = out.replace(/(ধন্যবাদ)/g, '[pause] $1');
-
-  // Collapse stacked pauses / whitespace
-  out = out.replace(/(\[pause(?: short| long)?\]\s*){2,}/g, '[pause] ');
+  // Light sentence breaths only — dense [pause] tags sound choppy on PSTN
+  out = out.replace(/\.{2,}\s*/g, '... ');
+  out = out.replace(/([।!?])\s*/g, '$1 [pause short] ');
+  out = out.replace(/(\[pause(?: short| long)?\]\s*){2,}/g, '[pause short] ');
   return out.replace(/\s+/g, ' ').trim();
 }
 
@@ -672,7 +671,7 @@ export function resolveLiveEpbxVoice(
 /**
  * Voice spoken by ePBX when Active Model = Google WaveNet/Neural2.
  * Chirp3 ids are rejected → female WaveNet default. Map gender to WaveNet-
- * compatible names (Standard-B male / Wavenet-A female).
+ * compatible names (Wavenet-B male / Wavenet-A female).
  */
 export function epbxPortalGoogleVoice(voiceId?: string | null): {
   provider: 'google';

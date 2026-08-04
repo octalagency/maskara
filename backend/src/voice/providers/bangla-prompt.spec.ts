@@ -70,15 +70,15 @@ describe('resolveLiveEpbxVoice', () => {
 });
 
 describe('epbxPortalGoogleVoice', () => {
-  it('maps male merchants to WaveNet-compatible Standard-B', () => {
+  it('maps male merchants to WaveNet-B', () => {
     expect(epbxPortalGoogleVoice('google:bn-IN-Chirp3-HD-Algieba').voiceId).toBe(
-      'bn-IN-Standard-B',
+      'bn-IN-Wavenet-B',
     );
     expect(epbxPortalGoogleVoice('azure:bn-BD-PradeepNeural').voiceId).toBe(
-      'bn-IN-Standard-B',
+      'bn-IN-Wavenet-B',
     );
     expect(epbxPortalGoogleVoice('google:bn-IN-Chirp3-HD-Orus').voiceId).toBe(
-      'bn-IN-Standard-B',
+      'bn-IN-Wavenet-B',
     );
     expect(epbxPortalGoogleVoice('google:bn-IN-Chirp3-HD-Algieba').gender).toBe(
       'male',
@@ -153,6 +153,22 @@ describe('buildOrderVerificationPrompt', () => {
     expect(text).toContain('ফুড সেফটি কভার');
     expect(text).not.toMatch(/[A-Za-z]/);
     expect(speakableProductName('Smart Dish Rack')).toBe('স্মার্ট ডিশ র্যাক');
+  });
+
+  it('shortens mixed marketing titles and maps BMW (no বমও smash)', () => {
+    expect(
+      speakableProductName(
+        'BMW পুশকার-এর আসল পার্টস ও এক্সেসরিজ। (রিং সহ চাকা 1 পিস।)',
+      ),
+    ).toBe('বিএমডব্লিউ পুশকার-এর আসল পার্টস ও এক্সেসরিজ');
+    expect(
+      speakableProductName(
+        'BMW পুশ কারের সাথে যেকোনো একটি আকর্ষণীয় ফ্রি উপহার! (BMW পুশ কার — লাল।)',
+      ),
+    ).toBe('বিএমডব্লিউ পুশ কারের সাথে যেকোনো একটি আকর্ষণীয় ফ্রি');
+    expect(
+      speakableProductName('৩ ইন ১ টিফিন বক্স" (3-in-1 Tiffin Box)'),
+    ).toBe('৩ ইন ১ টিফিন বক্স');
   });
 });
 
