@@ -19,8 +19,10 @@ import {
 
 // RINGING is only retryable when stale (see below) — live RINGING must not be re-queued
 const RETRYABLE_CALL_STATUSES = ['NO_ANSWER', 'BUSY', 'FAILED', 'QUEUED'];
-/** Dialer bgapi can report OK while originate parse-fails — clear quickly. */
-const STALE_RINGING_MS = 90 * 1000;
+/** ePBX often never sends hangup — clear stuck RINGING so pending can redial. */
+const STALE_RINGING_MS = 3 * 60 * 1000;
+/** Pending backlog: redial unanswered/failed every ~2.5 min (not merchant 30–45 min gap). */
+const CATCH_UP_RETRY_MS = 2.5 * 60 * 1000;
 
 @Injectable()
 export class CallsRetryScheduler {
@@ -167,9 +169,10 @@ export class CallsRetryScheduler {
 
       const timeSinceLastCall = Date.now() - lastCall.createdAt.getTime();
 
+      // Do not double-dial while a live attempt is still young
       if (
         ['RINGING', 'QUEUED', 'IN_PROGRESS'].includes(lastCall.status) &&
-        timeSinceLastCall < (order.callAttempts === 1 ? SECOND_CALL_DELAY_MS : minSpacingMs)
+        timeSinceLastCall < STALE_RINGING_MS
       ) {
         continue;
       }
@@ -188,17 +191,37 @@ export class CallsRetryScheduler {
           order.nextCallAt.getTime() <= now.getTime() ||
           isCallWindowExempt(order.callAttempts));
 
+      // Unanswered / failed → catch-up every ~2.5 min so pending backlog clears today
+      const catchUpStatuses = ['NO_ANSWER', 'BUSY', 'FAILED', 'QUEUED'];
+      const spacingMs = catchUpStatuses.includes(lastCall.status)
+        ? CATCH_UP_RETRY_MS
+        : minSpacingMs;
+
       const dueBySpacing =
         order.callAttempts >= 2 &&
         order.nextCallAt == null &&
-        timeSinceLastCall >= minSpacingMs;
+        timeSinceLastCall >= spacingMs;
 
-      if (!dueBySchedule && !dueSecondCall && !dueBySpacing) continue;
+      // Also honor catch-up when nextCallAt was parked far ahead but call already failed
+      const dueCatchUp =
+        catchUpStatuses.includes(lastCall.status) &&
+        timeSinceLastCall >= CATCH_UP_RETRY_MS &&
+        (order.nextCallAt == null ||
+          order.nextCallAt.getTime() <= now.getTime() ||
+          order.nextCallAt.getTime() > now.getTime() + CATCH_UP_RETRY_MS);
+
+      if (!dueBySchedule && !dueSecondCall && !dueBySpacing && !dueCatchUp) {
+        continue;
+      }
 
       const nextAttempt = order.callAttempts + 1;
       this.logger.log(
         `Retry ${nextAttempt}/${lifetime} for ${order.orderNumber}`,
       );
+      await this.prisma.order.update({
+        where: { id: order.id },
+        data: { nextCallAt: new Date(now.getTime() + CATCH_UP_RETRY_MS) },
+      });
       await this.queueCall(
         order.id,
         order.merchantId,
