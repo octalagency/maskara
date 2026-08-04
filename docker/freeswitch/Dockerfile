@@ -5,6 +5,7 @@ COPY conf/autoload_configs/event_socket.conf.xml /usr/share/freeswitch/conf/vani
 COPY conf/autoload_configs/acl.conf.xml /usr/share/freeswitch/conf/vanilla/autoload_configs/acl.conf.xml
 COPY conf/dialplan/public/maskara_verify.xml /usr/share/freeswitch/conf/vanilla/dialplan/public/00_maskara_verify.xml
 COPY scripts/verify.lua /usr/share/freeswitch/scripts/maskara/verify.lua
+COPY scripts/hangup.lua /usr/share/freeswitch/scripts/maskara/hangup.lua
 COPY maskara-entrypoint.sh /maskara-entrypoint.sh
 
 RUN chmod +x /maskara-entrypoint.sh \

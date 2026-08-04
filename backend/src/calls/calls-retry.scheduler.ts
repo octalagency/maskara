@@ -17,7 +17,9 @@ import {
   merchantDialConfig,
 } from '../common/utils/dial-merchant.util';
 
-const RETRYABLE_CALL_STATUSES = ['NO_ANSWER', 'BUSY', 'FAILED', 'RINGING', 'QUEUED'];
+// RINGING is only retryable when stale (see below) — live RINGING must not be re-queued
+const RETRYABLE_CALL_STATUSES = ['NO_ANSWER', 'BUSY', 'FAILED', 'QUEUED'];
+const STALE_RINGING_MS = 3 * 60 * 1000;
 
 @Injectable()
 export class CallsRetryScheduler {
@@ -49,6 +51,27 @@ export class CallsRetryScheduler {
       // First call is window-exempt — dial even after 22:00
       this.logger.log(`First-call enqueue (≤20s backup) for ${order.orderNumber}`);
       await this.queueCall(order.id, order.merchantId, false, `call-first-${order.id}`);
+    }
+  }
+
+  /** Clear dialer RINGING that never got a hangup webhook (bgapi + SIP fail). */
+  @Cron(CronExpression.EVERY_MINUTE)
+  async finalizeStaleRinging() {
+    const cutoff = new Date(Date.now() - STALE_RINGING_MS);
+    const result = await this.prisma.call.updateMany({
+      where: {
+        status: 'RINGING',
+        endedAt: null,
+        createdAt: { lt: cutoff },
+      },
+      data: {
+        status: 'NO_ANSWER',
+        endedAt: new Date(),
+        errorMessage: 'stale_ringing_timeout',
+      },
+    });
+    if (result.count > 0) {
+      this.logger.warn(`Marked ${result.count} stale RINGING call(s) as NO_ANSWER`);
     }
   }
 

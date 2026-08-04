@@ -104,19 +104,24 @@ export class MaskaraDialerProvider implements VoiceProvider {
     ]);
 
     const webhook = this.webhookUrl('/voice/webhook/maskara-dialer/dtmf');
+    // ^^: separator — api_hangup_hook value contains spaces
     const channelVars = [
       `origination_caller_id_number=${callerId}`,
       `origination_caller_id_name=Maskara`,
       `ignore_early_media=true`,
+      `originate_timeout=45`,
+      `session_in_hangup_hook=true`,
+      `api_hangup_hook=lua maskara/hangup.lua`,
       `maskara_call_id=${params.callId}`,
       `maskara_prompt_url=${prompt.url}`,
       `maskara_confirm_url=${confirm.url}`,
       `maskara_cancel_url=${cancel.url}`,
       `maskara_invalid_url=${invalid.url}`,
       `maskara_webhook=${webhook}`,
-    ].join(',');
+      `maskara_status_webhook=${webhook}`,
+    ].join(':');
 
-    const originate = `originate {${channelVars}}sofia/gateway/${gateway}/${dialPhone} &lua(maskara/verify.lua)`;
+    const originate = `originate {^^:${channelVars}}sofia/gateway/${gateway}/${dialPhone} &lua(maskara/verify.lua)`;
 
     const eslHost =
       this.settings.get('FREESWITCH_ESL_HOST') || 'freeswitch';
