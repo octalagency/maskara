@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Put,
   Body,
   Param,
   Query,
@@ -10,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
+import { MarketingService } from '../marketing/marketing.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -20,7 +22,10 @@ import { Roles } from '../common/decorators/roles.decorator';
 @Roles('SUPER_ADMIN', 'ADMIN')
 @ApiBearerAuth()
 export class AdminController {
-  constructor(private adminService: AdminService) {}
+  constructor(
+    private adminService: AdminService,
+    private marketing: MarketingService,
+  ) {}
 
   @Get('dashboard')
   getDashboard() {
@@ -135,5 +140,30 @@ export class AdminController {
   @Patch('settings/:key')
   updateSetting(@Param('key') key: string, @Body('value') value: unknown) {
     return this.adminService.updateSystemSetting(key, value);
+  }
+
+  @Get('merchants/:id/marketing')
+  @ApiOperation({ summary: 'Facebook & Marketing settings for a merchant' })
+  getMerchantMarketing(@Param('id') id: string) {
+    return this.marketing.getSettings(id);
+  }
+
+  @Put('merchants/:id/marketing')
+  @ApiOperation({ summary: 'Save Facebook & Marketing settings for a merchant' })
+  updateMerchantMarketing(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      storePublicUrl?: string;
+      pixels?: Array<{
+        id?: string;
+        label?: string;
+        pixelId?: string;
+        testEventCode?: string;
+        accessToken?: string;
+      }>;
+    },
+  ) {
+    return this.marketing.updateSettings(id, body);
   }
 }

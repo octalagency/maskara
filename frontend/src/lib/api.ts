@@ -379,18 +379,26 @@ class ApiClient {
     return this.request<Merchant>('/merchants/me', { method: 'PATCH', body: JSON.stringify(data) });
   }
 
-  getMarketing() {
-    return this.request<MarketingSettings>('/marketing');
+  getAdminMerchantMarketing(merchantId: string) {
+    return this.request<MarketingSettings>(
+      `/admin/merchants/${merchantId}/marketing`,
+    );
   }
 
-  updateMarketing(data: {
-    storePublicUrl?: string;
-    pixels?: MarketingPixel[];
-  }) {
-    return this.request<MarketingSettings>('/marketing', {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
+  updateAdminMerchantMarketing(
+    merchantId: string,
+    data: {
+      storePublicUrl?: string;
+      pixels?: MarketingPixel[];
+    },
+  ) {
+    return this.request<MarketingSettings>(
+      `/admin/merchants/${merchantId}/marketing`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      },
+    );
   }
 
   // API Keys

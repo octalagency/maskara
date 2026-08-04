@@ -17,6 +17,7 @@ import {
   SlidersHorizontal,
   Banknote,
   Mic2,
+  Megaphone,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -26,6 +27,7 @@ const navItems = [
   { href: '/admin/plans', label: 'প্ল্যান', icon: Package },
   { href: '/admin/billing', label: 'বিলিং', icon: Wallet },
   { href: '/admin/payments', label: 'পেমেন্ট গেটওয়ে', icon: Banknote },
+  { href: '/admin/marketing', label: 'Facebook & মার্কেটিং', icon: Megaphone },
   { href: '/admin/voice', label: 'Voice Studio', icon: Mic2 },
   { href: '/admin/config', label: 'Voice / ePBX', icon: SlidersHorizontal },
   { href: '/admin/analytics', label: 'কল অ্যানালিটিক্স', icon: BarChart3 },
