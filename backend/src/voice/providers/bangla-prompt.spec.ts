@@ -9,6 +9,7 @@ import {
   resolveLiveEpbxVoice,
   resolveMerchantVoice,
   buildOrderVerificationPrompt,
+  speakableProductName,
 } from './bangla-prompt';
 
 describe('hasBanglaScript', () => {
@@ -142,13 +143,25 @@ describe('buildOrderVerificationPrompt', () => {
     expect(text).not.toContain('⟦পণ্যতালিকা⟧');
     expect(text).not.toMatch(/PRODUCTS/i);
   });
+
+  it('speaks English product titles in Bangla script (no Latin stutter)', () => {
+    const text = buildOrderVerificationPrompt({
+      storeName: 'ইয়েস বাজার',
+      totalAmount: 450,
+      productNames: ['Food Safety Cover'],
+    });
+    expect(text).toContain('ফুড সেফটি কভার');
+    expect(text).not.toMatch(/[A-Za-z]/);
+    expect(speakableProductName('Smart Dish Rack')).toBe('স্মার্ট ডিশ র্যাক');
+  });
 });
 
 describe('formatProductNamesBangla', () => {
   it('joins with এবং', () => {
-    expect(formatProductNamesBangla(['A'])).toBe('A');
-    expect(formatProductNamesBangla(['A', 'B'])).toBe('A এবং B');
-    expect(formatProductNamesBangla(['A', 'B', 'C'])).toBe('A, B এবং C');
+    expect(formatProductNamesBangla(['এক', 'দুই'])).toBe('এক এবং দুই');
+    expect(formatProductNamesBangla(['এক', 'দুই', 'তিন'])).toBe(
+      'এক, দুই এবং তিন',
+    );
     expect(
       extractProductNamesFromItems([
         { name: 'হেয়ার অয়েল' },

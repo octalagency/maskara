@@ -71,9 +71,180 @@ export function extractProductNamesFromItems(items: unknown): string[] {
   return names;
 }
 
+/**
+ * Common English ecommerce words → Bangla script (phonetic).
+ * Live ePBX speaks WaveNet on `custom_text`; Latin mid-sentence makes
+ * Bangla TTS stutter ("ভেঙে ভেঙে") — keep product titles in Bangla script.
+ */
+const PRODUCT_WORD_BN: Record<string, string> = {
+  food: 'ফুড',
+  safety: 'সেফটি',
+  cover: 'কভার',
+  covers: 'কভার',
+  smart: 'স্মার্ট',
+  dish: 'ডিশ',
+  rack: 'র্যাক',
+  racks: 'র্যাক',
+  multi: 'মাল্টি',
+  multilayer: 'মাল্টিলেয়ার',
+  layer: 'লেয়ার',
+  layers: 'লেয়ার',
+  shoe: 'সু',
+  shoes: 'সু',
+  box: 'বক্স',
+  spice: 'স্পাইস',
+  set: 'সেট',
+  pack: 'প্যাক',
+  kit: 'কিট',
+  oil: 'অয়েল',
+  hair: 'হেয়ার',
+  face: 'ফেস',
+  wash: 'ওয়াশ',
+  cream: 'ক্রিম',
+  soap: 'সাবান',
+  bag: 'ব্যাগ',
+  bottle: 'বোতল',
+  size: 'সাইজ',
+  large: 'লার্জ',
+  small: 'স্মল',
+  medium: 'মিডিয়াম',
+  black: 'ব্ল্যাক',
+  white: 'হোয়াইট',
+  pink: 'পিংক',
+  blue: 'ব্লু',
+  red: 'রেড',
+  green: 'গ্রিন',
+  premium: 'প্রিমিয়াম',
+  original: 'অরিজিনাল',
+  new: 'নিউ',
+  pro: 'প্রো',
+  max: 'ম্যাক্স',
+  mini: 'মিনি',
+  plus: 'প্লাস',
+  piece: 'পিস',
+  pieces: 'পিস',
+  pcs: 'পিস',
+  pc: 'পিস',
+  pair: 'পেয়ার',
+  pairs: 'পেয়ার',
+  and: 'এবং',
+  with: 'উইথ',
+  for: 'ফর',
+  the: '',
+  a: '',
+  an: '',
+  of: '',
+};
+
+/** Very small Latin→Bangla fallback when a product word is not in the dictionary. */
+function transliterateLatinWord(word: string): string {
+  const w = word.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!w) return '';
+  if (/^\d+$/.test(w)) return toBanglaDigits(w);
+
+  const digraphs: [string, string][] = [
+    ['sh', 'শ'],
+    ['ch', 'চ'],
+    ['th', 'থ'],
+    ['ph', 'ফ'],
+    ['wh', 'হু'],
+    ['ck', 'ক'],
+    ['ng', 'ং'],
+    ['oo', 'ু'],
+    ['ee', 'ি'],
+    ['ai', 'াই'],
+    ['ay', 'ে'],
+    ['ou', 'াউ'],
+    ['ow', 'াউ'],
+  ];
+  const singles: Record<string, string> = {
+    a: 'া',
+    b: 'ব',
+    c: 'ক',
+    d: 'ড',
+    e: 'ে',
+    f: 'ফ',
+    g: 'গ',
+    h: 'হ',
+    i: 'ি',
+    j: 'জ',
+    k: 'ক',
+    l: 'ল',
+    m: 'ম',
+    n: 'ন',
+    o: 'ো',
+    p: 'প',
+    q: 'ক',
+    r: 'র',
+    s: 'স',
+    t: 'ট',
+    u: 'ু',
+    v: 'ভ',
+    w: 'ও',
+    x: 'ক্স',
+    y: 'ই',
+    z: 'জ',
+  };
+
+  let i = 0;
+  let out = '';
+  while (i < w.length) {
+    if (/\d/.test(w[i])) {
+      let j = i;
+      while (j < w.length && /\d/.test(w[j])) j++;
+      out += toBanglaDigits(w.slice(i, j));
+      i = j;
+      continue;
+    }
+    let matched = false;
+    for (const [lat, bn] of digraphs) {
+      if (w.startsWith(lat, i)) {
+        out += bn;
+        i += lat.length;
+        matched = true;
+        break;
+      }
+    }
+    if (matched) continue;
+    out += singles[w[i]] || '';
+    i += 1;
+  }
+  // Leading vowel marks need a base অ
+  if (/^[ােিোু]/.test(out)) out = `অ${out}`;
+  return out || 'পণ্য';
+}
+
+function latinWordToBanglaSpeech(word: string): string {
+  const key = word.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!key) return '';
+  if (Object.prototype.hasOwnProperty.call(PRODUCT_WORD_BN, key)) {
+    return PRODUCT_WORD_BN[key];
+  }
+  return transliterateLatinWord(key);
+}
+
+/**
+ * Make a product title speakable on Bangla telephony TTS (no Latin runs).
+ */
+export function speakableProductName(name: string): string {
+  let n = name.replace(/\s+/g, ' ').trim();
+  if (!n) return '';
+
+  // Keep Bangla / digits; convert each Latin token to Bangla script.
+  n = n.replace(/[A-Za-z][A-Za-z0-9+._'-]*/g, (w) => latinWordToBanglaSpeech(w));
+  n = n
+    .replace(/[()[\]{}]/g, ' ')
+    .replace(/[^\u0980-\u09FF০-৯\s,.\-_/]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([,./])/g, '$1')
+    .trim();
+
+  return n || 'একটি পণ্য';
+}
+
 /** Bangla list: A | A এবং B | A, B এবং C */
 export function formatProductNamesBangla(names: string[]): string {
-  const clean = names.map((n) => n.trim()).filter(Boolean);
+  const clean = names.map((n) => speakableProductName(n)).filter(Boolean);
   if (clean.length === 0) return 'একটি পণ্য';
   if (clean.length === 1) return clean[0];
   if (clean.length === 2) return `${clean[0]} এবং ${clean[1]}`;
