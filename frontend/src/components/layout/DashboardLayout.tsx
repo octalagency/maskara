@@ -15,6 +15,7 @@ import {
   X,
   CreditCard,
   Clock,
+  Megaphone,
 } from 'lucide-react';
 import { Suspense, useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -25,6 +26,11 @@ const navItems = [
   { href: '/dashboard/calls', label: 'কল হিস্ট্রি', icon: Phone },
   { href: '/dashboard/call-system', label: 'কল সিস্টেম', icon: Clock },
   { href: '/dashboard/reports', label: 'রিপোর্ট', icon: BarChart3 },
+  {
+    href: '/dashboard/marketing',
+    label: 'Facebook & মার্কেটিং',
+    icon: Megaphone,
+  },
   { href: '/dashboard/subscription', label: 'সাবস্ক্রিপশন', icon: CreditCard },
   {
     href: '/dashboard/settings?tab=integrations',

@@ -379,6 +379,20 @@ class ApiClient {
     return this.request<Merchant>('/merchants/me', { method: 'PATCH', body: JSON.stringify(data) });
   }
 
+  getMarketing() {
+    return this.request<MarketingSettings>('/marketing');
+  }
+
+  updateMarketing(data: {
+    storePublicUrl?: string;
+    pixels?: MarketingPixel[];
+  }) {
+    return this.request<MarketingSettings>('/marketing', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
   // API Keys
   getApiKeys() {
     return this.request<ApiKey[]>('/api-keys');
@@ -744,6 +758,22 @@ export interface Merchant {
   dailyCallLimit?: number;
   lifetimeCallLimit?: number;
   firstHourCallLimit?: number;
+}
+
+export interface MarketingPixel {
+  id: string;
+  label: string;
+  pixelId: string;
+  testEventCode: string;
+  accessToken: string;
+}
+
+export interface MarketingSettings {
+  storePublicUrl: string;
+  sitemapUrl: string;
+  productFeedUrl: string;
+  pixels: MarketingPixel[];
+  eventsManagerUrl: string;
 }
 
 export interface ApiKey {

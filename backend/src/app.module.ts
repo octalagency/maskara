@@ -20,6 +20,7 @@ import { PlansModule } from './plans/plans.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { CommonServicesModule } from './common/common-services.module';
 import { PaymentsModule } from './payments/payments.module';
+import { MarketingModule } from './marketing/marketing.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -50,6 +51,7 @@ import { HealthController } from './health.controller';
     AdminModule,
     ReportsModule,
     ApiKeysModule,
+    MarketingModule,
   ],
 })
 export class AppModule {}
