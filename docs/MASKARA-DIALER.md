@@ -45,11 +45,12 @@ docker exec maskara-freeswitch fs_cli -x "sofia status gateway maskara_trunk"
 
 ### Go-live checklist (prod)
 
-1. FreeSWITCH `healthy`, ESL from backend OK (`maskara_esl` ACL).
-2. Set `SIP_TRUNK_HOST` + `SIP_TRUNK_USER` + `SIP_TRUNK_PASSWORD` (096 DID).
-3. `VOICE_PROVIDER=maskara_dialer` (or `auto` once SIP is set).
-4. Admin test call with Settings voice **Leda** → hear Chirp3 (same as preview).
-5. Nginx shows `GET /voice/tts-audio/*` with `User-Agent` containing wget/freeswitch.
+1. FreeSWITCH `healthy`, ESL from backend OK (`maskara_esl` ACL), `mod_shout` loaded (MP3).
+2. Prefer **ePBX extension** SIP (e.g. `201@maskara.epbx.bd`) — ICC trunk direct REGISTER often returns `503` from VPS IPs.
+3. Set `SIP_TRUNK_*` + Admin/DB `provider=maskara_dialer` (DB overrides `.env`).
+4. `sofia status gateway maskara_trunk` → **REGED / UP**.
+5. Admin test call with Settings voice **Leda** → answer phone → hear Chirp3.
+6. Nginx shows `GET /voice/tts-audio/*` with `User-Agent` **Wget** after answer.
 
 ## Admin
 
