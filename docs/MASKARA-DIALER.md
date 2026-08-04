@@ -35,13 +35,21 @@ FREESWITCH_ESL_PASSWORD=ClueCon
 GOOGLE_TTS_API_KEY=...
 ```
 
-Then:
+Then recreate FreeSWITCH so the SIP gateway XML is written:
 
 ```bash
 cd /opt/maskara
-docker compose -f docker-compose.hostinger.yml build freeswitch backend worker
-docker compose -f docker-compose.hostinger.yml up -d freeswitch backend worker
+docker compose -f docker-compose.hostinger.yml up -d --force-recreate freeswitch backend worker
+docker exec maskara-freeswitch fs_cli -x "sofia status gateway maskara_trunk"
 ```
+
+### Go-live checklist (prod)
+
+1. FreeSWITCH `healthy`, ESL from backend OK (`maskara_esl` ACL).
+2. Set `SIP_TRUNK_HOST` + `SIP_TRUNK_USER` + `SIP_TRUNK_PASSWORD` (096 DID).
+3. `VOICE_PROVIDER=maskara_dialer` (or `auto` once SIP is set).
+4. Admin test call with Settings voice **Leda** → hear Chirp3 (same as preview).
+5. Nginx shows `GET /voice/tts-audio/*` with `User-Agent` containing wget/freeswitch.
 
 ## Admin
 

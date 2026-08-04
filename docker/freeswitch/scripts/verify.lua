@@ -15,29 +15,32 @@ local webhook = session:getVariable("maskara_webhook") or ""
 local audio_dir = "/var/lib/freeswitch/maskara-audio"
 os.execute("mkdir -p " .. audio_dir)
 
-local api = freeswitch.API()
+local function shell_quote(s)
+  return "'" .. tostring(s):gsub("'", "'\\''") .. "'"
+end
 
 local function download(url, name)
   if not url or url == "" then return nil end
   local path = audio_dir .. "/" .. call_id .. "-" .. name .. ".mp3"
-  -- mod_curl: "<url> get <file> ..."
+  -- BusyBox wget (safarov image); strip shell metacharacters from URL
+  url = url:gsub("[;&|`$\\]", "")
   local cmd = string.format(
-    "%s get %s connect-timeout 30 timeout 30",
-    url,
-    path
+    "wget -q -O %s %s",
+    shell_quote(path),
+    shell_quote(url)
   )
-  local res = api:execute("curl", cmd) or ""
+  local ok = os.execute(cmd)
   local f = io.open(path, "rb")
   if f then
     local size = f:seek("end")
     f:close()
-    if size and size > 0 then
+    if size and size > 0 and (ok == true or ok == 0) then
       return path
     end
   end
   freeswitch.consoleLog(
     "ERR",
-    "[maskara] download failed " .. name .. " url=" .. url .. " res=" .. res .. "\n"
+    "[maskara] download failed " .. name .. " url=" .. url .. "\n"
   )
   return nil
 end
@@ -60,13 +63,19 @@ local function notify(digits)
     call_id,
     digits
   )
-  -- fire-and-forget HTTP POST via mod_curl
-  local cmd = string.format(
-    "%s post content-type 'application/json' connect-timeout 15 timeout 15 data '%s'",
-    webhook,
-    payload:gsub("'", "")
-  )
-  api:execute("curl", cmd)
+  local tmp = audio_dir .. "/" .. call_id .. "-dtmf.json"
+  local f = io.open(tmp, "w")
+  if f then
+    f:write(payload)
+    f:close()
+  end
+  local wh = webhook:gsub("[;&|`$\\]", "")
+  os.execute(string.format(
+    "wget -q -O /dev/null --header=%s --post-file=%s %s >/dev/null 2>&1 &",
+    shell_quote("Content-Type: application/json"),
+    shell_quote(tmp),
+    shell_quote(wh)
+  ))
 end
 
 local function play(path)
