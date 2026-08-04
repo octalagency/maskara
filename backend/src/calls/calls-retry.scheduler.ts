@@ -39,8 +39,12 @@ export class CallsRetryScheduler {
     const pending = await this.prisma.order.findMany({
       where: {
         status: 'PENDING',
-        callAttempts: 0,
         createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        OR: [
+          { callAttempts: 0 },
+          // Attempts bumped without a Call row (queue cleared / bad reset)
+          { callAttempts: { gt: 0 }, calls: { none: {} } },
+        ],
       },
       include: {
         calls: { take: 1 },
@@ -51,9 +55,15 @@ export class CallsRetryScheduler {
 
     for (const order of pending) {
       if (order.calls.length > 0) continue;
-      // First call is window-exempt — dial even after 22:00
       this.logger.log(`First-call enqueue (≤20s backup) for ${order.orderNumber}`);
-      await this.queueCall(order.id, order.merchantId, false, `call-first-${order.id}`);
+      // Unique job id each minute so a wiped queue can re-fire
+      const slot = Math.floor(Date.now() / 60_000);
+      await this.queueCall(
+        order.id,
+        order.merchantId,
+        false,
+        `call-first-${order.id}-${slot}`,
+      );
     }
   }
 
