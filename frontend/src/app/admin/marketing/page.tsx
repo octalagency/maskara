@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Check,
   Copy,
@@ -9,10 +9,11 @@ import {
   Loader2,
   Plus,
   Trash2,
+  Zap,
 } from 'lucide-react';
 import { api, MarketingPixel, MarketingSettings } from '@/lib/api';
 
-function newPixel(): MarketingPixel {
+function emptyPixel(): MarketingPixel {
   return {
     id: `px-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     label: '',
@@ -20,6 +21,10 @@ function newPixel(): MarketingPixel {
     testEventCode: '',
     accessToken: '',
   };
+}
+
+function isValidPixelId(id: string) {
+  return /^\d{5,20}$/.test(id.trim());
 }
 
 function CopyField({ label, value }: { label: string; value: string }) {
@@ -42,7 +47,8 @@ function CopyField({ label, value }: { label: string; value: string }) {
       <div className="flex gap-2">
         <input
           readOnly
-          value={value || '— সাইট URL সেভ করুন'}
+          value={value || ''}
+          placeholder="—"
           className="input font-latin flex-1 text-sm"
         />
         <button
@@ -66,11 +72,12 @@ function CopyField({ label, value }: { label: string; value: string }) {
 export default function AdminMarketingPage() {
   const [data, setData] = useState<MarketingSettings | null>(null);
   const [storePublicUrl, setStorePublicUrl] = useState('https://maskara.bd');
-  const [pixels, setPixels] = useState<MarketingPixel[]>([]);
+  const [pixels, setPixels] = useState<MarketingPixel[]>([emptyPixel()]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [savedReady, setSavedReady] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -80,7 +87,20 @@ export default function AdminMarketingPage() {
       .then((res) => {
         setData(res);
         setStorePublicUrl(res.storePublicUrl || 'https://maskara.bd');
-        setPixels(res.pixels?.length ? res.pixels : []);
+        const cleaned = (res.pixels || [])
+          .map((p) => ({
+            ...p,
+            label: p.label || '',
+            pixelId: p.pixelId || '',
+            // Never show junk autofill leftovers from older saves
+            testEventCode: /^\d+$|^TEST/i.test(p.testEventCode || '')
+              ? p.testEventCode
+              : '',
+            accessToken: p.accessToken || '',
+          }))
+          .filter((p) => p.pixelId.trim());
+        setPixels(cleaned.length ? cleaned : [emptyPixel()]);
+        setSavedReady(cleaned.some((p) => isValidPixelId(p.pixelId)));
       })
       .catch((err) =>
         setError(err instanceof Error ? err.message : 'Marketing লোড ব্যর্থ'),
@@ -88,10 +108,16 @@ export default function AdminMarketingPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  const boostReady = useMemo(
+    () => pixels.some((p) => isValidPixelId(p.pixelId)),
+    [pixels],
+  );
+
   function updatePixel(id: string, patch: Partial<MarketingPixel>) {
     setPixels((prev) =>
       prev.map((p) => (p.id === id ? { ...p, ...patch } : p)),
     );
+    setSavedReady(false);
   }
 
   async function save() {
@@ -99,16 +125,31 @@ export default function AdminMarketingPage() {
     setMessage('');
     setError('');
     try {
-      const cleaned = pixels.filter((p) => p.pixelId.trim());
+      const cleaned = pixels
+        .map((p) => ({
+          ...p,
+          label: p.label.trim(),
+          pixelId: p.pixelId.trim(),
+          testEventCode: p.testEventCode.trim(),
+          accessToken: p.accessToken.trim(),
+        }))
+        .filter((p) => p.pixelId);
       const res = await api.updateAdminMarketing({
         storePublicUrl: storePublicUrl.trim() || 'https://maskara.bd',
         pixels: cleaned,
       });
       setData(res);
       setStorePublicUrl(res.storePublicUrl || 'https://maskara.bd');
-      setPixels(res.pixels || []);
-      setMessage('Maskara মার্কেটিং সেটিংস সেভ হয়েছে');
-      setTimeout(() => setMessage(''), 2500);
+      const next = (res.pixels || []).filter((p) => p.pixelId.trim());
+      setPixels(next.length ? next : [emptyPixel()]);
+      const ready = next.some((p) => isValidPixelId(p.pixelId));
+      setSavedReady(ready);
+      setMessage(
+        ready
+          ? 'সেভ হয়েছে — Boost করার জন্য প্রস্তুত'
+          : 'সেভ হয়েছে',
+      );
+      setTimeout(() => setMessage(''), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'সেভ ব্যর্থ');
     } finally {
@@ -135,10 +176,7 @@ export default function AdminMarketingPage() {
             Facebook Boost & মার্কেটিং
           </h2>
           <p className="text-sm text-slate-500">
-            Maskara প্ল্যাটফর্ম ব্র্যান্ডিং — Sitemap, Product Feed ও Pixel / CAPI
-          </p>
-          <p className="mt-1 inline-flex rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700">
-            Brand: Maskara
+            Maskara প্ল্যাটফর্ম — Sitemap, Product Feed ও Pixel / CAPI
           </p>
         </div>
       </div>
@@ -170,9 +208,9 @@ export default function AdminMarketingPage() {
             </div>
             <input
               className="input font-latin"
-              placeholder="https://maskara.bd"
               value={storePublicUrl}
               onChange={(e) => setStorePublicUrl(e.target.value)}
+              autoComplete="off"
             />
           </div>
 
@@ -204,12 +242,9 @@ export default function AdminMarketingPage() {
                 <h3 className="font-semibold text-slate-900">
                   Pixel + Conversion API Setup
                 </h3>
-                <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs text-slate-600">
-                  <li>Meta Business Suite → Events Manager</li>
-                  <li>Maskara Pixel ID এখানে পেস্ট করুন</li>
-                  <li>CAPI Access Token দিন</li>
-                  <li>টেস্টে Test Event Code ব্যবহার করুন</li>
-                </ol>
+                <p className="mt-1 text-xs text-slate-500">
+                  ঘরগুলো খালি থাকবে — Pixel ID সেট করে সেভ করুন
+                </p>
               </div>
               <a
                 href={
@@ -225,37 +260,66 @@ export default function AdminMarketingPage() {
               </a>
             </div>
 
-            <div className="space-y-4">
-              {pixels.length === 0 && (
-                <p className="rounded-lg border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500">
-                  এখনো কোনো Pixel নেই — নিচে থেকে যোগ করুন
-                </p>
-              )}
+            {(savedReady || boostReady) && (
+              <div
+                className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium ${
+                  savedReady
+                    ? 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200'
+                    : 'bg-amber-50 text-amber-800 ring-1 ring-amber-200'
+                }`}
+              >
+                <Zap className="h-4 w-4 shrink-0" />
+                {savedReady
+                  ? 'Boost করার জন্য প্রস্তুত'
+                  : 'Pixel ID আছে — সেভ করুন, তাহলে Boost এর জন্য প্রস্তুত হবে'}
+              </div>
+            )}
+
+            <form
+              className="space-y-4"
+              autoComplete="off"
+              onSubmit={(e) => e.preventDefault()}
+            >
+              {/* honeypot — reduces browser login autofill into pixel fields */}
+              <input
+                type="text"
+                name="username"
+                autoComplete="username"
+                className="sr-only"
+                tabIndex={-1}
+                readOnly
+                value=""
+              />
+              <input
+                type="password"
+                name="password"
+                autoComplete="current-password"
+                className="sr-only"
+                tabIndex={-1}
+                readOnly
+                value=""
+              />
+
               {pixels.map((p, idx) => (
                 <div
                   key={p.id}
-                  className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4"
+                  className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <p className="font-medium text-slate-800">
-                      Pixel {idx + 1}
-                      {p.pixelId ? (
-                        <span className="font-latin text-slate-500">
-                          {' '}
-                          — {p.pixelId}
-                        </span>
-                      ) : null}
-                    </p>
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1 text-sm text-rose-600 hover:text-rose-700"
-                      onClick={() =>
-                        setPixels((prev) => prev.filter((x) => x.id !== p.id))
-                      }
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      সরান
-                    </button>
+                    <p className="font-medium text-slate-800">Pixel {idx + 1}</p>
+                    {pixels.length > 1 && (
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-sm text-rose-600 hover:text-rose-700"
+                        onClick={() => {
+                          setPixels((prev) => prev.filter((x) => x.id !== p.id));
+                          setSavedReady(false);
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        সরান
+                      </button>
+                    )}
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
@@ -263,12 +327,14 @@ export default function AdminMarketingPage() {
                         লেবেল (ঐচ্ছিক)
                       </label>
                       <input
-                        className="input"
+                        className="input bg-white"
+                        name={`fb-label-${p.id}`}
                         value={p.label}
                         onChange={(e) =>
                           updatePixel(p.id, { label: e.target.value })
                         }
-                        placeholder="Maskara Main"
+                        placeholder=""
+                        autoComplete="off"
                       />
                     </div>
                     <div>
@@ -276,12 +342,17 @@ export default function AdminMarketingPage() {
                         Facebook Pixel ID
                       </label>
                       <input
-                        className="input font-latin"
+                        className="input font-latin bg-white"
+                        name={`fb-pixel-${p.id}`}
                         value={p.pixelId}
                         onChange={(e) =>
-                          updatePixel(p.id, { pixelId: e.target.value })
+                          updatePixel(p.id, {
+                            pixelId: e.target.value.replace(/\D/g, ''),
+                          })
                         }
-                        placeholder="1781964129370544"
+                        placeholder=""
+                        inputMode="numeric"
+                        autoComplete="off"
                       />
                     </div>
                     <div>
@@ -289,12 +360,14 @@ export default function AdminMarketingPage() {
                         Test Event ID (টেস্টের সময়)
                       </label>
                       <input
-                        className="input font-latin"
+                        className="input font-latin bg-white"
+                        name={`fb-test-${p.id}`}
                         value={p.testEventCode}
                         onChange={(e) =>
                           updatePixel(p.id, { testEventCode: e.target.value })
                         }
-                        placeholder="TEST12345"
+                        placeholder=""
+                        autoComplete="off"
                       />
                     </div>
                     <div>
@@ -302,25 +375,30 @@ export default function AdminMarketingPage() {
                         Pixel Access Token (CAPI)
                       </label>
                       <input
-                        type="password"
-                        className="input font-latin"
+                        type="text"
+                        className="input font-latin bg-white"
+                        name={`fb-token-${p.id}`}
                         value={p.accessToken}
                         onChange={(e) =>
                           updatePixel(p.id, { accessToken: e.target.value })
                         }
-                        placeholder="EAAxxxxx…"
-                        autoComplete="off"
+                        placeholder=""
+                        autoComplete="new-password"
+                        spellCheck={false}
                       />
                     </div>
                   </div>
                 </div>
               ))}
-            </div>
+            </form>
 
             <button
               type="button"
               className="btn-secondary inline-flex items-center gap-2"
-              onClick={() => setPixels((prev) => [...prev, newPixel()])}
+              onClick={() => {
+                setPixels((prev) => [...prev, emptyPixel()]);
+                setSavedReady(false);
+              }}
             >
               <Plus className="h-4 w-4" />
               Pixel যোগ করুন
