@@ -331,12 +331,13 @@ export class VoiceWebhookService {
           ? (Date.now() - call.startedAt.getTime()) / 1000
           : (Date.now() - call.createdAt.getTime()) / 1000;
 
-    // Only treat as tech-fail if ePBX never accepted the dial (no providerCallId).
-    // Race: failed webhook can arrive before we write startedAt after ePBX OK —
-    // that must NOT refund attempts or the UI shows 0/20 forever.
-    const isTechFail =
+    // ePBX often returns HTTP 200 then webhook status=failed with no ring.
+    // Those must NEVER count as real customer calls (UI 2/20 with zero rings).
+    const isPstnFail =
       mapped === 'FAILED' &&
-      status === 'failed' &&
+      (status === 'failed' || status === 'fail');
+    const isTechFail =
+      isPstnFail &&
       !call.providerCallId &&
       elapsedSec < TECH_FAIL_MAX_SEC;
 
@@ -350,7 +351,11 @@ export class VoiceWebhookService {
         )
           ? new Date()
           : undefined,
-        ...(isTechFail ? { errorMessage: 'epbx_instant_fail' } : {}),
+        ...(isTechFail
+          ? { errorMessage: 'epbx_instant_fail' }
+          : isPstnFail
+            ? { errorMessage: 'epbx_pstn_fail' }
+            : {}),
       },
     });
 
@@ -369,8 +374,8 @@ export class VoiceWebhookService {
       return { ok: true };
     }
 
-    // Instant ePBX fail → refund attempt + quick redial (do not miss the customer)
-    if (isTechFail && order) {
+    // PSTN never rang / carrier fail → refund counter + immediate redial (no fake attempts)
+    if ((isPstnFail || isTechFail) && order) {
       const prevMeta =
         order.metadata && typeof order.metadata === 'object' && !Array.isArray(order.metadata)
           ? ({ ...(order.metadata as Record<string, unknown>) } as Record<string, unknown>)
@@ -388,15 +393,15 @@ export class VoiceWebhookService {
             ...prevMeta,
             epbxTechFails: techFails,
             lastEpbxTechFailAt: new Date().toISOString(),
+            lastEpbxFailKind: isTechFail ? 'instant' : 'pstn',
           } as Prisma.InputJsonValue,
         },
       });
 
       this.logger.warn(
-        `ePBX tech fail (${elapsedSec.toFixed(2)}s) call=${callId} order=${order.orderNumber} — refunded attempt → ${refundedAttempts}, techFails=${techFails}`,
+        `ePBX dial fail (${elapsedSec.toFixed(2)}s, ${isTechFail ? 'instant' : 'pstn'}) call=${callId} order=${order.orderNumber} — refunded → ${refundedAttempts}, fails=${techFails}`,
       );
 
-      // Do not send NO_RESPONSE — older Woo plugins treated that as cancel.
       await this.notifications.pushOrderUpdate(call.merchant, pending, {
         verifyStatus: 'pending',
         outcome: 'RETRY_SCHEDULED',
@@ -413,11 +418,11 @@ export class VoiceWebhookService {
           );
         } catch (err) {
           this.logger.warn(
-            `Tech-fail requeue skipped: ${err instanceof Error ? err.message : err}`,
+            `PSTN-fail requeue skipped: ${err instanceof Error ? err.message : err}`,
           );
         }
       }
-      return { ok: true, techFail: true };
+      return { ok: true, techFail: isTechFail, pstnFail: isPstnFail };
     }
 
     if (call.attemptNumber < lifetimeLimitOf(call.merchant)) {

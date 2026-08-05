@@ -21,20 +21,30 @@ export class VoiceProviderFactory {
       .getProviderMode()
       .toLowerCase() as VoiceProviderName | 'auto';
 
-    if (preferred === 'maskara_dialer' && this.maskaraDialer.isConfigured()) {
+    // Own FreeSWITCH trunk — real PSTN ring (ePBX HTTP /calls/verify often
+    // returns OK then webhook status=failed with zero customer ring).
+    if (
+      (preferred === 'maskara_dialer' || preferred === 'auto') &&
+      this.maskaraDialer.isConfigured()
+    ) {
       return this.maskaraDialer;
     }
     if (preferred === 'epbx' && this.epbx.isConfigured()) return this.epbx;
     if (preferred === 'ippbx' && this.ippbx.isConfigured()) return this.ippbx;
     if (preferred === 'twilio' && this.twilio.isConfigured()) return this.twilio;
 
-    if (preferred === 'auto' || preferred === 'simulate') {
-      // Prefer own dialer (Chirp3 Leda) when SIP trunk is ready
+    if (preferred === 'simulate') {
       if (this.maskaraDialer.isConfigured()) return this.maskaraDialer;
       if (this.epbx.isConfigured()) return this.epbx;
       if (this.ippbx.isConfigured()) return this.ippbx;
       if (this.twilio.isConfigured()) return this.twilio;
     }
+
+    // Last resort: if someone forced epbx but dialer is healthy, prefer dialer
+    if (this.maskaraDialer.isConfigured()) return this.maskaraDialer;
+    if (this.epbx.isConfigured()) return this.epbx;
+    if (this.ippbx.isConfigured()) return this.ippbx;
+    if (this.twilio.isConfigured()) return this.twilio;
 
     return null;
   }
