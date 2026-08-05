@@ -9,14 +9,30 @@ type Phase = 'idle' | 'ringing' | 'welcome' | 'branch' | 'done';
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || 'https://api.maskara.bd';
 
+/** Demo script — customer: সাকিব, shop: Shopi */
 const COPY = {
   welcome:
-    'হ্যালো সাকিব, আপনি ঘরেবাজারে এক কেজি মধু অর্ডার করেছিলেন। যার মূল্য ১২০০ টাকা। আপনার অর্ডারটি যদি কনফার্ম হয়, তাহলে এক চাপুন। বাতিল করতে দুই চাপুন।',
+    'হ্যালো সাকিব, আপনি Shopi থেকে পাঁচ আগস্ট দুই হাজার ছাব্বিশ তারিখে এক কেজি মধু অর্ডার করেছিলেন। যার মূল্য এক হাজার দুইশ টাকা। আপনার অর্ডারটি যদি কনফার্ম হয়, তাহলে এক চাপুন। বাতিল করতে দুই চাপুন।',
   confirm:
-    'ধন্যবাদ। আপনার অর্ডারটি কনফার্ম হয়েছে। একদিনের মধ্যেই আপনি কুরিয়ারের মাধ্যমে পণ্যটি পেয়ে যাবেন।',
+    'ধন্যবাদ সাকিব। Shopi-তে আপনার অর্ডারটি কনফার্ম হয়েছে। একদিনের মধ্যেই আপনি কুরিয়ারের মাধ্যমে পণ্যটি পেয়ে যাবেন।',
   cancel:
-    'ধন্যবাদ। আপনার অর্ডারটি বাতিল করা হয়েছে। প্রয়োজনে আবার অর্ডার করতে পারেন।',
+    'ধন্যবাদ সাকিব। Shopi থেকে আপনার অর্ডারটি বাতিল করা হয়েছে। প্রয়োজনে আবার অর্ডার করতে পারেন।',
 } as const;
+
+const KEYPAD: { key: string; sub?: string; action?: '1' | '2' }[] = [
+  { key: '1', sub: 'Confirm', action: '1' },
+  { key: '2', sub: 'Cancel', action: '2' },
+  { key: '3' },
+  { key: '4' },
+  { key: '5' },
+  { key: '6' },
+  { key: '7' },
+  { key: '8' },
+  { key: '9' },
+  { key: '*' },
+  { key: '0' },
+  { key: '#' },
+];
 
 async function fetchClip(
   clip: Clip,
@@ -64,22 +80,38 @@ export function TestCallDemo() {
   const [phase, setPhase] = useState<Phase>('idle');
   const [activeKey, setActiveKey] = useState<'1' | '2' | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const cacheRef = useRef<
     Partial<Record<Clip, { mimeType: string; audioBase64: string }>>
   >({});
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     return () => {
       abortRef.current?.abort();
+      if (timerRef.current) clearInterval(timerRef.current);
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.src = '';
       }
     };
   }, []);
+
+  function clearTimer() {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }
+
+  function startTimer() {
+    clearTimer();
+    setElapsed(0);
+    timerRef.current = setInterval(() => setElapsed((s) => s + 1), 1000);
+  }
 
   function stop() {
     abortRef.current?.abort();
@@ -90,6 +122,14 @@ export function TestCallDemo() {
       audioRef.current = null;
     }
     setPlaying(false);
+  }
+
+  function hangUp() {
+    stop();
+    clearTimer();
+    setPhase('idle');
+    setActiveKey(null);
+    setElapsed(0);
   }
 
   async function playClip(clip: Clip) {
@@ -123,6 +163,7 @@ export function TestCallDemo() {
     setPhase('ringing');
     setActiveKey(null);
     setError(null);
+    startTimer();
     await new Promise((r) => setTimeout(r, 900));
     setPhase('welcome');
     await playClip('welcome');
@@ -131,11 +172,19 @@ export function TestCallDemo() {
 
   async function pressKey(key: '1' | '2') {
     if (phase !== 'branch' && phase !== 'welcome') return;
+    if (playing && phase === 'welcome') {
+      // allow barge-in during welcome
+      stop();
+    }
     setActiveKey(key);
     setPhase('branch');
     await playClip(key === '1' ? 'confirm' : 'cancel');
     setPhase('done');
   }
+
+  const canPress = phase === 'welcome' || phase === 'branch';
+  const mm = String(Math.floor(elapsed / 60)).padStart(1, '0');
+  const ss = String(elapsed % 60).padStart(2, '0');
 
   const phoneStatus =
     phase === 'idle'
@@ -147,66 +196,108 @@ export function TestCallDemo() {
           : phase === 'branch'
             ? activeKey
               ? `${activeKey} চাপা হয়েছে`
-              : '১ বা ২ চাপুন'
+              : '১ Confirm · ২ Cancel'
             : activeKey === '1'
               ? 'Order confirmed'
               : 'Order cancelled';
 
   return (
     <div className="mx-auto w-full max-w-xl lg:max-w-none">
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,17rem)_1fr] lg:gap-8">
-        {/* ManyDial-style phone */}
-        <div className="land-hero-item land-hero-3 mx-auto w-full max-w-[17rem]">
-          <div className="relative overflow-hidden rounded-[2rem] bg-[#0b1224] px-5 pb-6 pt-4 shadow-[0_24px_60px_-28px_rgba(11,18,36,0.65)]">
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,18rem)_1fr] lg:gap-8">
+        {/* Phone + keypad (ManyDial style) */}
+        <div className="mx-auto w-full max-w-[18rem]">
+          <div className="relative overflow-hidden rounded-[2rem] bg-[#0b1224] px-4 pb-5 pt-3 shadow-[0_24px_60px_-28px_rgba(11,18,36,0.65)]">
             <div className="flex items-center justify-between text-[10px] font-medium text-white/70">
               <span>8:41</span>
               <span className="h-1.5 w-6 rounded-full bg-white/80" />
             </div>
 
-            <div className="mt-10 flex flex-col items-center text-center">
+            <div className="mt-6 flex flex-col items-center text-center">
               <div
-                className={`flex h-16 w-16 items-center justify-center rounded-full bg-[#22c55e] ${
+                className={`flex h-14 w-14 items-center justify-center rounded-full bg-[#22c55e] ${
                   phase === 'ringing' || playing ? 'animate-pulse' : ''
                 }`}
               >
-                <Phone className="h-7 w-7 text-white" />
+                <Phone className="h-6 w-6 text-white" />
               </div>
-              <p className="mt-5 font-display text-lg font-semibold tracking-tight text-white">
+              <p className="mt-4 font-display text-base font-semibold tracking-tight text-white">
                 Confirm Order Call
               </p>
-              <p className="mt-1.5 min-h-[1.25rem] text-sm text-white/55">{phoneStatus}</p>
+              <p className="mt-1 text-sm text-white/55">{phoneStatus}</p>
+              {phase !== 'idle' && (
+                <p className="mt-1 font-mono text-xs text-white/40">
+                  {mm}:{ss}
+                </p>
+              )}
             </div>
 
-            <div className="mt-12 flex items-center justify-center gap-10">
-              <button
-                type="button"
-                onClick={() => {
-                  stop();
-                  setPhase('idle');
-                  setActiveKey(null);
-                }}
-                className="flex h-14 w-14 items-center justify-center rounded-full bg-[#ef4444] text-white transition hover:brightness-110"
-                aria-label="End demo"
-              >
-                <PhoneOff className="h-6 w-6" />
-              </button>
-              <button
-                type="button"
-                onClick={() => (playing ? stop() : startTestCall())}
-                className="flex h-14 w-14 items-center justify-center rounded-full bg-[#22c55e] text-white transition hover:brightness-110"
-                aria-label="টেস্ট কল শুনুন"
-              >
-                {playing ? (
-                  <Pause className="h-6 w-6" />
-                ) : (
+            {/* Keypad — 1 & 2 pressable */}
+            <div className="mt-5 grid grid-cols-3 gap-2.5 px-1">
+              {KEYPAD.map((k) => {
+                const isAction = k.action === '1' || k.action === '2';
+                // 1/2 during welcome (barge-in) or after welcome until a choice is made
+                const enabled =
+                  isAction &&
+                  (phase === 'welcome' ||
+                    (phase === 'branch' && !activeKey));
+                const lit = activeKey === k.action;
+                return (
+                  <button
+                    key={k.key}
+                    type="button"
+                    disabled={!enabled}
+                    onClick={() => k.action && pressKey(k.action)}
+                    className={`flex h-12 flex-col items-center justify-center rounded-full text-white transition ${
+                      lit
+                        ? 'bg-[#1a82f5] ring-2 ring-[#93c5fd]'
+                        : isAction && canPress
+                          ? 'bg-white/15 hover:bg-white/25'
+                          : 'bg-white/8 text-white/45'
+                    } disabled:cursor-default`}
+                    aria-label={
+                      k.action === '1'
+                        ? 'Press 1 Confirm'
+                        : k.action === '2'
+                          ? 'Press 2 Cancel'
+                          : k.key
+                    }
+                  >
+                    <span className="text-lg font-semibold leading-none">{k.key}</span>
+                    {k.sub && (
+                      <span className="mt-0.5 text-[8px] font-medium uppercase tracking-wide text-white/70">
+                        {k.sub}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-5 flex items-center justify-center">
+              {phase === 'idle' ? (
+                <button
+                  type="button"
+                  onClick={() => void startTestCall()}
+                  className="flex h-14 w-14 items-center justify-center rounded-full bg-[#22c55e] text-white transition hover:brightness-110"
+                  aria-label="টেস্ট কল শুনুন"
+                >
                   <Phone className="h-6 w-6 rotate-[-20deg]" />
-                )}
-              </button>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={hangUp}
+                  className="flex h-14 w-14 items-center justify-center rounded-full bg-[#ef4444] text-white transition hover:brightness-110"
+                  aria-label="End call"
+                >
+                  <PhoneOff className="h-6 w-6" />
+                </button>
+              )}
             </div>
           </div>
         </div>
 
-        {/* IVR flow */}
+        {/* IVR copy — what 1 / 2 say */}
         <div className="relative">
           <div
             className={`rounded-2xl border bg-white p-4 transition sm:p-5 ${
@@ -219,16 +310,12 @@ export function TestCallDemo() {
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-[#1a82f5] to-[#0d9488] text-white">
                 <Mic className="h-4 w-4" />
               </div>
-              <div className="flex h-7 items-center gap-1 rounded-full bg-[#15204a] px-2.5">
-                {[4, 8, 5, 10, 6, 9, 4].map((h, i) => (
-                  <span
-                    key={i}
-                    className="w-0.5 rounded-full bg-white/85"
-                    style={{ height: h }}
-                  />
-                ))}
+              <div>
+                <p className="text-sm font-semibold text-[#15204a]">Welcome Message</p>
+                <p className="text-[11px] text-[#8a92a8]">
+                  কাস্টমার: সাকিব · দোকান: Shopi · তারিখ: ৫ আগস্ট ২০২৬
+                </p>
               </div>
-              <p className="text-sm font-semibold text-[#15204a]">Welcome Message</p>
             </div>
             <p className="mt-3 rounded-xl bg-[#f4f6fb] px-3.5 py-3 text-[13px] leading-relaxed text-[#15204a] sm:text-sm">
               {COPY.welcome}
@@ -240,12 +327,15 @@ export function TestCallDemo() {
             aria-hidden
           />
 
-          <div className="mt-3 grid gap-3 sm:mt-0 sm:grid-cols-2">
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <button
               type="button"
-              onClick={() => pressKey('1')}
+              onClick={() => void pressKey('1')}
               disabled={
-                phase === 'idle' || phase === 'ringing' || playing || phase === 'done'
+                !(
+                  phase === 'welcome' ||
+                  (phase === 'branch' && !activeKey)
+                )
               }
               className={`rounded-2xl border bg-white p-4 text-left transition disabled:opacity-55 ${
                 activeKey === '1'
@@ -258,7 +348,7 @@ export function TestCallDemo() {
                   1
                 </span>
                 <p className="text-xs font-semibold tracking-wide text-[#5b647a]">
-                  Confirm Order
+                  Confirm — কী বলবে
                 </p>
               </div>
               <p className="mt-2 text-[12px] leading-relaxed text-[#5b647a] sm:text-[13px]">
@@ -268,9 +358,12 @@ export function TestCallDemo() {
 
             <button
               type="button"
-              onClick={() => pressKey('2')}
+              onClick={() => void pressKey('2')}
               disabled={
-                phase === 'idle' || phase === 'ringing' || playing || phase === 'done'
+                !(
+                  phase === 'welcome' ||
+                  (phase === 'branch' && !activeKey)
+                )
               }
               className={`rounded-2xl border bg-white p-4 text-left transition disabled:opacity-55 ${
                 activeKey === '2'
@@ -283,7 +376,7 @@ export function TestCallDemo() {
                   2
                 </span>
                 <p className="text-xs font-semibold tracking-wide text-[#5b647a]">
-                  Cancel Order
+                  Cancel — কী বলবে
                 </p>
               </div>
               <p className="mt-2 text-[12px] leading-relaxed text-[#5b647a] sm:text-[13px]">
@@ -298,7 +391,7 @@ export function TestCallDemo() {
 
           <button
             type="button"
-            onClick={() => (playing ? stop() : startTestCall())}
+            onClick={() => (playing ? stop() : void startTestCall())}
             className="land-cta-glow mt-5 flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#1a82f5] to-[#3b9eff] text-base font-semibold text-white transition hover:brightness-105"
           >
             {playing ? (
@@ -312,7 +405,7 @@ export function TestCallDemo() {
             )}
           </button>
           <p className="mt-2 text-center text-[11px] text-[#8a92a8]">
-            ব্রাউজারেই শুনুন — ফোন লাগবে না
+            গ্রিন বাটন বা এখান থেকে শুরু · ফোনে ১ / ২ চাপুন
           </p>
         </div>
       </div>
