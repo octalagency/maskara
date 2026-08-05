@@ -53,17 +53,20 @@ export class CallsRetryScheduler {
       orderBy: { createdAt: 'asc' },
     });
 
+    const queued = await this.queuedOrderIds();
     for (const order of pending) {
       if (order.calls.length > 0) continue;
+      // Stable job id — rotating by minute flooded bull:calls:wait (1000+ dupes)
+      if (queued.has(order.id)) continue;
       this.logger.log(`First-call enqueue (≤20s backup) for ${order.orderNumber}`);
-      // Unique job id each minute so a wiped queue can re-fire
-      const slot = Math.floor(Date.now() / 60_000);
       await this.queueCall(
         order.id,
         order.merchantId,
         false,
-        `call-first-${order.id}-${slot}`,
+        `call-first-${order.id}`,
+        1,
       );
+      queued.add(order.id);
     }
   }
 
@@ -97,6 +100,7 @@ export class CallsRetryScheduler {
   @Cron(CronExpression.EVERY_MINUTE)
   async retryFailedCalls() {
     const now = new Date();
+    const queued = await this.queuedOrderIds();
 
     const pendingOrders = await this.prisma.order.findMany({
       where: {
@@ -174,7 +178,16 @@ export class CallsRetryScheduler {
 
       if (order.callAttempts === 0) {
         if (!lastCall && order.status === 'PENDING') {
-          await this.queueCall(order.id, order.merchantId, false, `call-first-${order.id}`);
+          if (!queued.has(order.id)) {
+            await this.queueCall(
+              order.id,
+              order.merchantId,
+              false,
+              `call-first-${order.id}`,
+              1,
+            );
+            queued.add(order.id);
+          }
           continue;
         }
         // Attempts refunded to 0 but prior call rows exist — fall through to retry path
@@ -203,6 +216,9 @@ export class CallsRetryScheduler {
             timeSinceLastCall >= STALE_RINGING_MS ||
             Boolean(lastCall.errorMessage)));
       if (!retryable) continue;
+
+      // Already waiting in Bull — do not stack another job for the same order
+      if (queued.has(order.id)) continue;
 
       const dueBySchedule =
         order.nextCallAt != null && order.nextCallAt.getTime() <= now.getTime();
@@ -251,8 +267,29 @@ export class CallsRetryScheduler {
         order.merchantId,
         true,
         `call-fu-${order.id}-a${nextAttempt}`,
+        5,
       );
+      queued.add(order.id);
     }
+  }
+
+  private async queuedOrderIds(): Promise<Set<string>> {
+    const ids = new Set<string>();
+    try {
+      const jobs = await this.callsQueue.getJobs([
+        'waiting',
+        'active',
+        'delayed',
+        'paused',
+      ]);
+      for (const job of jobs) {
+        const orderId = (job.data as { orderId?: string })?.orderId;
+        if (orderId) ids.add(orderId);
+      }
+    } catch {
+      // ignore — treat as empty
+    }
+    return ids;
   }
 
   private async queueCall(
@@ -260,8 +297,22 @@ export class CallsRetryScheduler {
     merchantId: string,
     isRetry: boolean,
     jobId: string,
+    priority = 10,
   ) {
     try {
+      const existing = await this.callsQueue.getJob(jobId);
+      if (existing) {
+        const state = await existing.getState();
+        if (['waiting', 'active', 'delayed', 'paused'].includes(state)) {
+          return;
+        }
+        // Completed/failed leftover with same id — remove so we can re-add
+        try {
+          await existing.remove();
+        } catch {
+          // ignore
+        }
+      }
       await this.callsQueue.add(
         'initiate-call',
         { orderId, merchantId, isRetry },
@@ -270,6 +321,7 @@ export class CallsRetryScheduler {
           removeOnComplete: true,
           removeOnFail: true,
           jobId,
+          priority,
         },
       );
     } catch (err) {
