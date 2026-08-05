@@ -77,7 +77,24 @@ export class CallsRetryScheduler {
         ) {
           continue;
         }
-        const healed = Math.max(order.callAttempts, order._count.calls, 1);
+        // Do NOT count ePBX fake dials (API OK + webhook failed / never rang)
+        const realN = await this.prisma.call.count({
+          where: {
+            orderId: order.id,
+            NOT: {
+              OR: [
+                { errorMessage: 'epbx_instant_fail' },
+                { errorMessage: 'epbx_pstn_fail' },
+                { errorMessage: 'stale_ringing_timeout' },
+              ],
+            },
+            status: {
+              in: ['RINGING', 'IN_PROGRESS', 'COMPLETED', 'NO_ANSWER', 'BUSY'],
+            },
+          },
+        });
+        // stale alone without prior real progress = fake; keep attempts at realN
+        const healed = Math.max(order.callAttempts, realN);
         if (healed !== order.callAttempts) {
           await this.prisma.order.update({
             where: { id: order.id },
@@ -85,17 +102,10 @@ export class CallsRetryScheduler {
           });
         }
         this.logger.warn(
-          `Heal+redial attempts=${healed} for ${order.orderNumber} (was ${order.callAttempts} with ${order._count.calls} Call rows)`,
+          `Heal+redial realAttempts=${healed} for ${order.orderNumber} (rows=${order._count.calls}, was ${order.callAttempts})`,
         );
-        if (healed <= 1) {
-          await this.enqueue.enqueueSecondCall(order.id, order.merchantId, 0);
-        } else {
-          await this.enqueue.enqueueFollowUp(
-            order.id,
-            order.merchantId,
-            healed + 1,
-          );
-        }
+        // Always burst-redial when still pending with no real answer
+        await this.enqueue.enqueueFirstCall(order.id, order.merchantId);
         continue;
       }
       this.logger.warn(
