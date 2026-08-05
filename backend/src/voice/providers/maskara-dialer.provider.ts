@@ -150,6 +150,19 @@ export class MaskaraDialerProvider implements VoiceProvider {
       55_000,
     );
     const trimmed = reply.trim();
+    // Real ring outcomes (handset rang) — must count toward attempts.
+    if (/^-ERR\s+NO_ANSWER/i.test(trimmed)) {
+      this.logger.log(
+        `[dialer] NO_ANSWER callId=${params.callId} uuid=${channelUuid} (handset rang)`,
+      );
+      return { providerCallId: channelUuid, status: 'NO_ANSWER' };
+    }
+    if (/^-ERR\s+USER_BUSY/i.test(trimmed)) {
+      this.logger.log(
+        `[dialer] BUSY callId=${params.callId} uuid=${channelUuid}`,
+      );
+      return { providerCallId: channelUuid, status: 'BUSY' };
+    }
     if (/^-ERR/i.test(trimmed) || !/^\+OK/i.test(trimmed)) {
       this.logger.error(`[dialer] ESL fail callId=${params.callId}: ${reply}`);
       throw new Error(
@@ -160,7 +173,7 @@ export class MaskaraDialerProvider implements VoiceProvider {
     this.logger.log(
       `[dialer] OK callId=${params.callId} uuid=${channelUuid} voice=${voice.voiceId} prompt=${prompt.url} esl=${trimmed.slice(0, 80)}`,
     );
-    return { providerCallId: channelUuid, status: 'RINGING' };
+    return { providerCallId: channelUuid, status: 'IN_PROGRESS' };
   }
 
   private async synthAndHost(

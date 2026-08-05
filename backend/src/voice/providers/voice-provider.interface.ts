@@ -25,7 +25,7 @@ export interface InitiateCallParams {
 
 export interface InitiateCallResult {
   providerCallId: string;
-  status: 'QUEUED' | 'RINGING';
+  status: 'QUEUED' | 'RINGING' | 'IN_PROGRESS' | 'NO_ANSWER' | 'BUSY';
 }
 
 export interface VoiceProvider {

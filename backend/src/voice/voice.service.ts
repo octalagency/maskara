@@ -16,6 +16,7 @@ import { isWithinCallWindow } from '../common/utils/call-window.util';
 import {
   computeNextCallAt,
   isCallWindowExempt,
+  SECOND_CALL_DELAY_MS,
 } from '../common/utils/call-schedule.util';
 import {
   countCallsTodayForOrder,
@@ -25,6 +26,7 @@ import {
 import { VoiceSettingsService } from './voice-settings.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { GoogleTtsService } from './google-tts.service';
+import { CallsEnqueueService } from '../calls/calls-enqueue.service';
 
 @Injectable()
 export class VoiceService {
@@ -40,6 +42,7 @@ export class VoiceService {
     private voiceSettings: VoiceSettingsService,
     private subscriptions: SubscriptionsService,
     private googleTts: GoogleTtsService,
+    private callsEnqueue: CallsEnqueueService,
   ) {
     this.apiUrl =
       this.config.get('PUBLIC_API_URL') ||
@@ -237,19 +240,43 @@ export class VoiceService {
           twilioCallSid: provider.name === 'twilio' ? result.providerCallId : undefined,
           status: result.status,
           startedAt: new Date(),
+          ...(['NO_ANSWER', 'BUSY'].includes(result.status)
+            ? { endedAt: new Date() }
+            : {}),
         },
       });
 
       this.logger.log(
-        `[voice] initiate ok order=${order.orderNumber} callId=${call.id} merchantVoiceId=${merchantVoiceId || 'default'} provider=${provider.name} providerCallId=${result.providerCallId}`,
+        `[voice] initiate ok order=${order.orderNumber} callId=${call.id} merchantVoiceId=${merchantVoiceId || 'default'} provider=${provider.name} providerCallId=${result.providerCallId} status=${result.status}`,
       );
+
+      // Sync dialer finished without answer — keep attempt counted, schedule retry
+      if (result.status === 'NO_ANSWER' || result.status === 'BUSY') {
+        const pending = await this.prisma.order.update({
+          where: { id: orderId },
+          data: { status: 'PENDING' },
+        });
+        await this.notifications.pushOrderUpdate(merchant, pending, {
+          verifyStatus: 'pending',
+          outcome:
+            pending.callAttempts >= 2 ? 'STAFF_CALL_ELIGIBLE' : 'RETRY_SCHEDULED',
+          staffCallEligible: pending.callAttempts >= 2,
+        });
+        if (attemptNumber === 1) {
+          await this.callsEnqueue.enqueueSecondCall(
+            orderId,
+            merchantId,
+            SECOND_CALL_DELAY_MS,
+          );
+        }
+      }
       return call;
     } catch (error) {
       this.logger.error(`Failed to initiate call: ${error}`);
       const failMsg = String(error);
       const isDialerOriginateFail =
         provider.name === 'maskara_dialer' ||
-        /originate failed|RECOVERY_ON_TIMER|NORMAL_UNSPECIFIED|NO_ANSWER|USER_BUSY/i.test(
+        /originate failed|RECOVERY_ON_TIMER|NORMAL_UNSPECIFIED|DESTINATION_OUT_OF_ORDER/i.test(
           failMsg,
         );
       await this.prisma.call.update({
