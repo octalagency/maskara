@@ -54,16 +54,50 @@ export class CallsRetryScheduler {
           { callAttempts: { gt: 0 }, calls: { none: {} } },
         ],
       },
-      include: { calls: { take: 1 } },
+      include: {
+        calls: { orderBy: { createdAt: 'desc' }, take: 1 },
+        _count: { select: { calls: true } },
+      },
       take: 150,
       // Newest first — just-arrived orders beat old backlog for the 20s SLA
       orderBy: { createdAt: 'desc' },
     });
 
     for (const order of pending) {
-      if (order.calls.length > 0) continue;
+      // Dead zone fix: tech-fail refund can leave callAttempts=0 WITH Call rows.
+      // Previously we skipped those forever — merchants saw 0/20 and no more dials.
       if (await this.enqueue.isOrderBurstQueued(order.id)) continue;
       const ageSec = Math.round((Date.now() - order.createdAt.getTime()) / 1000);
+      if (order._count.calls > 0) {
+        const last = order.calls[0];
+        if (
+          last &&
+          !RETRYABLE_CALL_STATUSES.includes(last.status) &&
+          last.status !== 'RINGING'
+        ) {
+          continue;
+        }
+        const healed = Math.max(order.callAttempts, order._count.calls, 1);
+        if (healed !== order.callAttempts) {
+          await this.prisma.order.update({
+            where: { id: order.id },
+            data: { callAttempts: healed, status: 'PENDING' },
+          });
+        }
+        this.logger.warn(
+          `Heal+redial attempts=${healed} for ${order.orderNumber} (was ${order.callAttempts} with ${order._count.calls} Call rows)`,
+        );
+        if (healed <= 1) {
+          await this.enqueue.enqueueSecondCall(order.id, order.merchantId, 0);
+        } else {
+          await this.enqueue.enqueueFollowUp(
+            order.id,
+            order.merchantId,
+            healed + 1,
+          );
+        }
+        continue;
+      }
       this.logger.warn(
         `First-call SLA backup (${ageSec}s) for ${order.orderNumber}`,
       );
@@ -77,10 +111,12 @@ export class CallsRetryScheduler {
    */
   @Cron('*/10 * * * * *')
   async enqueueSecondCalls() {
+    // Include attempt 0 with prior Call rows (refund dead-zone) via heal cron above;
+    // also pick attempt 1 normally.
     const pending = await this.prisma.order.findMany({
       where: {
         status: { in: ['PENDING', 'FAILED', 'CALLING'] },
-        callAttempts: 1,
+        callAttempts: { in: [0, 1] },
       },
       include: {
         merchant: true,
@@ -93,9 +129,18 @@ export class CallsRetryScheduler {
     for (const order of pending) {
       const last = order.calls[0];
       if (!last) {
-        // Attempt counted but no call row — re-fire first
-        await this.enqueue.enqueueFirstCall(order.id, order.merchantId);
+        if (order.callAttempts === 0) {
+          await this.enqueue.enqueueFirstCall(order.id, order.merchantId);
+        }
         continue;
+      }
+
+      // Heal refunded counters
+      if (order.callAttempts === 0) {
+        await this.prisma.order.update({
+          where: { id: order.id },
+          data: { callAttempts: Math.max(1, last.attemptNumber || 1) },
+        });
       }
 
       const lastEnded = last.endedAt != null;
@@ -113,7 +158,10 @@ export class CallsRetryScheduler {
       if (!retryable) continue;
 
       const sinceEnd = Date.now() - (last.endedAt ?? last.createdAt).getTime();
-      if (sinceEnd < SECOND_CALL_DELAY_MS) continue;
+      // attempt 0 healed → dial ASAP; attempt 1 → wait 2 min after first hangup
+      const needWait =
+        order.callAttempts >= 1 ? SECOND_CALL_DELAY_MS : 0;
+      if (sinceEnd < needWait) continue;
 
       if (await this.enqueue.hasActiveOrPendingJob(this.enqueue.secondJobId(order.id))) {
         continue;
