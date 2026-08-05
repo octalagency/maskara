@@ -14,12 +14,10 @@ import {
   merchantDialConfig,
 } from '../common/utils/dial-merchant.util';
 import { isCallWindowExempt } from '../common/utils/call-schedule.util';
-
-interface CallJobData {
-  orderId: string;
-  merchantId: string;
-  isRetry?: boolean;
-}
+import {
+  CallJobPayload,
+  CallsEnqueueService,
+} from './calls-enqueue.service';
 
 @Processor('calls')
 export class CallsProcessor {
@@ -29,12 +27,31 @@ export class CallsProcessor {
     private voiceService: VoiceService,
     private prisma: PrismaService,
     private subscriptions: SubscriptionsService,
+    private enqueue: CallsEnqueueService,
   ) {}
 
-  @Process('initiate-call')
-  async handleInitiateCall(job: Job<CallJobData>) {
+  @Process({ name: 'initiate-call', concurrency: 1 })
+  async handleInitiateCall(job: Job<CallJobPayload>) {
     const { orderId, merchantId } = job.data;
-    this.logger.log(`Processing call job for order ${orderId}`);
+    const lane = job.data.lane || (job.data.isRetry ? 'followup' : 'burst');
+
+    // Day follow-ups must never block new-order burst (20s / 2min)
+    if (lane === 'followup') {
+      const burstWaiting = await this.enqueue.countWaitingBurstJobs();
+      if (burstWaiting > 0) {
+        this.logger.log(
+          `Yield follow-up to ${burstWaiting} burst job(s) — order ${orderId}`,
+        );
+        // Bull: delay this follow-up so burst (20s/2min) jobs run first
+        await job.moveToDelayed(Date.now() + 8_000);
+        return;
+      }
+    }
+
+    this.logger.log(
+      `Processing ${lane} call job for order ${orderId}` +
+        (job.data.burstAttempt ? ` burst#${job.data.burstAttempt}` : ''),
+    );
 
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
@@ -107,7 +124,9 @@ export class CallsProcessor {
 
     const limitCheck = await this.subscriptions.canMakeCall(merchantId);
     if (!limitCheck.allowed) {
-      this.logger.warn(`Call limit exceeded for merchant ${merchantId}: ${limitCheck.reason}`);
+      this.logger.warn(
+        `Call limit exceeded for merchant ${merchantId}: ${limitCheck.reason}`,
+      );
       return;
     }
 

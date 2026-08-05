@@ -1,9 +1,9 @@
 import { Module, forwardRef } from '@nestjs/common';
-import { BullModule } from '@nestjs/bull';
 import { CallsService } from './calls.service';
 import { CallsController } from './calls.controller';
 import { CallsProcessor } from './calls.processor';
 import { CallsRetryScheduler } from './calls-retry.scheduler';
+import { CallsQueueModule } from './calls-queue.module';
 import { VoiceModule } from '../voice/voice.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -20,7 +20,7 @@ const runAsWorker =
 
 @Module({
   imports: [
-    BullModule.registerQueue({ name: 'calls' }),
+    CallsQueueModule,
     VoiceModule,
     SubscriptionsModule,
     NotificationsModule,
@@ -31,6 +31,6 @@ const runAsWorker =
     CallsService,
     ...(runAsWorker ? [CallsProcessor, CallsRetryScheduler] : []),
   ],
-  exports: [CallsService],
+  exports: [CallsService, CallsQueueModule],
 })
 export class CallsModule {}

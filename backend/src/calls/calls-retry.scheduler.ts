@@ -1,7 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { InjectQueue } from '@nestjs/bull';
-import { Queue } from 'bull';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   isWithinCallWindow,
@@ -16,13 +14,16 @@ import {
   lifetimeLimitOf,
   merchantDialConfig,
 } from '../common/utils/dial-merchant.util';
+import { CallsEnqueueService } from './calls-enqueue.service';
 
 // RINGING is only retryable when stale (see below) — live RINGING must not be re-queued
 const RETRYABLE_CALL_STATUSES = ['NO_ANSWER', 'BUSY', 'FAILED', 'QUEUED'];
 /** ePBX often never sends hangup — clear stuck RINGING so pending can redial. */
 const STALE_RINGING_MS = 3 * 60 * 1000;
-/** Pending backlog: redial unanswered/failed every ~5 min (still under daily 10 cap). */
-const CATCH_UP_RETRY_MS = 5 * 60 * 1000;
+/** Day follow-ups for attempt 3+ (still under daily 10). */
+const CATCH_UP_RETRY_MS = 15 * 60 * 1000;
+/** First dial must fire within this window of order create. */
+const FIRST_CALL_SLA_MS = 20_000;
 
 @Injectable()
 export class CallsRetryScheduler {
@@ -30,43 +31,99 @@ export class CallsRetryScheduler {
 
   constructor(
     private prisma: PrismaService,
-    @InjectQueue('calls') private callsQueue: Queue,
+    private enqueue: CallsEnqueueService,
   ) {}
 
-  /** First call within ~20s of order if the create-queue job was missed. */
-  @Cron('*/20 * * * * *')
+  /**
+   * Burst #1 safety net — every 5s.
+   * Order create already enqueues; this catches missed/failed first jobs
+   * so 500+/day merchants never leave new orders silent.
+   */
+  @Cron('*/5 * * * * *')
   async enqueueFirstCalls() {
+    const cutoff = new Date(Date.now() - FIRST_CALL_SLA_MS / 2);
     const pending = await this.prisma.order.findMany({
       where: {
         status: 'PENDING',
-        createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+        createdAt: {
+          gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+          lte: cutoff, // give create-queue ~10s before backup
+        },
         OR: [
           { callAttempts: 0 },
-          // Attempts bumped without a Call row (queue cleared / bad reset)
           { callAttempts: { gt: 0 }, calls: { none: {} } },
         ],
       },
-      include: {
-        calls: { take: 1 },
-      },
-      take: 100,
-      orderBy: { createdAt: 'asc' },
+      include: { calls: { take: 1 } },
+      take: 150,
+      // Newest first — just-arrived orders beat old backlog for the 20s SLA
+      orderBy: { createdAt: 'desc' },
     });
 
-    const queued = await this.queuedOrderIds();
     for (const order of pending) {
       if (order.calls.length > 0) continue;
-      // Stable job id — rotating by minute flooded bull:calls:wait (1000+ dupes)
-      if (queued.has(order.id)) continue;
-      this.logger.log(`First-call enqueue (≤20s backup) for ${order.orderNumber}`);
-      await this.queueCall(
-        order.id,
-        order.merchantId,
-        false,
-        `call-first-${order.id}`,
-        1,
+      if (await this.enqueue.isOrderBurstQueued(order.id)) continue;
+      const ageSec = Math.round((Date.now() - order.createdAt.getTime()) / 1000);
+      this.logger.warn(
+        `First-call SLA backup (${ageSec}s) for ${order.orderNumber}`,
       );
-      queued.add(order.id);
+      await this.enqueue.enqueueFirstCall(order.id, order.merchantId);
+    }
+  }
+
+  /**
+   * Burst #2 safety net — every 10s.
+   * Primary path: webhook schedules delayed call-second job; this catches misses.
+   */
+  @Cron('*/10 * * * * *')
+  async enqueueSecondCalls() {
+    const pending = await this.prisma.order.findMany({
+      where: {
+        status: { in: ['PENDING', 'FAILED', 'CALLING'] },
+        callAttempts: 1,
+      },
+      include: {
+        merchant: true,
+        calls: { orderBy: { createdAt: 'desc' }, take: 1 },
+      },
+      take: 100,
+      orderBy: { updatedAt: 'asc' },
+    });
+
+    for (const order of pending) {
+      const last = order.calls[0];
+      if (!last) {
+        // Attempt counted but no call row — re-fire first
+        await this.enqueue.enqueueFirstCall(order.id, order.merchantId);
+        continue;
+      }
+
+      const lastEnded = last.endedAt != null;
+      const age = Date.now() - last.createdAt.getTime();
+      const live =
+        ['RINGING', 'QUEUED', 'IN_PROGRESS'].includes(last.status) &&
+        !lastEnded &&
+        age < STALE_RINGING_MS;
+      if (live) continue;
+
+      const retryable =
+        RETRYABLE_CALL_STATUSES.includes(last.status) ||
+        (last.status === 'RINGING' &&
+          (lastEnded || age >= STALE_RINGING_MS || Boolean(last.errorMessage)));
+      if (!retryable) continue;
+
+      const sinceEnd = Date.now() - (last.endedAt ?? last.createdAt).getTime();
+      if (sinceEnd < SECOND_CALL_DELAY_MS) continue;
+
+      if (await this.enqueue.hasActiveOrPendingJob(this.enqueue.secondJobId(order.id))) {
+        continue;
+      }
+      if (await this.enqueue.hasActiveOrPendingJob(this.enqueue.firstJobId(order.id))) {
+        continue;
+      }
+
+      this.logger.log(`Second-call backup for ${order.orderNumber}`);
+      await this.enqueue.enqueueSecondCall(order.id, order.merchantId, 0);
     }
   }
 
@@ -79,7 +136,6 @@ export class CallsRetryScheduler {
         status: 'RINGING',
         OR: [
           { endedAt: null, createdAt: { lt: cutoff } },
-          // Bad rows: ended but still RINGING — blocks retries forever
           { endedAt: { not: null } },
           { errorMessage: 'epbx_instant_fail' },
           { errorMessage: 'force_clear_for_redial' },
@@ -97,30 +153,35 @@ export class CallsRetryScheduler {
     }
   }
 
+  /** Attempt 3+ through the day — never starves burst lane. */
   @Cron(CronExpression.EVERY_MINUTE)
   async retryFailedCalls() {
     const now = new Date();
-    const queued = await this.queuedOrderIds();
+    const burstWaiting = await this.enqueue.countWaitingBurstJobs();
+    if (burstWaiting > 5) {
+      this.logger.log(
+        `Skip follow-up sweep — ${burstWaiting} burst jobs waiting (new-order SLA)`,
+      );
+      return;
+    }
 
-    // Do NOT filter by nextCallAt here — parked PENDING with NO_ANSWER/FAILED
-    // must still enter dueCatchUp (otherwise they sit idle for hours).
     const pendingOrders = await this.prisma.order.findMany({
       where: {
         status: { in: ['PENDING', 'FAILED', 'CALLING'] },
+        callAttempts: { gte: 2 },
       },
       include: {
         merchant: true,
         calls: { orderBy: { createdAt: 'desc' }, take: 1 },
       },
-      take: 250,
-      orderBy: [{ callAttempts: 'asc' }, { updatedAt: 'asc' }],
+      take: 200,
+      orderBy: { updatedAt: 'asc' },
     });
 
     for (const order of pendingOrders) {
       const cfg = merchantDialConfig(order.merchant);
       const lifetime = lifetimeLimitOf(order.merchant);
 
-      // Lifetime exhausted — stop dialing (manual cancel in UI); no auto-cancel
       if (order.callAttempts >= lifetime) {
         if (order.nextCallAt != null) {
           await this.prisma.order.update({
@@ -139,7 +200,6 @@ export class CallsRetryScheduler {
           cfg.callWindowEndMin,
         )
       ) {
-        // Park until next window open if nextCallAt is missing or already due
         const openAt = nextWindowOpenAt(
           cfg.timezone,
           cfg.callWindowStartMin,
@@ -176,26 +236,6 @@ export class CallsRetryScheduler {
       }
 
       const lastCall = order.calls[0];
-      const minSpacingMs = Math.max(order.merchant.retryIntervalMin, 30) * 60 * 1000;
-
-      if (order.callAttempts === 0) {
-        if (!lastCall && order.status === 'PENDING') {
-          if (!queued.has(order.id)) {
-            await this.queueCall(
-              order.id,
-              order.merchantId,
-              false,
-              `call-first-${order.id}`,
-              1,
-            );
-            queued.add(order.id);
-          }
-          continue;
-        }
-        // Attempts refunded to 0 but prior call rows exist — fall through to retry path
-        if (!lastCall) continue;
-      }
-
       if (!lastCall) continue;
 
       const timeSinceLastCall = Date.now() - lastCall.createdAt.getTime();
@@ -204,133 +244,43 @@ export class CallsRetryScheduler {
         ['RINGING', 'QUEUED', 'IN_PROGRESS'].includes(lastCall.status) &&
         !lastEnded &&
         timeSinceLastCall < STALE_RINGING_MS;
-
-      // Do not double-dial while a live attempt is still young
-      if (lastIsLiveRing) {
-        continue;
-      }
+      if (lastIsLiveRing) continue;
 
       const retryable =
         RETRYABLE_CALL_STATUSES.includes(lastCall.status) ||
-        // Stuck RINGING with endedAt / tech-fail must be redialable
         (lastCall.status === 'RINGING' &&
           (lastEnded ||
             timeSinceLastCall >= STALE_RINGING_MS ||
             Boolean(lastCall.errorMessage)));
       if (!retryable) continue;
 
-      // Already waiting in Bull — do not stack another job for the same order
-      if (queued.has(order.id)) continue;
-
+      const minSpacingMs =
+        Math.max(order.merchant.retryIntervalMin, 30) * 60 * 1000;
       const dueBySchedule =
         order.nextCallAt != null && order.nextCallAt.getTime() <= now.getTime();
-
-      // Second burst call: +2 min any time (also heals stale nextCallAt parked for next morning)
-      const dueSecondCall =
-        order.callAttempts === 1 &&
-        timeSinceLastCall >= SECOND_CALL_DELAY_MS &&
-        (order.nextCallAt == null ||
-          order.nextCallAt.getTime() <= now.getTime() ||
-          isCallWindowExempt(order.callAttempts));
-
-      // Unanswered / failed / stuck ringing → catch-up every ~5 min
-      const catchUpStatuses = ['NO_ANSWER', 'BUSY', 'FAILED', 'QUEUED', 'RINGING'];
-      const spacingMs = catchUpStatuses.includes(lastCall.status)
-        ? CATCH_UP_RETRY_MS
-        : minSpacingMs;
-
-      const dueBySpacing =
-        order.callAttempts >= 2 &&
-        order.nextCallAt == null &&
-        timeSinceLastCall >= spacingMs;
-
-      // Also honor catch-up when nextCallAt was parked far ahead but call already failed
       const dueCatchUp =
-        catchUpStatuses.includes(lastCall.status) &&
         timeSinceLastCall >= CATCH_UP_RETRY_MS &&
         (order.nextCallAt == null ||
           order.nextCallAt.getTime() <= now.getTime() ||
           order.nextCallAt.getTime() > now.getTime() + CATCH_UP_RETRY_MS);
+      const dueBySpacing =
+        order.nextCallAt == null && timeSinceLastCall >= minSpacingMs;
 
-      if (!dueBySchedule && !dueSecondCall && !dueBySpacing && !dueCatchUp) {
-        continue;
-      }
+      if (!dueBySchedule && !dueCatchUp && !dueBySpacing) continue;
 
       const nextAttempt = order.callAttempts + 1;
       this.logger.log(
-        `Retry ${nextAttempt}/${lifetime} for ${order.orderNumber}`,
+        `Follow-up ${nextAttempt}/${lifetime} for ${order.orderNumber}`,
       );
       await this.prisma.order.update({
         where: { id: order.id },
         data: { nextCallAt: new Date(now.getTime() + CATCH_UP_RETRY_MS) },
       });
-      await this.queueCall(
+      await this.enqueue.enqueueFollowUp(
         order.id,
         order.merchantId,
-        true,
-        `call-fu-${order.id}-a${nextAttempt}`,
-        5,
+        nextAttempt,
       );
-      queued.add(order.id);
-    }
-  }
-
-  private async queuedOrderIds(): Promise<Set<string>> {
-    const ids = new Set<string>();
-    try {
-      const jobs = await this.callsQueue.getJobs([
-        'waiting',
-        'active',
-        'delayed',
-        'paused',
-      ]);
-      for (const job of jobs) {
-        const orderId = (job.data as { orderId?: string })?.orderId;
-        if (orderId) ids.add(orderId);
-      }
-    } catch {
-      // ignore — treat as empty
-    }
-    return ids;
-  }
-
-  private async queueCall(
-    orderId: string,
-    merchantId: string,
-    isRetry: boolean,
-    jobId: string,
-    priority = 10,
-  ) {
-    try {
-      const existing = await this.callsQueue.getJob(jobId);
-      if (existing) {
-        const state = await existing.getState();
-        if (['waiting', 'active', 'delayed', 'paused'].includes(state)) {
-          return;
-        }
-        // Completed/failed leftover with same id — remove so we can re-add
-        try {
-          await existing.remove();
-        } catch {
-          // ignore
-        }
-      }
-      await this.callsQueue.add(
-        'initiate-call',
-        { orderId, merchantId, isRetry },
-        {
-          attempts: 1,
-          removeOnComplete: true,
-          removeOnFail: true,
-          jobId,
-          priority,
-        },
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!/job.*exist|duplicate/i.test(msg)) {
-        this.logger.warn(`queueCall failed (${jobId}): ${msg}`);
-      }
     }
   }
 }

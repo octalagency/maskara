@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { Prisma, OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { CallsEnqueueService } from '../calls/calls-enqueue.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import {
@@ -15,10 +16,13 @@ import {
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(
     private prisma: PrismaService,
     private subscriptions: SubscriptionsService,
     private notifications: NotificationsService,
+    private callsEnqueue: CallsEnqueueService,
     @InjectQueue('calls') private callsQueue: Queue,
   ) {}
 
@@ -108,17 +112,17 @@ export class OrdersService {
     }
 
     if (!skipCall) {
-      await this.callsQueue.add(
-        'initiate-call',
-        { orderId: order.id, merchantId, isRetry: false },
-        {
-          attempts: 2,
-          backoff: { type: 'fixed', delay: 3000 },
-          removeOnComplete: true,
-          removeOnFail: true,
-          jobId: `call-first-${order.id}`,
-        },
-      );
+      // Burst #1 — must dial within ~20s; priority lane beats day follow-ups
+      const queued = await this.callsEnqueue.enqueueFirstCall(order.id, merchantId);
+      if (!queued) {
+        this.logger.error(
+          `CRITICAL: first-call enqueue failed for ${order.orderNumber} — scheduler will backup`,
+        );
+      }
+      await this.prisma.order.update({
+        where: { id: order.id },
+        data: { nextCallAt: new Date() },
+      });
     }
 
     return order;
@@ -399,10 +403,10 @@ export class OrdersService {
       throw new ForbiddenException(limitCheck.reason || 'Call limit exceeded');
     }
 
-    await this.callsQueue.add(
-      'initiate-call',
-      { orderId: order.id, merchantId, isRetry: true },
-      { attempts: 3, backoff: { type: 'exponential', delay: 5000 } },
+    await this.callsEnqueue.enqueueFollowUp(
+      order.id,
+      merchantId,
+      order.callAttempts + 1,
     );
 
     return { message: 'Call retry queued', orderId };

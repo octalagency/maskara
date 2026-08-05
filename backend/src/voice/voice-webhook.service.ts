@@ -1,11 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bull';
-import { Queue } from 'bull';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { lifetimeLimitOf } from '../common/utils/dial-merchant.util';
+import { SECOND_CALL_DELAY_MS } from '../common/utils/call-schedule.util';
+import { CallsEnqueueService } from '../calls/calls-enqueue.service';
 
 /** ePBX often returns failed within <1s when channels are contended — not a real ring. */
 const TECH_FAIL_MAX_SEC = 3;
@@ -20,7 +20,7 @@ export class VoiceWebhookService {
     private prisma: PrismaService,
     private notifications: NotificationsService,
     private subscriptions: SubscriptionsService,
-    @InjectQueue('calls') private callsQueue: Queue,
+    private callsEnqueue: CallsEnqueueService,
   ) {}
 
   /** Normalize ePBX / ippbx webhook payloads (POST body or GET query). */
@@ -398,16 +398,11 @@ export class VoiceWebhookService {
 
       if (techFails <= TECH_FAIL_MAX_PER_ORDER) {
         try {
-          await this.callsQueue.add(
-            'initiate-call',
-            { orderId: order.id, merchantId: call.merchantId, isRetry: true },
-            {
-              delay: TECH_FAIL_RETRY_DELAY_MS,
-              attempts: 1,
-              removeOnComplete: true,
-              removeOnFail: true,
-              jobId: `call-tech-${order.id}-t${techFails}`,
-            },
+          await this.callsEnqueue.enqueueTechFailRetry(
+            order.id,
+            call.merchantId,
+            techFails,
+            TECH_FAIL_RETRY_DELAY_MS,
           );
         } catch (err) {
           this.logger.warn(
@@ -430,6 +425,22 @@ export class VoiceWebhookService {
         outcome: staffReady ? 'STAFF_CALL_ELIGIBLE' : 'RETRY_SCHEDULED',
         staffCallEligible: staffReady,
       });
+
+      // Burst #2: first dial not confirmed → exact +2 min (priority lane)
+      if (
+        call.attemptNumber === 1 &&
+        ['NO_ANSWER', 'BUSY', 'FAILED', 'CANCELLED'].includes(mapped) &&
+        !isTechFail
+      ) {
+        await this.callsEnqueue.enqueueSecondCall(
+          call.orderId,
+          call.merchantId,
+          SECOND_CALL_DELAY_MS,
+        );
+        this.logger.log(
+          `Scheduled second burst (+${SECOND_CALL_DELAY_MS / 1000}s) for ${order?.orderNumber || call.orderId}`,
+        );
+      }
     } else {
       const pending = await this.prisma.order.update({
         where: { id: call.orderId },
