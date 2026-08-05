@@ -31,17 +31,22 @@ end
 local status = "failed"
 local c = string.upper(tostring(cause or ""))
 if c:find("NO_ANSWER") or c:find("NO ANSWER") then
+  -- Real ring, customer didn't pick up — counts as an attempt
   status = "no-answer"
 elseif c:find("USER_BUSY") or c:find("BUSY") then
   status = "busy"
 elseif c:find("NORMAL_CLEARING") then
   -- Answered call ended normally (DTMF path already reported); ignore duplicate
   status = "completed"
-elseif c:find("RECOVERY_ON_TIMER") or c:find("ORIGINATOR_CANCEL") or c:find("TIMEOUT")
-  or c:find("ALLOTTED_TIMEOUT") or c:find("NO_USER_RESPONSE") then
-  status = "no-answer"
-elseif c:find("CALL_REJECTED") or c:find("REJECT") then
+elseif c:find("RECOVERY_ON_TIMER") or c:find("DESTINATION_OUT_OF_ORDER")
+  or c:find("NORMAL_TEMPORARY_FAILURE") or c:find("NETWORK_OUT_OF_ORDER")
+  or c:find("CALL_REJECTED") or c:find("REJECT") or c:find("UNALLOCATED")
+  or c:find("ORIGINATOR_CANCEL") or c:find("TIMEOUT")
+  or c:find("ALLOTTED_TIMEOUT") then
+  -- SIP/trunk never reached the handset — must NOT count as a real dial
   status = "failed"
+elseif c:find("NO_USER_RESPONSE") then
+  status = "no-answer"
 else
   status = "failed"
 end

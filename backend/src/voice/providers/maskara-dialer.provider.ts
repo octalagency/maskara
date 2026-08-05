@@ -104,14 +104,18 @@ export class MaskaraDialerProvider implements VoiceProvider {
     ]);
 
     const webhook = this.webhookUrl('/voice/webhook/maskara-dialer/dtmf');
+    // Stable channel UUID = Maskara call id (never Job-UUID from bgapi).
+    const channelUuid = params.callId;
     // Comma-separated vars (URLs contain ":" — never use ^^:). No spaces in values.
     const channelVars = [
+      `origination_uuid=${channelUuid}`,
       `origination_caller_id_number=${callerId}`,
       `origination_caller_id_name=Maskara`,
+      // Wait for customer 200 OK before IVR (true ring → answer)
       `ignore_early_media=true`,
       `originate_timeout=45`,
       `session_in_hangup_hook=true`,
-      `execute_on_hangup=lua::maskara/hangup.lua`,
+      `api_hangup_hook=lua maskara/hangup.lua`,
       `maskara_call_id=${params.callId}`,
       `maskara_prompt_url=${prompt.url}`,
       `maskara_confirm_url=${confirm.url}`,
@@ -133,21 +137,28 @@ export class MaskaraDialerProvider implements VoiceProvider {
       `[dialer] ESL originate callId=${params.callId} voice=${voice.voiceId} gateway=${gateway} caller=${callerId} → ${dialPhone}`,
     );
 
-    // bgapi: do not block Nest until answer/hangup (api originate waits on ring)
-    const reply = await EslClient.bgapi(eslHost, eslPort, eslPass, originate);
-    if (!/^\+OK/i.test(reply.trim())) {
+    // Synchronous api originate: worker concurrency=1 waits until answer/fail.
+    // bgapi returned Job-UUID immediately and stacked SIP legs → ePBX
+    // RECOVERY_ON_TIMER_EXPIRE (no customer ring) while UI still counted attempts.
+    const reply = await EslClient.api(
+      eslHost,
+      eslPort,
+      eslPass,
+      originate,
+      55_000,
+    );
+    const trimmed = reply.trim();
+    if (/^-ERR/i.test(trimmed) || !/^\+OK/i.test(trimmed)) {
       this.logger.error(`[dialer] ESL fail callId=${params.callId}: ${reply}`);
-      throw new Error(`Maskara dialer originate failed: ${reply.slice(0, 200)}`);
+      throw new Error(
+        `Maskara dialer originate failed: ${trimmed.slice(0, 200) || 'empty ESL reply'}`,
+      );
     }
 
-    const uuid =
-      reply.match(/Job-UUID:\s*(\S+)/i)?.[1] ||
-      reply.replace(/^\+OK\s*/i, '').trim().split(/\s+/)[0] ||
-      params.callId;
     this.logger.log(
-      `[dialer] OK callId=${params.callId} uuid=${uuid} voice=${voice.voiceId} prompt=${prompt.url}`,
+      `[dialer] OK callId=${params.callId} uuid=${channelUuid} voice=${voice.voiceId} prompt=${prompt.url} esl=${trimmed.slice(0, 80)}`,
     );
-    return { providerCallId: uuid, status: 'RINGING' };
+    return { providerCallId: channelUuid, status: 'RINGING' };
   }
 
   private async synthAndHost(

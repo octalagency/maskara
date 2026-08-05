@@ -72,18 +72,24 @@ if [ -n "$SIP_HOST" ] && [ -n "$SIP_USER" ]; then
   SIP_REALM_X=$(xml_esc "$SIP_REALM")
   SIP_PROXY_X=$(xml_esc "$SIP_PROXY")
   CALLER_X=$(xml_esc "$CALLER_ID")
+  # caller-id-in-from=false: keep From=sip user so INVITE digest auth works.
+  # Asterisk challenges with realm=asterisk even when register host differs —
+  # set SIP_TRUNK_REALM=asterisk (or leave host; sofia still answers challenge).
   cat > "$GATEWAY_FILE" <<EOF
 <include>
   <gateway name="${GATEWAY_NAME}">
     <param name="username" value="${SIP_USER_X}"/>
+    <param name="auth-username" value="${SIP_USER_X}"/>
     <param name="password" value="${SIP_PASS_X}"/>
     <param name="realm" value="${SIP_REALM_X}"/>
     <param name="proxy" value="${SIP_PROXY_X}"/>
+    <param name="register-proxy" value="${SIP_PROXY_X}"/>
     <param name="register" value="${SIP_REGISTER}"/>
-    <param name="caller-id-in-from" value="true"/>
-    <param name="extension" value="${CALLER_X}"/>
+    <param name="caller-id-in-from" value="false"/>
+    <param name="extension" value="${SIP_USER_X}"/>
     <param name="from-user" value="${SIP_USER_X}"/>
-    <param name="from-domain" value="${SIP_REALM_X}"/>
+    <param name="from-domain" value="${SIP_PROXY_X}"/>
+    <param name="extension-in-contact" value="true"/>
     <param name="expire-seconds" value="3600"/>
     <param name="retry-seconds" value="30"/>
     <param name="context" value="public"/>

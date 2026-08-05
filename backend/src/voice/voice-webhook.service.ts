@@ -206,7 +206,13 @@ export class VoiceWebhookService {
       }
       const duration =
         Number(payload.duration || payload.call_duration || 0) || undefined;
-      return this.processStatus(callId, status, duration);
+      const hangupCause =
+        typeof payload.hangup_cause === 'string'
+          ? payload.hangup_cause
+          : typeof payload.cause === 'string'
+            ? payload.cause
+            : undefined;
+      return this.processStatus(callId, status, duration, hangupCause);
     }
 
     this.logger.warn(
@@ -301,7 +307,12 @@ export class VoiceWebhookService {
     return { ok: true, outcome };
   }
 
-  async processStatus(callId: string, status: string, duration?: number) {
+  async processStatus(
+    callId: string,
+    status: string,
+    duration?: number,
+    hangupCause?: string,
+  ) {
     const statusMap: Record<string, string> = {
       answered: 'IN_PROGRESS',
       'in-progress': 'IN_PROGRESS',
@@ -331,8 +342,7 @@ export class VoiceWebhookService {
           ? (Date.now() - call.startedAt.getTime()) / 1000
           : (Date.now() - call.createdAt.getTime()) / 1000;
 
-    // ePBX often returns HTTP 200 then webhook status=failed with no ring.
-    // Those must NEVER count as real customer calls (UI 2/20 with zero rings).
+    // ePBX HTTP OK + failed webhook, or dialer SIP auth/timer — never a real ring.
     const isPstnFail =
       mapped === 'FAILED' &&
       (status === 'failed' || status === 'fail');
@@ -340,6 +350,13 @@ export class VoiceWebhookService {
       isPstnFail &&
       !call.providerCallId &&
       elapsedSec < TECH_FAIL_MAX_SEC;
+    const cause = String(hangupCause || '').toUpperCase();
+    const isDialerSipFail =
+      call.provider === 'maskara_dialer' &&
+      (isPstnFail ||
+        /RECOVERY_ON_TIMER|DESTINATION_OUT_OF_ORDER|NORMAL_UNSPECIFIED|CALL_REJECTED|UNALLOCATED/.test(
+          cause,
+        ));
 
     await this.prisma.call.update({
       where: { id: callId },
@@ -353,9 +370,11 @@ export class VoiceWebhookService {
           : undefined,
         ...(isTechFail
           ? { errorMessage: 'epbx_instant_fail' }
-          : isPstnFail
-            ? { errorMessage: 'epbx_pstn_fail' }
-            : {}),
+          : isDialerSipFail
+            ? { errorMessage: 'dialer_sip_fail' }
+            : isPstnFail
+              ? { errorMessage: 'epbx_pstn_fail' }
+              : {}),
       },
     });
 
@@ -375,7 +394,7 @@ export class VoiceWebhookService {
     }
 
     // PSTN never rang / carrier fail → refund counter + immediate redial (no fake attempts)
-    if ((isPstnFail || isTechFail) && order) {
+    if ((isPstnFail || isTechFail || isDialerSipFail) && order) {
       const prevMeta =
         order.metadata && typeof order.metadata === 'object' && !Array.isArray(order.metadata)
           ? ({ ...(order.metadata as Record<string, unknown>) } as Record<string, unknown>)
@@ -393,13 +412,17 @@ export class VoiceWebhookService {
             ...prevMeta,
             epbxTechFails: techFails,
             lastEpbxTechFailAt: new Date().toISOString(),
-            lastEpbxFailKind: isTechFail ? 'instant' : 'pstn',
+            lastEpbxFailKind: isTechFail
+              ? 'instant'
+              : isDialerSipFail
+                ? 'dialer_sip'
+                : 'pstn',
           } as Prisma.InputJsonValue,
         },
       });
 
       this.logger.warn(
-        `ePBX dial fail (${elapsedSec.toFixed(2)}s, ${isTechFail ? 'instant' : 'pstn'}) call=${callId} order=${order.orderNumber} — refunded → ${refundedAttempts}, fails=${techFails}`,
+        `Dial fail (${elapsedSec.toFixed(2)}s, ${isTechFail ? 'instant' : isDialerSipFail ? 'dialer_sip' : 'pstn'}) call=${callId} order=${order.orderNumber} — refunded → ${refundedAttempts}, fails=${techFails}`,
       );
 
       await this.notifications.pushOrderUpdate(call.merchant, pending, {
@@ -422,7 +445,7 @@ export class VoiceWebhookService {
           );
         }
       }
-      return { ok: true, techFail: isTechFail, pstnFail: isPstnFail };
+      return { ok: true, techFail: isTechFail, pstnFail: isPstnFail || isDialerSipFail };
     }
 
     if (call.attemptNumber < lifetimeLimitOf(call.merchant)) {

@@ -246,13 +246,36 @@ export class VoiceService {
       return call;
     } catch (error) {
       this.logger.error(`Failed to initiate call: ${error}`);
+      const failMsg = String(error);
+      const isDialerOriginateFail =
+        provider.name === 'maskara_dialer' ||
+        /originate failed|RECOVERY_ON_TIMER|NORMAL_UNSPECIFIED|NO_ANSWER|USER_BUSY/i.test(
+          failMsg,
+        );
       await this.prisma.call.update({
         where: { id: call.id },
-        data: { status: 'FAILED', errorMessage: String(error) },
+        data: {
+          status: 'FAILED',
+          errorMessage: isDialerOriginateFail
+            ? 'dialer_originate_fail'
+            : failMsg.slice(0, 500),
+          endedAt: new Date(),
+        },
       });
+      // Never leave a fake attempt on the counter when the handset never rang
+      const refunded = Math.max(0, attemptNumber - 1);
       const failedOrder = await this.prisma.order.update({
         where: { id: orderId },
-        data: { status: 'FAILED' },
+        data: {
+          status: 'PENDING',
+          callAttempts: refunded,
+          nextCallAt: new Date(Date.now() + 15_000),
+        },
+      });
+      await this.notifications.pushOrderUpdate(merchant, failedOrder, {
+        verifyStatus: 'pending',
+        outcome: 'RETRY_SCHEDULED',
+        staffCallEligible: false,
       });
       await this.setNextCallAt(
         failedOrder.id,

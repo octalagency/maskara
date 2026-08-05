@@ -86,6 +86,8 @@ export class CallsRetryScheduler {
                 { errorMessage: 'epbx_instant_fail' },
                 { errorMessage: 'epbx_pstn_fail' },
                 { errorMessage: 'stale_ringing_timeout' },
+                { errorMessage: 'dialer_originate_fail' },
+                { errorMessage: 'dialer_sip_fail' },
               ],
             },
             status: {
@@ -93,8 +95,8 @@ export class CallsRetryScheduler {
             },
           },
         });
-        // stale alone without prior real progress = fake; keep attempts at realN
-        const healed = Math.max(order.callAttempts, realN);
+        // Never inflate — fake ePBX/dialer rows must drop the UI counter
+        const healed = realN;
         if (healed !== order.callAttempts) {
           await this.prisma.order.update({
             where: { id: order.id },
@@ -185,11 +187,11 @@ export class CallsRetryScheduler {
     }
   }
 
-  /** Clear dialer/ePBX RINGING that never got a proper hangup status. */
+  /** Clear dialer/ePBX RINGING that never got a proper hangup status + refund fake counts. */
   @Cron(CronExpression.EVERY_MINUTE)
   async finalizeStaleRinging() {
     const cutoff = new Date(Date.now() - STALE_RINGING_MS);
-    const result = await this.prisma.call.updateMany({
+    const stale = await this.prisma.call.findMany({
       where: {
         status: 'RINGING',
         OR: [
@@ -200,15 +202,56 @@ export class CallsRetryScheduler {
           { errorMessage: 'snjra_priority_redial' },
         ],
       },
+      select: { id: true, orderId: true },
+      take: 200,
+    });
+    if (stale.length === 0) return;
+
+    await this.prisma.call.updateMany({
+      where: { id: { in: stale.map((c) => c.id) } },
       data: {
         status: 'NO_ANSWER',
         endedAt: new Date(),
         errorMessage: 'stale_ringing_timeout',
       },
     });
-    if (result.count > 0) {
-      this.logger.warn(`Marked ${result.count} stale RINGING call(s) as NO_ANSWER`);
+
+    const orderIds = [...new Set(stale.map((c) => c.orderId))];
+    for (const orderId of orderIds) {
+      const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+      if (!order) continue;
+      if (['VERIFIED', 'CANCELLED', 'ESCALATED'].includes(order.status)) continue;
+      const realN = await this.prisma.call.count({
+        where: {
+          orderId,
+          NOT: {
+            OR: [
+              { errorMessage: 'epbx_instant_fail' },
+              { errorMessage: 'epbx_pstn_fail' },
+              { errorMessage: 'stale_ringing_timeout' },
+              { errorMessage: 'dialer_originate_fail' },
+              { errorMessage: 'dialer_sip_fail' },
+            ],
+          },
+          status: {
+            in: ['RINGING', 'IN_PROGRESS', 'COMPLETED', 'NO_ANSWER', 'BUSY'],
+          },
+        },
+      });
+      if (realN !== order.callAttempts || order.status === 'CALLING') {
+        await this.prisma.order.update({
+          where: { id: orderId },
+          data: {
+            callAttempts: realN,
+            status: order.status === 'CALLING' ? 'PENDING' : order.status,
+          },
+        });
+      }
     }
+
+    this.logger.warn(
+      `Marked ${stale.length} stale RINGING call(s) as NO_ANSWER (refunded fake counts)`,
+    );
   }
 
   /** Attempt 3+ through the day — drain PENDING fast, without starving burst. */
