@@ -134,7 +134,7 @@ export class CallsEnqueueService {
 
     const waiting = await this.callsQueue.getWaitingCount();
     // Cap day-follow-up backlog so a spike of retries cannot bury new orders
-    if (waiting >= 120) {
+    if (waiting >= 250) {
       this.logger.warn(
         `Follow-up queue full (waiting=${waiting}) — skip a${nextAttempt} for ${orderId}`,
       );

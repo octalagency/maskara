@@ -3,7 +3,7 @@
  * 1) Attempt 1 — ~20s ASAP, any time — window exempt
  * 2) Attempt 2 — 2 minutes later, any time — window exempt
  *    → ShopIn may unlock Staff Call (staffCallEligible)
- * 3) Attempt 3+ — Maskara continues on its schedule if staff did not confirm
+ * 3) Attempt 3+ — every ~5–25 min same day if still PENDING (keeps backlog low)
  * 4) Daily cap 10 / lifetime 20 — staff Confirm → Manual Confirm stops dials
  */
 
@@ -29,10 +29,16 @@ export function isCallWindowExempt(callAttemptsSoFar: number): boolean {
 export const SECOND_CALL_DELAY_MS = 2 * 60 * 1000;
 
 /** Delay between second and third call (still inside first hour). */
-export const THIRD_CALL_DELAY_MS = 18 * 60 * 1000;
+export const THIRD_CALL_DELAY_MS = 5 * 60 * 1000;
 
-/** Floor spacing between day follow-ups. */
-export const MIN_FOLLOW_UP_GAP_MIN = 45;
+/** Floor spacing between day follow-ups (pending drain). */
+export const MIN_FOLLOW_UP_GAP_MIN = 15;
+
+/**
+ * Cap merchant retryIntervalMin for Maskara auto-dials.
+ * Merchants often have 90m staff-style gaps — that leaves PENDING high all day.
+ */
+export const PENDING_DRAIN_MAX_GAP_MIN = 25;
 
 function hashOrderId(orderId: string): number {
   let h = 0;
@@ -211,7 +217,10 @@ export function computeNextCallAt(opts: {
   const firstHourCap = Math.max(1, Math.min(10, merchant.firstHourCallLimit ?? 3));
   const minGapMinutes = Math.max(
     MIN_FOLLOW_UP_GAP_MIN,
-    merchant.retryIntervalMin ?? MIN_FOLLOW_UP_GAP_MIN,
+    Math.min(
+      merchant.retryIntervalMin ?? PENDING_DRAIN_MAX_GAP_MIN,
+      PENDING_DRAIN_MAX_GAP_MIN,
+    ),
   );
 
   if (completedAttempts >= lifetime) return null;

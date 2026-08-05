@@ -21,9 +21,11 @@ export type MerchantDialFields = DialMerchantConfig & {
 };
 
 export function merchantDialConfig(m: MerchantDialFields): DialMerchantConfig {
+  const rawRetry = m.retryIntervalMin ?? 25;
   return {
     timezone: m.timezone || 'Asia/Dhaka',
-    retryIntervalMin: m.retryIntervalMin ?? 90,
+    // Cap long merchant intervals so PENDING drains same day
+    retryIntervalMin: Math.min(Math.max(rawRetry, 15), 25),
     callWindowStartMin: m.callWindowStartMin ?? DEFAULT_WINDOW_START_MIN,
     callWindowEndMin: m.callWindowEndMin ?? DEFAULT_WINDOW_END_MIN,
     dailyCallLimit: m.dailyCallLimit ?? 10,

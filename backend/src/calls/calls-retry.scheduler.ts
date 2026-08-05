@@ -20,8 +20,8 @@ import { CallsEnqueueService } from './calls-enqueue.service';
 const RETRYABLE_CALL_STATUSES = ['NO_ANSWER', 'BUSY', 'FAILED', 'QUEUED'];
 /** ePBX often never sends hangup — clear stuck RINGING so pending can redial. */
 const STALE_RINGING_MS = 3 * 60 * 1000;
-/** Day follow-ups for attempt 3+ (still under daily 10). */
-const CATCH_UP_RETRY_MS = 15 * 60 * 1000;
+/** Day follow-ups for attempt 3+ — keep PENDING low same day (under daily 10). */
+const CATCH_UP_RETRY_MS = 8 * 60 * 1000;
 /** First dial must fire within this window of order create. */
 const FIRST_CALL_SLA_MS = 20_000;
 
@@ -153,12 +153,13 @@ export class CallsRetryScheduler {
     }
   }
 
-  /** Attempt 3+ through the day — never starves burst lane. */
-  @Cron(CronExpression.EVERY_MINUTE)
+  /** Attempt 3+ through the day — drain PENDING fast, without starving burst. */
+  @Cron('*/30 * * * * *')
   async retryFailedCalls() {
     const now = new Date();
     const burstWaiting = await this.enqueue.countWaitingBurstJobs();
-    if (burstWaiting > 5) {
+    // Allow follow-ups unless a real new-order spike is waiting
+    if (burstWaiting > 20) {
       this.logger.log(
         `Skip follow-up sweep — ${burstWaiting} burst jobs waiting (new-order SLA)`,
       );
@@ -174,8 +175,9 @@ export class CallsRetryScheduler {
         merchant: true,
         calls: { orderBy: { createdAt: 'desc' }, take: 1 },
       },
-      take: 200,
-      orderBy: { updatedAt: 'asc' },
+      take: 300,
+      // Oldest pending first — clear backlog so count stays low
+      orderBy: [{ createdAt: 'asc' }, { updatedAt: 'asc' }],
     });
 
     for (const order of pendingOrders) {
@@ -254,19 +256,17 @@ export class CallsRetryScheduler {
             Boolean(lastCall.errorMessage)));
       if (!retryable) continue;
 
-      const minSpacingMs =
-        Math.max(order.merchant.retryIntervalMin, 30) * 60 * 1000;
+      // Pending drain: 8–25 min gaps (ignore merchant 90m staff-style interval)
+      const drainGapMs = CATCH_UP_RETRY_MS;
       const dueBySchedule =
         order.nextCallAt != null && order.nextCallAt.getTime() <= now.getTime();
       const dueCatchUp =
-        timeSinceLastCall >= CATCH_UP_RETRY_MS &&
+        timeSinceLastCall >= drainGapMs &&
         (order.nextCallAt == null ||
           order.nextCallAt.getTime() <= now.getTime() ||
-          order.nextCallAt.getTime() > now.getTime() + CATCH_UP_RETRY_MS);
-      const dueBySpacing =
-        order.nextCallAt == null && timeSinceLastCall >= minSpacingMs;
+          order.nextCallAt.getTime() > now.getTime() + drainGapMs);
 
-      if (!dueBySchedule && !dueCatchUp && !dueBySpacing) continue;
+      if (!dueBySchedule && !dueCatchUp) continue;
 
       const nextAttempt = order.callAttempts + 1;
       this.logger.log(
@@ -274,7 +274,7 @@ export class CallsRetryScheduler {
       );
       await this.prisma.order.update({
         where: { id: order.id },
-        data: { nextCallAt: new Date(now.getTime() + CATCH_UP_RETRY_MS) },
+        data: { nextCallAt: new Date(now.getTime() + drainGapMs) },
       });
       await this.enqueue.enqueueFollowUp(
         order.id,
