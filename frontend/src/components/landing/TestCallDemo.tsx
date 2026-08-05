@@ -1,24 +1,26 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Mic, Phone, Pause, Volume2 } from 'lucide-react';
+import { Mic, Phone, PhoneOff, Pause, Volume2 } from 'lucide-react';
 
 type Clip = 'welcome' | 'confirm' | 'cancel';
-type Phase = 'idle' | 'connecting' | 'welcome' | 'branch';
+type Phase = 'idle' | 'ringing' | 'welcome' | 'branch' | 'done';
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || 'https://api.maskara.bd';
 
 const COPY = {
   welcome:
-    'হ্যালো সাকিব, আপনি ঘরেবাজারে এক কেজি মধু অর্ডার করেছিলেন। যার মূল্য ৪২০০ টাকা। আপনার অর্ডারটি যদি কনফার্ম হয়, তাহলে এক চাপুন। বাতিল করতে দুই চাপুন।',
+    'হ্যালো সাকিব, আপনি ঘরেবাজারে এক কেজি মধু অর্ডার করেছিলেন। যার মূল্য ১২০০ টাকা। আপনার অর্ডারটি যদি কনফার্ম হয়, তাহলে এক চাপুন। বাতিল করতে দুই চাপুন।',
   confirm:
-    'ধন্যবাদ। আপনার অর্ডারটি কনফার্ম হয়েছে। শীঘ্রই আপনি কুরিয়ারের মাধ্যমে পণ্যটি পেয়ে যাবেন।',
+    'ধন্যবাদ। আপনার অর্ডারটি কনফার্ম হয়েছে। একদিনের মধ্যেই আপনি কুরিয়ারের মাধ্যমে পণ্যটি পেয়ে যাবেন।',
   cancel:
     'ধন্যবাদ। আপনার অর্ডারটি বাতিল করা হয়েছে। প্রয়োজনে আবার অর্ডার করতে পারেন।',
 } as const;
 
-async function fetchClip(clip: Clip): Promise<{ mimeType: string; audioBase64: string }> {
+async function fetchClip(
+  clip: Clip,
+): Promise<{ mimeType: string; audioBase64: string }> {
   const res = await fetch(`${API_BASE}/voice/demo-preview`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -65,7 +67,9 @@ export function TestCallDemo() {
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const cacheRef = useRef<Partial<Record<Clip, { mimeType: string; audioBase64: string }>>>({});
+  const cacheRef = useRef<
+    Partial<Record<Clip, { mimeType: string; audioBase64: string }>>
+  >({});
 
   useEffect(() => {
     return () => {
@@ -116,10 +120,10 @@ export function TestCallDemo() {
   }
 
   async function startTestCall() {
-    setPhase('connecting');
+    setPhase('ringing');
     setActiveKey(null);
     setError(null);
-    await new Promise((r) => setTimeout(r, 700));
+    await new Promise((r) => setTimeout(r, 900));
     setPhase('welcome');
     await playClip('welcome');
     setPhase('branch');
@@ -130,75 +134,130 @@ export function TestCallDemo() {
     setActiveKey(key);
     setPhase('branch');
     await playClip(key === '1' ? 'confirm' : 'cancel');
+    setPhase('done');
   }
 
+  const phoneStatus =
+    phase === 'idle'
+      ? 'টেস্ট কল শুনুন'
+      : phase === 'ringing'
+        ? 'Connecting…'
+        : phase === 'welcome'
+          ? 'Maskara AI speaking…'
+          : phase === 'branch'
+            ? activeKey
+              ? `${activeKey} চাপা হয়েছে`
+              : '১ বা ২ চাপুন'
+            : activeKey === '1'
+              ? 'Order confirmed'
+              : 'Order cancelled';
+
   return (
-    <div className="relative mx-auto w-full max-w-lg lg:max-w-none">
-      <div className="land-glass-card relative overflow-hidden rounded-[1.75rem] p-1">
-        <div className="relative rounded-[1.55rem] bg-white/70 p-5 backdrop-blur-xl sm:p-7">
-          {/* Phone strip — ManyDial-style status */}
-          <div className="flex items-center gap-3 rounded-2xl bg-[#15204a] px-4 py-3 text-white">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#22c55e]">
-              <Phone className="h-4 w-4 text-white" />
+    <div className="mx-auto w-full max-w-xl lg:max-w-none">
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,17rem)_1fr] lg:gap-8">
+        {/* ManyDial-style phone */}
+        <div className="land-hero-item land-hero-3 mx-auto w-full max-w-[17rem]">
+          <div className="relative overflow-hidden rounded-[2rem] bg-[#0b1224] px-5 pb-6 pt-4 shadow-[0_24px_60px_-28px_rgba(11,18,36,0.65)]">
+            <div className="flex items-center justify-between text-[10px] font-medium text-white/70">
+              <span>8:41</span>
+              <span className="h-1.5 w-6 rounded-full bg-white/80" />
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="font-display text-sm font-semibold tracking-tight">
+
+            <div className="mt-10 flex flex-col items-center text-center">
+              <div
+                className={`flex h-16 w-16 items-center justify-center rounded-full bg-[#22c55e] ${
+                  phase === 'ringing' || playing ? 'animate-pulse' : ''
+                }`}
+              >
+                <Phone className="h-7 w-7 text-white" />
+              </div>
+              <p className="mt-5 font-display text-lg font-semibold tracking-tight text-white">
                 Confirm Order Call
               </p>
-              <p className="text-xs text-white/65">
-                {phase === 'idle' && 'Ready to listen'}
-                {phase === 'connecting' && 'Connecting...'}
-                {phase === 'welcome' && 'Maskara AI speaking…'}
-                {phase === 'branch' && (activeKey ? `Pressed ${activeKey}` : 'Press 1 or 2')}
-              </p>
+              <p className="mt-1.5 min-h-[1.25rem] text-sm text-white/55">{phoneStatus}</p>
             </div>
-            {playing && (
-              <span className="flex items-center gap-1 text-[11px] font-medium text-[#93c5fd]">
-                <Volume2 className="h-3.5 w-3.5 animate-pulse" />
-                Live
-              </span>
-            )}
-          </div>
 
-          {/* Welcome */}
+            <div className="mt-12 flex items-center justify-center gap-10">
+              <button
+                type="button"
+                onClick={() => {
+                  stop();
+                  setPhase('idle');
+                  setActiveKey(null);
+                }}
+                className="flex h-14 w-14 items-center justify-center rounded-full bg-[#ef4444] text-white transition hover:brightness-110"
+                aria-label="End demo"
+              >
+                <PhoneOff className="h-6 w-6" />
+              </button>
+              <button
+                type="button"
+                onClick={() => (playing ? stop() : startTestCall())}
+                className="flex h-14 w-14 items-center justify-center rounded-full bg-[#22c55e] text-white transition hover:brightness-110"
+                aria-label="টেস্ট কল শুনুন"
+              >
+                {playing ? (
+                  <Pause className="h-6 w-6" />
+                ) : (
+                  <Phone className="h-6 w-6 rotate-[-20deg]" />
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* IVR flow */}
+        <div className="relative">
           <div
-            className={`mt-5 rounded-2xl border bg-white p-4 transition ${
-              phase === 'welcome' || phase === 'connecting'
-                ? 'border-[#3b5bdb] shadow-[0_0_0_3px_rgba(59,91,219,0.12)]'
+            className={`rounded-2xl border bg-white p-4 transition sm:p-5 ${
+              phase === 'welcome' || phase === 'ringing'
+                ? 'border-[#1a82f5] shadow-[0_0_0_3px_rgba(26,130,245,0.12)]'
                 : 'border-[#e6e9f2]'
             }`}
           >
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#3b5bdb]/10 text-[#3b5bdb]">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-[#1a82f5] to-[#0d9488] text-white">
                 <Mic className="h-4 w-4" />
               </div>
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#3b5bdb]">
-                Welcome Message
-              </p>
+              <div className="flex h-7 items-center gap-1 rounded-full bg-[#15204a] px-2.5">
+                {[4, 8, 5, 10, 6, 9, 4].map((h, i) => (
+                  <span
+                    key={i}
+                    className="w-0.5 rounded-full bg-white/85"
+                    style={{ height: h }}
+                  />
+                ))}
+              </div>
+              <p className="text-sm font-semibold text-[#15204a]">Welcome Message</p>
             </div>
-            <p className="mt-3 text-[13px] leading-relaxed text-[#15204a] sm:text-sm">
+            <p className="mt-3 rounded-xl bg-[#f4f6fb] px-3.5 py-3 text-[13px] leading-relaxed text-[#15204a] sm:text-sm">
               {COPY.welcome}
             </p>
           </div>
 
-          {/* Branches */}
-          <div className="relative mt-4 grid gap-3 sm:grid-cols-2">
-            <div className="pointer-events-none absolute left-1/2 top-0 hidden h-3 w-px -translate-x-1/2 -translate-y-3 border-l border-dashed border-[#c7ccef] sm:block" />
+          <div
+            className="mx-auto my-1 hidden h-6 w-px border-l border-dashed border-[#c7ccef] sm:block"
+            aria-hidden
+          />
+
+          <div className="mt-3 grid gap-3 sm:mt-0 sm:grid-cols-2">
             <button
               type="button"
               onClick={() => pressKey('1')}
-              disabled={phase === 'idle' || phase === 'connecting' || playing}
-              className={`rounded-2xl border bg-white p-4 text-left transition disabled:opacity-60 ${
+              disabled={
+                phase === 'idle' || phase === 'ringing' || playing || phase === 'done'
+              }
+              className={`rounded-2xl border bg-white p-4 text-left transition disabled:opacity-55 ${
                 activeKey === '1'
-                  ? 'border-[#3b5bdb] shadow-[0_0_0_3px_rgba(59,91,219,0.12)]'
-                  : 'border-[#e6e9f2] hover:border-[#c7ccef]'
+                  ? 'border-[#1a82f5] shadow-[0_0_0_3px_rgba(26,130,245,0.12)]'
+                  : 'border-[#e6e9f2] hover:border-[#b8c4e0]'
               }`}
             >
               <div className="flex items-center gap-2">
                 <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#15204a] text-xs font-bold text-white">
                   1
                 </span>
-                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#5b647a]">
+                <p className="text-xs font-semibold tracking-wide text-[#5b647a]">
                   Confirm Order
                 </p>
               </div>
@@ -210,18 +269,20 @@ export function TestCallDemo() {
             <button
               type="button"
               onClick={() => pressKey('2')}
-              disabled={phase === 'idle' || phase === 'connecting' || playing}
-              className={`rounded-2xl border bg-white p-4 text-left transition disabled:opacity-60 ${
+              disabled={
+                phase === 'idle' || phase === 'ringing' || playing || phase === 'done'
+              }
+              className={`rounded-2xl border bg-white p-4 text-left transition disabled:opacity-55 ${
                 activeKey === '2'
-                  ? 'border-[#7c6cf0] shadow-[0_0_0_3px_rgba(124,108,240,0.12)]'
-                  : 'border-[#e6e9f2] hover:border-[#c7ccef]'
+                  ? 'border-[#0d9488] shadow-[0_0_0_3px_rgba(13,148,136,0.12)]'
+                  : 'border-[#e6e9f2] hover:border-[#b8c4e0]'
               }`}
             >
               <div className="flex items-center gap-2">
                 <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#15204a] text-xs font-bold text-white">
                   2
                 </span>
-                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#5b647a]">
+                <p className="text-xs font-semibold tracking-wide text-[#5b647a]">
                   Cancel Order
                 </p>
               </div>
@@ -231,12 +292,14 @@ export function TestCallDemo() {
             </button>
           </div>
 
-          {error && <p className="mt-3 text-center text-sm text-red-600">{error}</p>}
+          {error && (
+            <p className="mt-3 text-center text-sm text-red-600">{error}</p>
+          )}
 
           <button
             type="button"
             onClick={() => (playing ? stop() : startTestCall())}
-            className="land-cta-glow mt-6 flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#3b5bdb] via-[#5b6cf0] to-[#7c6cf0] text-base font-semibold text-white transition hover:brightness-105"
+            className="land-cta-glow mt-5 flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#1a82f5] to-[#3b9eff] text-base font-semibold text-white transition hover:brightness-105"
           >
             {playing ? (
               <>
@@ -244,7 +307,7 @@ export function TestCallDemo() {
               </>
             ) : (
               <>
-                <Volume2 className="h-4 w-4" /> Test call শুনুন
+                <Volume2 className="h-4 w-4" /> টেস্ট কল শুনুন
               </>
             )}
           </button>

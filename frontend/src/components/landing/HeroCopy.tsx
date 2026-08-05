@@ -26,7 +26,7 @@ export function HeroCopy() {
       <div className="land-hero-item land-hero-4 mx-auto mt-9 flex w-full max-w-lg flex-col gap-3 sm:flex-row sm:justify-center">
         <Link
           href="/register"
-          className="land-cta-glow inline-flex min-h-[50px] flex-1 items-center justify-center gap-2 rounded-2xl bg-[#3b5bdb] px-7 py-3.5 text-base font-semibold text-white transition hover:bg-[#2f4bc7] sm:flex-none"
+          className="land-cta-glow inline-flex min-h-[50px] flex-1 items-center justify-center gap-2 rounded-2xl bg-[#1a82f5] px-7 py-3.5 text-base font-semibold text-white transition hover:bg-[#1570d4] sm:flex-none"
         >
           Start for Free <ArrowRight className="h-5 w-5 shrink-0 land-arrow" />
         </Link>
@@ -34,7 +34,7 @@ export function HeroCopy() {
           href="#test-call"
           className="inline-flex min-h-[50px] items-center justify-center gap-2 rounded-2xl border border-[#d5d9e8] bg-white/80 px-7 py-3.5 text-base font-semibold text-[#15204a] backdrop-blur-sm transition hover:bg-white"
         >
-          Test call শুনুন
+          টেস্ট কল শুনুন
         </a>
       </div>
 

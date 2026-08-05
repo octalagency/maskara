@@ -99,11 +99,11 @@ export default function LandingPage() {
       >
         <div className="mx-auto grid max-w-7xl items-center gap-10 px-4 sm:gap-12 sm:px-6 lg:grid-cols-2 lg:gap-16 lg:px-8">
           <Reveal>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#3b5bdb] sm:text-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#1a82f5] sm:text-sm">
               Hear the intelligence
             </p>
             <h2 className="mt-3 font-display text-[1.65rem] font-semibold tracking-[-0.03em] text-[#15204a] sm:text-4xl">
-              Test call শুনুন — COD verify কেমন শোনায়।
+              টেস্ট কল শুনুন
             </h2>
             <p className="mt-4 text-[15px] leading-relaxed text-[#5b647a] sm:text-base">
               মাস্কারা দোকানের নাম, বিল বলে, তারপর অপেক্ষা করে। এক চাপলে কনফার্ম, দুই চাপলে
