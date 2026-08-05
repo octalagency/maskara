@@ -12,6 +12,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiExcludeEndpoint, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { VoiceService } from './voice.service';
 import { VoiceWebhookService } from './voice-webhook.service';
@@ -75,6 +76,35 @@ export class VoiceController {
     } catch (err) {
       throw new BadRequestException(
         err instanceof Error ? err.message : 'Preview failed',
+      );
+    }
+  }
+
+  /** Public landing-page demo — fixed Bangla clips only (no free-form TTS). */
+  @Post('demo-preview')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Public landing demo TTS clips (welcome/confirm/cancel)' })
+  async demoPreview(@Body() body: { clip?: string }) {
+    const clip = String(body.clip || 'welcome').toLowerCase();
+    const scripts: Record<string, string> = {
+      welcome:
+        'হ্যালো সাকিব, আপনি ঘরেবাজারে এক কেজি মধু অর্ডার করেছিলেন। যার মূল্য চার হাজার দুইশ টাকা। আপনার অর্ডারটি যদি কনফার্ম হয়, তাহলে এক চাপুন। বাতিল করতে দুই চাপুন।',
+      confirm:
+        'ধন্যবাদ। আপনার অর্ডারটি কনফার্ম হয়েছে। শীঘ্রই আপনি কুরিয়ারের মাধ্যমে পণ্যটি পেয়ে যাবেন।',
+      cancel:
+        'ধন্যবাদ। আপনার অর্ডারটি বাতিল করা হয়েছে। প্রয়োজনে আবার অর্ডার করতে পারেন।',
+    };
+    const text = scripts[clip];
+    if (!text) throw new BadRequestException('clip must be welcome, confirm, or cancel');
+    try {
+      return await this.ttsPreview.synthesize(
+        text,
+        'google:bn-IN-Chirp3-HD-Algieba',
+        1.05,
+      );
+    } catch (err) {
+      throw new BadRequestException(
+        err instanceof Error ? err.message : 'Demo preview failed',
       );
     }
   }

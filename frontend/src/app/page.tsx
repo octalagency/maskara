@@ -5,8 +5,8 @@ import { SignalGrid } from '@/components/landing/SignalGrid';
 import { VoiceWave } from '@/components/landing/VoiceWave';
 import { HeroCopy } from '@/components/landing/HeroCopy';
 import { Reveal } from '@/components/landing/Reveal';
+import { TestCallDemo } from '@/components/landing/TestCallDemo';
 import {
-  Phone,
   Zap,
   Shield,
   BarChart3,
@@ -92,19 +92,22 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Mesh glass product moment */}
-      <section className="relative border-t border-[#e6e9f2] bg-white py-16 sm:py-24">
+      {/* Interactive test call — listen in browser */}
+      <section
+        id="test-call"
+        className="relative border-t border-[#e6e9f2] bg-white py-16 sm:py-24"
+      >
         <div className="mx-auto grid max-w-7xl items-center gap-10 px-4 sm:gap-12 sm:px-6 lg:grid-cols-2 lg:gap-16 lg:px-8">
           <Reveal>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#3b5bdb] sm:text-sm">
               Hear the intelligence
             </p>
             <h2 className="mt-3 font-display text-[1.65rem] font-semibold tracking-[-0.03em] text-[#15204a] sm:text-4xl">
-              Not a script dump — a Bangla conversation that closes the loop.
+              Test call শুনুন — COD verify কেমন শোনায়।
             </h2>
             <p className="mt-4 text-[15px] leading-relaxed text-[#5b647a] sm:text-base">
-              Maskara says the shop name, the bill, and waits. One key press tells you if the
-              customer is real — then your store knows instantly.
+              মাস্কারা দোকানের নাম, বিল বলে, তারপর অপেক্ষা করে। এক চাপলে কনফার্ম, দুই চাপলে
+              বাতিল — আপনার স্টোর তাৎক্ষণিক জানে।
             </p>
             <ul className="mt-7 space-y-3 text-[15px] text-[#15204a] sm:mt-8">
               {[
@@ -120,69 +123,8 @@ export default function LandingPage() {
             </ul>
           </Reveal>
 
-          <Reveal delay={120} className="relative mx-auto w-full max-w-md lg:max-w-none">
-            <div className="land-glass-card relative overflow-hidden rounded-[1.75rem] p-1">
-              <div className="relative rounded-[1.55rem] bg-white/55 p-5 backdrop-blur-xl sm:p-8">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#3b5bdb]/15">
-                    <Phone className="h-5 w-5 text-[#3b5bdb]" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-display text-sm font-semibold text-[#15204a]">
-                      Incoming · Maskara AI
-                    </p>
-                    <p className="text-xs text-[#8a92a8]">Live Bangla agent</p>
-                  </div>
-                  <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs font-medium text-[#3b5bdb]">
-                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#3b5bdb]" />
-                    Live
-                  </span>
-                </div>
-
-                <div className="mt-6 flex h-10 items-end justify-center gap-[3px] sm:gap-1">
-                  {Array.from({ length: 22 }).map((_, i) => (
-                    <span
-                      key={i}
-                      className="land-mini-bar w-1 rounded-full bg-gradient-to-t from-[#3b5bdb] via-[#8b7cf6] to-[#f9a8d4] sm:w-1.5"
-                      style={{
-                        height: `${10 + ((i * 7) % 28)}px`,
-                        animationDelay: `${i * 0.05}s`,
-                      }}
-                    />
-                  ))}
-                </div>
-
-                <p className="mt-6 rounded-2xl bg-white/70 p-4 text-[14px] leading-relaxed text-[#15204a] ring-1 ring-[#d5d9e8]/80 sm:text-[15px]">
-                  হ্যালো। আপনি <span className="font-semibold">ডেমো স্টোর</span>-এ অর্ডার করেছেন।
-                  আপনার মোট বিল <span className="font-semibold text-[#3b5bdb]">৫৬০ টাকা</span>।
-                  নিশ্চিত করতে <span className="font-semibold text-[#3b5bdb]">১</span>, বাতিল{' '}
-                  <span className="font-semibold text-[#7c6cf0]">২</span>, আবার শুনতে{' '}
-                  <span className="font-semibold text-[#e879a9]">০</span>।
-                </p>
-
-                <div className="mt-6 grid grid-cols-3 gap-3 sm:flex sm:justify-center sm:gap-5">
-                  {[
-                    { k: '1', label: 'Confirm' },
-                    { k: '2', label: 'Cancel' },
-                    { k: '0', label: 'Repeat' },
-                  ].map((key) => (
-                    <div key={key.k} className="text-center">
-                      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-[#d5d9e8] bg-white font-display text-lg font-semibold text-[#15204a]">
-                        {key.k}
-                      </div>
-                      <p className="mt-1.5 text-[11px] text-[#8a92a8]">{key.label}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <Link
-                  href="/register"
-                  className="mt-7 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-[#3b5bdb] text-base font-semibold text-white transition hover:bg-[#2f4bc7]"
-                >
-                  <Phone className="h-4 w-4" /> Start Call Experience
-                </Link>
-              </div>
-            </div>
+          <Reveal delay={120}>
+            <TestCallDemo />
           </Reveal>
         </div>
       </section>
