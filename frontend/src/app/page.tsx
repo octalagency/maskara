@@ -3,7 +3,6 @@ import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
 import { SignalGrid } from '@/components/landing/SignalGrid';
 import { VoiceWave } from '@/components/landing/VoiceWave';
-import { HeroCopy } from '@/components/landing/HeroCopy';
 import { Reveal } from '@/components/landing/Reveal';
 import { TestCallDemo } from '@/components/landing/TestCallDemo';
 import {
@@ -82,60 +81,29 @@ export default function LandingPage() {
     <div className="landing-root min-h-screen overflow-x-hidden bg-[#f7f8fc]">
       <Navbar />
 
-      <section className="relative flex min-h-[100svh] flex-col overflow-hidden pt-14 sm:pt-16">
+      {/* Hero = interactive test call (first viewport) */}
+      <section
+        id="test-call"
+        className="relative flex min-h-[100svh] flex-col overflow-hidden pt-14 sm:pt-16"
+      >
         <div className="absolute inset-0 bg-[#f7f8fc]" />
+        <div className="pointer-events-none absolute -left-24 top-24 h-72 w-72 rounded-full bg-[#1a82f5]/10 blur-3xl" />
+        <div className="pointer-events-none absolute -right-16 bottom-20 h-80 w-80 rounded-full bg-[#0d9488]/10 blur-3xl" />
         <SignalGrid />
         <VoiceWave />
 
-        <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center px-4 pb-36 pt-10 sm:px-6 sm:pb-40 sm:pt-14 lg:px-8">
-          <HeroCopy />
-        </div>
-      </section>
-
-      {/* Interactive test call — listen in browser */}
-      <section
-        id="test-call"
-        className="relative border-t border-[#e6e9f2] bg-white py-16 sm:py-24"
-      >
-        <div className="mx-auto grid max-w-7xl items-center gap-10 px-4 sm:gap-12 sm:px-6 lg:grid-cols-2 lg:gap-16 lg:px-8">
-          <Reveal>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#1a82f5] sm:text-sm">
-              Hear the intelligence
-            </p>
-            <h2 className="mt-3 font-display text-[1.65rem] font-semibold tracking-[-0.03em] text-[#15204a] sm:text-4xl">
-              টেস্ট কল শুনুন
-            </h2>
-            <p className="mt-4 text-[15px] leading-relaxed text-[#5b647a] sm:text-base">
-              মাস্কারা দোকানের নাম, বিল বলে, তারপর অপেক্ষা করে। এক চাপলে কনফার্ম, দুই চাপলে
-              বাতিল — আপনার স্টোর তাৎক্ষণিক জানে।
-            </p>
-            <ul className="mt-7 space-y-3 text-[15px] text-[#15204a] sm:mt-8">
-              {[
-                'Natural Bangla voices you can choose',
-                '১ Confirm · ২ Cancel · ০ Repeat',
-                'Shopify, WooCommerce, ShopIn & custom API',
-              ].map((t) => (
-                <li key={t} className="flex gap-3">
-                  <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-[#3b5bdb]" />
-                  <span>{t}</span>
-                </li>
-              ))}
-            </ul>
-          </Reveal>
-
-          <Reveal delay={120}>
-            <TestCallDemo />
-          </Reveal>
+        <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+          <TestCallDemo />
         </div>
       </section>
 
       <section
-        className="border-t border-[#e6e9f2] bg-[#f7f8fc] py-16 sm:py-24"
+        className="border-t border-[#e6e9f2] bg-white py-16 sm:py-24"
         id="how-it-works"
       >
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <Reveal>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#7c6cf0] sm:text-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#1a82f5] sm:text-sm">
               How it works
             </p>
             <h2 className="mt-3 font-display text-[1.65rem] font-semibold tracking-[-0.03em] text-[#15204a] sm:text-4xl">
@@ -148,8 +116,8 @@ export default function LandingPage() {
             {steps.map((s, i) => (
               <li key={s.step} className="list-none">
                 <Reveal delay={i * 80} className="h-full">
-                  <div className="h-full rounded-2xl border border-[#e6e9f2] bg-white p-5 sm:p-6">
-                    <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg bg-[#3b5bdb]/10 px-2 text-xs font-bold text-[#3b5bdb]">
+                  <div className="h-full rounded-2xl border border-[#e6e9f2] bg-[#f7f8fc] p-5 sm:p-6">
+                    <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg bg-[#1a82f5]/10 px-2 text-xs font-bold text-[#1a82f5]">
                       {s.step}
                     </span>
                     <h3 className="mt-4 font-display text-lg font-semibold text-[#15204a]">
@@ -164,10 +132,10 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="border-t border-[#e6e9f2] bg-white py-16 sm:py-24" id="features">
+      <section className="border-t border-[#e6e9f2] bg-[#f7f8fc] py-16 sm:py-24" id="features">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <Reveal>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#e879a9] sm:text-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#0d9488] sm:text-sm">
               Why Maskara
             </p>
             <h2 className="mt-3 font-display text-[1.65rem] font-semibold tracking-[-0.03em] text-[#15204a] sm:text-4xl">
@@ -179,8 +147,8 @@ export default function LandingPage() {
           <div className="mt-10 grid gap-4 sm:mt-14 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
             {features.map((f, i) => (
               <Reveal key={f.title} delay={(i % 3) * 70}>
-                <div className="group h-full rounded-2xl border border-[#e6e9f2] bg-[#f7f8fc] p-5 transition hover:border-[#c7ccef] hover:bg-white sm:p-6">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#3b5bdb]/10 text-[#3b5bdb] transition group-hover:bg-[#3b5bdb] group-hover:text-white">
+                <div className="group h-full rounded-2xl border border-[#e6e9f2] bg-white p-5 transition hover:border-[#c7ccef] sm:p-6">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#1a82f5]/10 text-[#1a82f5] transition group-hover:bg-[#1a82f5] group-hover:text-white">
                     <f.icon className="h-5 w-5" />
                   </div>
                   <h3 className="mt-4 font-display text-lg font-semibold text-[#15204a]">
