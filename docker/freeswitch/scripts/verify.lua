@@ -1,9 +1,9 @@
--- Maskara Own Dialer IVR: play hosted Chirp3 MP3, gather DTMF, webhook Maskara API
+-- Maskara Own Dialer IVR: play Chirp3 MP3 once, gather DTMF 1/2/0, webhook API
 local session = session
 if not session then return end
 
-session:answer()
-session:sleep(400)
+-- Outbound leg is already answered by customer — do not re-answer
+session:sleep(300)
 
 local call_id = session:getVariable("maskara_call_id") or "unknown"
 local prompt_url = session:getVariable("maskara_prompt_url") or ""
@@ -22,7 +22,6 @@ end
 local function download(url, name)
   if not url or url == "" then return nil end
   local path = audio_dir .. "/" .. call_id .. "-" .. name .. ".mp3"
-  -- BusyBox wget (safarov image); strip shell metacharacters from URL
   url = url:gsub("[;&|`$\\]", "")
   local cmd = string.format(
     "wget -q -O %s %s",
@@ -40,7 +39,7 @@ local function download(url, name)
   end
   freeswitch.consoleLog(
     "ERR",
-    "[maskara] download failed " .. name .. " url=" .. url .. "\n"
+    "[maskara] download failed " .. name .. " url=" .. tostring(url) .. "\n"
   )
   return nil
 end
@@ -56,6 +55,7 @@ if not prompt then
   return
 end
 
+-- Synchronous webhook so Nest gets DTMF before hangup status race
 local function notify(digits)
   if webhook == "" then return end
   local payload = string.format(
@@ -71,7 +71,7 @@ local function notify(digits)
   end
   local wh = webhook:gsub("[;&|`$\\]", "")
   os.execute(string.format(
-    "wget -q -O /dev/null --header=%s --post-file=%s %s >/dev/null 2>&1 &",
+    "wget -q -O /dev/null --header=%s --post-file=%s %s",
     shell_quote("Content-Type: application/json"),
     shell_quote(tmp),
     shell_quote(wh)
@@ -82,34 +82,66 @@ local function play(path)
   if path then session:execute("playback", path) end
 end
 
-for attempt = 1, 3 do
-  play(prompt)
-  local digits = session:playAndGetDigits(
-    1, 1, 1, 8000, "#",
+-- Single gather loop: do NOT play prompt before playAndGetDigits
+-- (extra playback ate DTMF 1/2 so Nest only saw "invalid").
+local digits = session:playAndGetDigits(
+  1,              -- min
+  1,              -- max
+  3,              -- tries
+  12000,          -- timeout between prompts (ms)
+  "#",            -- terminators
+  prompt,         -- prompt file
+  invalid or prompt,
+  "^[012]$",      -- only 0/1/2
+  "maskara_digit",
+  5000            -- digit timeout
+)
+digits = tostring(digits or session:getVariable("maskara_digit") or "")
+
+freeswitch.consoleLog(
+  "INFO",
+  "[maskara] dtmf call_id=" .. call_id .. " digits=" .. digits .. "\n"
+)
+
+if digits == "1" then
+  session:setVariable("maskara_ivr_done", "true")
+  notify("1")
+  play(confirm)
+  session:hangup("NORMAL_CLEARING")
+  return
+elseif digits == "2" then
+  session:setVariable("maskara_ivr_done", "true")
+  notify("2")
+  play(cancel)
+  session:hangup("NORMAL_CLEARING")
+  return
+elseif digits == "0" then
+  -- one extra full prompt + gather
+  notify("0")
+  local again = session:playAndGetDigits(
+    1, 1, 2, 12000, "#",
     prompt,
     invalid or prompt,
-    "\\d",
+    "^[12]$",
     "maskara_digit",
-    3000
+    5000
   )
-  digits = digits or session:getVariable("maskara_digit") or ""
-
-  if digits == "0" then
-    -- replay
-  elseif digits == "1" then
-    play(confirm)
+  again = tostring(again or session:getVariable("maskara_digit") or "")
+  if again == "1" then
+    session:setVariable("maskara_ivr_done", "true")
     notify("1")
-    session:hangup()
+    play(confirm)
+    session:hangup("NORMAL_CLEARING")
     return
-  elseif digits == "2" then
-    play(cancel)
+  elseif again == "2" then
+    session:setVariable("maskara_ivr_done", "true")
     notify("2")
-    session:hangup()
+    play(cancel)
+    session:hangup("NORMAL_CLEARING")
     return
-  else
-    play(invalid)
-    notify(digits ~= "" and digits or "invalid")
   end
 end
 
-session:hangup()
+session:setVariable("maskara_ivr_done", "true")
+notify(digits ~= "" and digits or "timeout")
+session:hangup("NORMAL_CLEARING")

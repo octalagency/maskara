@@ -189,7 +189,12 @@ export class VoiceWebhookService {
     const status = this.extractStatus(payload);
 
     if (callId && digits) {
-      return this.processDtmf(callId, digits);
+      const d = String(digits).charAt(0);
+      if (d === '0' || d === '1' || d === '2') {
+        return this.processDtmf(callId, d);
+      }
+      // "invalid" / "timeout" from dialer — ignore (do not touch counters)
+      return { ok: true, ignored: true, digits };
     }
 
     if (callId && status) {
@@ -285,6 +290,7 @@ export class VoiceWebhookService {
           outcome,
           status: 'COMPLETED',
           endedAt: new Date(),
+          errorMessage: null,
         },
       }),
       this.prisma.order.update({
@@ -292,6 +298,12 @@ export class VoiceWebhookService {
         data: {
           status: orderStatus,
           nextCallAt: null,
+          // Never show 0/20 CONFIRMED — keep at least this attempt
+          callAttempts: Math.max(
+            call.order.callAttempts || 0,
+            call.attemptNumber || 1,
+            1,
+          ),
           ...(orderStatus === 'VERIFIED' && { verifiedAt: new Date() }),
           ...(orderStatus === 'CANCELLED' && { cancelledAt: new Date() }),
         },
@@ -335,6 +347,17 @@ export class VoiceWebhookService {
     });
     if (!call) return { ok: true };
 
+    // DTMF already finalized — ignore late hangup "failed" (was zeroing counts)
+    if (
+      call.outcome === 'CONFIRMED' ||
+      call.outcome === 'CANCELLED' ||
+      call.order?.status === 'VERIFIED' ||
+      call.order?.status === 'CANCELLED' ||
+      call.order?.status === 'ESCALATED'
+    ) {
+      return { ok: true, skipped: 'already_finalized' };
+    }
+
     const elapsedSec =
       duration && duration > 0
         ? duration
@@ -351,12 +374,12 @@ export class VoiceWebhookService {
       !call.providerCallId &&
       elapsedSec < TECH_FAIL_MAX_SEC;
     const cause = String(hangupCause || '').toUpperCase();
+    // Only real SIP/trunk failures — never hangup cause NONE after IVR
     const isDialerSipFail =
       call.provider === 'maskara_dialer' &&
-      (isPstnFail ||
-        /RECOVERY_ON_TIMER|DESTINATION_OUT_OF_ORDER|NORMAL_UNSPECIFIED|CALL_REJECTED|UNALLOCATED/.test(
-          cause,
-        ));
+      /RECOVERY_ON_TIMER|DESTINATION_OUT_OF_ORDER|NORMAL_UNSPECIFIED|CALL_REJECTED|UNALLOCATED|NORMAL_TEMPORARY_FAILURE/.test(
+        cause,
+      );
 
     await this.prisma.call.update({
       where: { id: callId },
@@ -372,7 +395,7 @@ export class VoiceWebhookService {
           ? { errorMessage: 'epbx_instant_fail' }
           : isDialerSipFail
             ? { errorMessage: 'dialer_sip_fail' }
-            : isPstnFail
+            : isPstnFail && call.provider !== 'maskara_dialer'
               ? { errorMessage: 'epbx_pstn_fail' }
               : {}),
       },
@@ -391,6 +414,16 @@ export class VoiceWebhookService {
         order.status === 'ESCALATED')
     ) {
       return { ok: true };
+    }
+
+    // Maskara dialer hangup with cause NONE/empty is not a refundable SIP fail
+    if (
+      call.provider === 'maskara_dialer' &&
+      isPstnFail &&
+      !isDialerSipFail &&
+      (!cause || cause === 'NONE' || cause === 'UNKNOWN' || cause === 'NORMAL_CLEARING')
+    ) {
+      return { ok: true, skipped: 'dialer_normal_hangup' };
     }
 
     // PSTN never rang / carrier fail → refund counter + immediate redial (no fake attempts)

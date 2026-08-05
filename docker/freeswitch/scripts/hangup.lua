@@ -1,8 +1,8 @@
 -- Hangup notifier for Maskara dialer (runs even when customer never answers)
--- Prefer session vars (session_in_hangup_hook=true); argv is fallback.
 local call_id = "unknown"
 local cause = "UNKNOWN"
 local webhook = ""
+local ivr_done = false
 
 if session then
   call_id = session:getVariable("maskara_call_id") or call_id
@@ -10,11 +10,22 @@ if session then
   webhook = session:getVariable("maskara_status_webhook")
     or session:getVariable("maskara_webhook")
     or webhook
+  ivr_done = session:getVariable("maskara_ivr_done") == "true"
 end
 
 if argv and argv[1] and argv[1] ~= "" then call_id = argv[1] end
 if argv and argv[2] and argv[2] ~= "" then cause = argv[2] end
 if argv and argv[3] and argv[3] ~= "" then webhook = argv[3] end
+
+-- DTMF path already finalized the order — never send a late "failed" that
+-- refunds callAttempts (UI showed 0/20 CONFIRMED).
+if ivr_done then
+  freeswitch.consoleLog(
+    "INFO",
+    "[maskara] hangup skip ivr_done call_id=" .. tostring(call_id) .. " cause=" .. tostring(cause) .. "\n"
+  )
+  return
+end
 
 if webhook == "" then
   freeswitch.consoleLog(
@@ -30,20 +41,18 @@ end
 
 local status = "failed"
 local c = string.upper(tostring(cause or ""))
-if c:find("NO_ANSWER") or c:find("NO ANSWER") then
-  -- Real ring, customer didn't pick up — counts as an attempt
+if c == "" or c == "NONE" or c == "UNKNOWN" or c:find("NORMAL_CLEARING") then
+  -- Answered / IVR ended — do not treat as SIP fail
+  status = "completed"
+elseif c:find("NO_ANSWER") or c:find("NO ANSWER") then
   status = "no-answer"
 elseif c:find("USER_BUSY") or c:find("BUSY") then
   status = "busy"
-elseif c:find("NORMAL_CLEARING") then
-  -- Answered call ended normally (DTMF path already reported); ignore duplicate
-  status = "completed"
 elseif c:find("RECOVERY_ON_TIMER") or c:find("DESTINATION_OUT_OF_ORDER")
   or c:find("NORMAL_TEMPORARY_FAILURE") or c:find("NETWORK_OUT_OF_ORDER")
   or c:find("CALL_REJECTED") or c:find("REJECT") or c:find("UNALLOCATED")
   or c:find("ORIGINATOR_CANCEL") or c:find("TIMEOUT")
   or c:find("ALLOTTED_TIMEOUT") then
-  -- SIP/trunk never reached the handset — must NOT count as a real dial
   status = "failed"
 elseif c:find("NO_USER_RESPONSE") then
   status = "no-answer"
@@ -51,11 +60,10 @@ else
   status = "failed"
 end
 
--- Skip status update after successful IVR (DTMF already finalized)
 if status == "completed" then
   freeswitch.consoleLog(
     "INFO",
-    "[maskara] hangup skip completed call_id=" .. tostring(call_id) .. "\n"
+    "[maskara] hangup skip completed call_id=" .. tostring(call_id) .. " cause=" .. tostring(cause) .. "\n"
   )
   return
 end
