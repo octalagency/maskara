@@ -107,16 +107,16 @@ export class MaskaraDialerProvider implements VoiceProvider {
     const webhook = this.webhookUrl('/voice/webhook/maskara-dialer/dtmf');
     // FreeSWITCH requires RFC UUID here — Nest call ids (cuid) break SIP.
     const channelUuid = randomUUID();
-    // Use ^^| delimiter so URL ":" and hangup-hook spaces cannot break parsing.
+    // Comma-separated vars (URLs have ":" but no commas). Avoid ^^| — that
+    // form timed out on ePBX while comma + PCMA/PCMU produces real rings.
     const channelVars = [
       `origination_uuid=${channelUuid}`,
       `origination_caller_id_number=${callerId}`,
       `origination_caller_id_name=Maskara`,
-      // Wait for customer 200 OK before IVR (true ring → answer)
       `ignore_early_media=true`,
       `originate_timeout=45`,
+      `absolute_codec_string=PCMA\\,PCMU`,
       `session_in_hangup_hook=true`,
-      // \s = space inside originate vars (comma/| safe)
       `api_hangup_hook=lua\\smaskara/hangup.lua`,
       `maskara_call_id=${params.callId}`,
       `maskara_prompt_url=${prompt.url}`,
@@ -125,9 +125,9 @@ export class MaskaraDialerProvider implements VoiceProvider {
       `maskara_invalid_url=${invalid.url}`,
       `maskara_webhook=${webhook}`,
       `maskara_status_webhook=${webhook}`,
-    ].join('|');
+    ].join(',');
 
-    const originate = `originate {^^|${channelVars}|}sofia/gateway/${gateway}/${dialPhone} &lua(maskara/verify.lua)`;
+    const originate = `originate {${channelVars}}sofia/gateway/${gateway}/${dialPhone} &lua(maskara/verify.lua)`;
 
     const eslHost =
       this.settings.get('FREESWITCH_ESL_HOST') || 'freeswitch';
