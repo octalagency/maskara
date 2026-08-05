@@ -21,8 +21,8 @@ import {
 const RETRYABLE_CALL_STATUSES = ['NO_ANSWER', 'BUSY', 'FAILED', 'QUEUED'];
 /** ePBX often never sends hangup — clear stuck RINGING so pending can redial. */
 const STALE_RINGING_MS = 3 * 60 * 1000;
-/** Pending backlog: redial unanswered/failed every ~2.5 min (not merchant 30–45 min gap). */
-const CATCH_UP_RETRY_MS = 2.5 * 60 * 1000;
+/** Pending backlog: redial unanswered/failed every ~5 min (still under daily 10 cap). */
+const CATCH_UP_RETRY_MS = 5 * 60 * 1000;
 
 @Injectable()
 export class CallsRetryScheduler {
@@ -39,7 +39,7 @@ export class CallsRetryScheduler {
     const pending = await this.prisma.order.findMany({
       where: {
         status: 'PENDING',
-        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
         OR: [
           { callAttempts: 0 },
           // Attempts bumped without a Call row (queue cleared / bad reset)
@@ -49,7 +49,7 @@ export class CallsRetryScheduler {
       include: {
         calls: { take: 1 },
       },
-      take: 40,
+      take: 100,
       orderBy: { createdAt: 'asc' },
     });
 
@@ -102,16 +102,18 @@ export class CallsRetryScheduler {
     const now = new Date();
     const queued = await this.queuedOrderIds();
 
+    // Do NOT filter by nextCallAt here — parked PENDING with NO_ANSWER/FAILED
+    // must still enter dueCatchUp (otherwise they sit idle for hours).
     const pendingOrders = await this.prisma.order.findMany({
       where: {
         status: { in: ['PENDING', 'FAILED', 'CALLING'] },
-        OR: [{ nextCallAt: { lte: now } }, { nextCallAt: null }],
       },
       include: {
         merchant: true,
         calls: { orderBy: { createdAt: 'desc' }, take: 1 },
       },
-      take: 80,
+      take: 250,
+      orderBy: [{ callAttempts: 'asc' }, { updatedAt: 'asc' }],
     });
 
     for (const order of pendingOrders) {
@@ -231,7 +233,7 @@ export class CallsRetryScheduler {
           order.nextCallAt.getTime() <= now.getTime() ||
           isCallWindowExempt(order.callAttempts));
 
-      // Unanswered / failed / stuck ringing → catch-up every ~2.5 min
+      // Unanswered / failed / stuck ringing → catch-up every ~5 min
       const catchUpStatuses = ['NO_ANSWER', 'BUSY', 'FAILED', 'QUEUED', 'RINGING'];
       const spacingMs = catchUpStatuses.includes(lastCall.status)
         ? CATCH_UP_RETRY_MS
