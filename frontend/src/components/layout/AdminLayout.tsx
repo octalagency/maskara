@@ -18,6 +18,7 @@ import {
   Banknote,
   Mic2,
   Megaphone,
+  TicketPercent,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -25,6 +26,7 @@ const navItems = [
   { href: '/admin', label: 'ড্যাশবোর্ড', icon: LayoutDashboard, exact: true },
   { href: '/admin/merchants', label: 'মার্চেন্ট', icon: Users },
   { href: '/admin/plans', label: 'প্ল্যান', icon: Package },
+  { href: '/admin/coupons', label: 'কুপন', icon: TicketPercent },
   { href: '/admin/billing', label: 'বিলিং', icon: Wallet },
   { href: '/admin/payments', label: 'পেমেন্ট গেটওয়ে', icon: Banknote },
   { href: '/admin/marketing', label: 'Facebook & মার্কেটিং', icon: Megaphone },

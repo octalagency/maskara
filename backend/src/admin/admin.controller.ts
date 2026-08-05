@@ -12,6 +12,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { MarketingService } from '../marketing/marketing.service';
+import { CouponsService } from '../coupons/coupons.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -25,6 +26,7 @@ export class AdminController {
   constructor(
     private adminService: AdminService,
     private marketing: MarketingService,
+    private coupons: CouponsService,
   ) {}
 
   @Get('dashboard')
@@ -140,6 +142,46 @@ export class AdminController {
   @Patch('settings/:key')
   updateSetting(@Param('key') key: string, @Body('value') value: unknown) {
     return this.adminService.updateSystemSetting(key, value);
+  }
+
+  @Get('coupons')
+  @ApiOperation({ summary: 'List coupon codes' })
+  listCoupons() {
+    return this.coupons.list();
+  }
+
+  @Get('coupons/:id')
+  getCoupon(@Param('id') id: string) {
+    return this.coupons.get(id);
+  }
+
+  @Post('coupons')
+  @ApiOperation({ summary: 'Create merchant discount coupon' })
+  createCoupon(
+    @Body()
+    body: {
+      code: string;
+      description?: string;
+      type: string;
+      value: number;
+      planCodes?: string[];
+      merchantIds?: string[];
+      maxRedemptions?: number | null;
+      perMerchantLimit?: number;
+      validFrom?: string | null;
+      validUntil?: string | null;
+      isActive?: boolean;
+    },
+  ) {
+    return this.coupons.create(body);
+  }
+
+  @Patch('coupons/:id')
+  updateCoupon(
+    @Param('id') id: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.coupons.update(id, body as never);
   }
 
   @Get('marketing')

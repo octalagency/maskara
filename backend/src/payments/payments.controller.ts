@@ -17,8 +17,14 @@ export class PaymentsController {
     @CurrentUser('merchantId') merchantId: string,
     @Body('planCode') planCode: string,
     @Body('provider') provider: 'bkash' | 'nagad',
+    @Body('couponCode') couponCode?: string,
   ) {
-    return this.paymentsService.initiatePayment(merchantId, planCode, provider);
+    return this.paymentsService.initiatePayment(
+      merchantId,
+      planCode,
+      provider,
+      couponCode,
+    );
   }
 
   @Get('bkash/callback')

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { CheckCircle2, CreditCard, Zap, Loader2, Copy, Check } from 'lucide-react';
-import { api, MerchantSubscription, Plan } from '@/lib/api';
+import { api, MerchantSubscription, Plan, CouponQuote } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 
 type PayStep = 'form' | 'verifying' | 'paid' | 'error';
@@ -17,6 +17,10 @@ export default function SubscriptionPage() {
   const [payPlan, setPayPlan] = useState<Plan | null>(null);
   const [trxId, setTrxId] = useState('');
   const [senderPhone, setSenderPhone] = useState('');
+  const [couponCode, setCouponCode] = useState('');
+  const [couponQuote, setCouponQuote] = useState<CouponQuote | null>(null);
+  const [couponError, setCouponError] = useState('');
+  const [couponLoading, setCouponLoading] = useState(false);
   const [payStep, setPayStep] = useState<PayStep>('form');
   const [payError, setPayError] = useState('');
   const [copied, setCopied] = useState(false);
@@ -44,6 +48,9 @@ export default function SubscriptionPage() {
     setPayPlan(plan);
     setTrxId('');
     setSenderPhone('');
+    setCouponCode('');
+    setCouponQuote(null);
+    setCouponError('');
     setPayStep('form');
     setPayError('');
     setMessage(null);
@@ -53,7 +60,34 @@ export default function SubscriptionPage() {
     setPayPlan(null);
     setPayStep('form');
     setPayError('');
+    setCouponCode('');
+    setCouponQuote(null);
+    setCouponError('');
     setLoading(null);
+  }
+
+  const payAmount = payPlan
+    ? Math.round(couponQuote?.finalAmount ?? Number(payPlan.priceMonthly))
+    : 0;
+  const originalAmount = payPlan ? Math.round(Number(payPlan.priceMonthly)) : 0;
+
+  async function applyCoupon() {
+    if (!payPlan || !couponCode.trim()) {
+      setCouponQuote(null);
+      setCouponError('');
+      return;
+    }
+    setCouponLoading(true);
+    setCouponError('');
+    try {
+      const quote = await api.previewCoupon(payPlan.code, couponCode.trim());
+      setCouponQuote(quote);
+    } catch (err) {
+      setCouponQuote(null);
+      setCouponError(err instanceof Error ? err.message : 'Invalid coupon');
+    } finally {
+      setCouponLoading(false);
+    }
   }
 
   async function copyNumber(num: string) {
@@ -70,20 +104,25 @@ export default function SubscriptionPage() {
     e.preventDefault();
     if (!payPlan) return;
 
-    const amount = Math.round(Number(payPlan.priceMonthly));
+    const amount = payAmount;
+    const code = couponQuote?.code || couponCode.trim() || undefined;
     setPayError('');
     setPayStep('verifying');
     setLoading(payPlan.code);
 
     const started = Date.now();
     try {
-      const res = await api.submitBkashManual({
-        planCode: payPlan.code,
-        trxId,
-        senderPhone,
-        amount,
-        autoVerify: true,
-      });
+      const res =
+        amount <= 0 && code
+          ? await api.subscribeToPlan(payPlan.code, 'coupon', code)
+          : await api.submitBkashManual({
+              planCode: payPlan.code,
+              trxId,
+              senderPhone,
+              amount,
+              autoVerify: true,
+              couponCode: code,
+            });
 
       // Keep verifying UI at least ~3 seconds for bKash-like feel
       const wait = Math.max(0, 3000 - (Date.now() - started));
@@ -275,7 +314,7 @@ export default function SubscriptionPage() {
                     <span className="text-sm font-normal">/mo</span>
                   </p>
                   <p className="mt-1 text-sm text-slate-500">
-                    +{plan.callLimit} কল রিসিভ · {plan.smsLimit} SMS
+                    +{plan.callLimit} অর্ডার · {plan.smsLimit} SMS
                   </p>
                   <ul className="mt-3 flex-1 space-y-1 text-xs text-slate-600">
                     {features.slice(0, 3).map((f) => (
@@ -338,7 +377,12 @@ export default function SubscriptionPage() {
                   </div>
                 </div>
                 <p className="mt-3 text-2xl font-bold">
-                  {formatCurrency(Number(payPlan.priceMonthly))}
+                  {formatCurrency(payAmount)}
+                  {couponQuote && couponQuote.discountAmount > 0 && (
+                    <span className="ml-2 text-base font-medium text-white/70 line-through">
+                      {formatCurrency(originalAmount)}
+                    </span>
+                  )}
                 </p>
               </div>
 
@@ -386,33 +430,84 @@ export default function SubscriptionPage() {
                       </p>
                     )}
                     <p className="mt-2 text-xs text-slate-500">
-                      Amount: <strong>{formatCurrency(Number(payPlan.priceMonthly))}</strong>
+                      Amount:{' '}
+                      <strong>{formatCurrency(payAmount)}</strong>
+                      {couponQuote && couponQuote.discountAmount > 0 && (
+                        <span className="ml-1 text-emerald-700">
+                          (কুপন {couponQuote.code}: −
+                          {formatCurrency(couponQuote.discountAmount)})
+                        </span>
+                      )}
                     </p>
                   </div>
 
                   <div>
-                    <label className="text-sm font-medium text-slate-700">bKash TrxID</label>
-                    <input
-                      className="input mt-1"
-                      value={trxId}
-                      onChange={(e) => setTrxId(e.target.value)}
-                      placeholder="Transaction ID"
-                      required
-                      minLength={6}
-                    />
-                  </div>
-                  <div>
                     <label className="text-sm font-medium text-slate-700">
-                      আপনার bKash নম্বর
+                      কুপন কোড (ঐচ্ছিক)
                     </label>
-                    <input
-                      className="input mt-1"
-                      value={senderPhone}
-                      onChange={(e) => setSenderPhone(e.target.value)}
-                      placeholder="01XXXXXXXXX"
-                      required
-                    />
+                    <div className="mt-1 flex gap-2">
+                      <input
+                        className="input uppercase"
+                        value={couponCode}
+                        onChange={(e) => {
+                          setCouponCode(e.target.value.toUpperCase());
+                          setCouponQuote(null);
+                          setCouponError('');
+                        }}
+                        placeholder="SAVE20"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void applyCoupon()}
+                        disabled={couponLoading || !couponCode.trim()}
+                        className="shrink-0 rounded-xl bg-slate-900 px-3 text-sm font-semibold text-white disabled:opacity-50"
+                      >
+                        {couponLoading ? '…' : 'Apply'}
+                      </button>
+                    </div>
+                    {couponError && (
+                      <p className="mt-1 text-xs text-red-600">{couponError}</p>
+                    )}
+                    {couponQuote && (
+                      <p className="mt-1 text-xs text-emerald-700">
+                        Applied — pay {formatCurrency(couponQuote.finalAmount)}
+                      </p>
+                    )}
                   </div>
+
+                  {payAmount > 0 ? (
+                    <>
+                      <div>
+                        <label className="text-sm font-medium text-slate-700">
+                          bKash TrxID
+                        </label>
+                        <input
+                          className="input mt-1"
+                          value={trxId}
+                          onChange={(e) => setTrxId(e.target.value)}
+                          placeholder="Transaction ID"
+                          required
+                          minLength={6}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-slate-700">
+                          আপনার bKash নম্বর
+                        </label>
+                        <input
+                          className="input mt-1"
+                          value={senderPhone}
+                          onChange={(e) => setSenderPhone(e.target.value)}
+                          placeholder="01XXXXXXXXX"
+                          required
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                      ১০০% কুপন — TrxID ছাড়াই অ্যাক্টিভ হবে
+                    </p>
+                  )}
 
                   {(payError || payStep === 'error') && (
                     <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -422,10 +517,13 @@ export default function SubscriptionPage() {
 
                   <button
                     type="submit"
-                    disabled={!!loading || !bKashNumber}
+                    disabled={
+                      !!loading ||
+                      (payAmount > 0 ? !bKashNumber : !couponQuote)
+                    }
                     className="w-full rounded-xl bg-[#E2136E] py-3 text-sm font-bold text-white hover:bg-[#c41060] disabled:opacity-50"
                   >
-                    Verify Paid
+                    {payAmount > 0 ? 'Verify Paid' : 'Activate with coupon'}
                   </button>
                   <button
                     type="button"

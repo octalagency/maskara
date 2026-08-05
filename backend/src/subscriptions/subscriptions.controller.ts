@@ -31,11 +31,29 @@ export class SubscriptionsController {
     @CurrentUser('merchantId') merchantId: string,
     @Body('planCode') planCode: string,
     @Body('paymentMethod') paymentMethod?: string,
+    @Body('couponCode') couponCode?: string,
   ) {
     return this.subscriptionsService.subscribe(
       merchantId,
       planCode,
       paymentMethod || 'bkash_manual',
+      couponCode,
+    );
+  }
+
+  @Post('coupon/preview')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Preview coupon discount for a plan' })
+  previewCoupon(
+    @CurrentUser('merchantId') merchantId: string,
+    @Body('planCode') planCode: string,
+    @Body('couponCode') couponCode: string,
+  ) {
+    return this.subscriptionsService.previewCoupon(
+      merchantId,
+      planCode,
+      couponCode,
     );
   }
 
@@ -54,6 +72,7 @@ export class SubscriptionsController {
       senderPhone: string;
       amount: number;
       autoVerify?: boolean;
+      couponCode?: string;
     },
   ) {
     return this.subscriptionsService.submitBkashManual(merchantId, body);

@@ -220,6 +220,9 @@ export class PlansService implements OnModuleInit {
       paymentRef?: string;
       notes?: string;
       amount?: number;
+      couponCode?: string | null;
+      discountAmount?: number | null;
+      originalAmount?: number | null;
     },
   ) {
     const plan = await this.findByCode(planCode);
@@ -242,6 +245,11 @@ export class PlansService implements OnModuleInit {
         paymentMethod: options.paymentMethod,
         paymentRef: options.paymentRef,
         notes: options.notes,
+        couponCode: options.couponCode || null,
+        discountAmount:
+          options.discountAmount != null ? options.discountAmount : null,
+        originalAmount:
+          options.originalAmount != null ? options.originalAmount : null,
       },
     });
 

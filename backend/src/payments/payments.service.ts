@@ -7,6 +7,7 @@ import { PaymentProvider, PaymentSessionStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PlansService } from '../plans/plans.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { CouponsService } from '../coupons/coupons.service';
 import { BkashProvider } from './providers/bkash.provider';
 import { NagadProvider } from './providers/nagad.provider';
 
@@ -16,6 +17,7 @@ export class PaymentsService {
     private prisma: PrismaService,
     private plans: PlansService,
     private subscriptions: SubscriptionsService,
+    private coupons: CouponsService,
     private bkash: BkashProvider,
     private nagad: NagadProvider,
   ) {}
@@ -24,6 +26,7 @@ export class PaymentsService {
     merchantId: string,
     planCode: string,
     provider: 'bkash' | 'nagad',
+    couponCode?: string,
   ) {
     const plan = await this.plans.findByCode(planCode);
     if (!plan || !plan.isActive) {
@@ -33,16 +36,39 @@ export class PaymentsService {
       return this.subscriptions.subscribe(merchantId, planCode, 'FREE');
     }
 
+    const original = Math.round(Number(plan.priceMonthly));
+    const quote = await this.coupons.quote(
+      merchantId,
+      planCode,
+      couponCode,
+      original,
+    );
+    const amount = quote?.finalAmount ?? original;
+
+    if (amount <= 0 && quote) {
+      return this.subscriptions.subscribe(
+        merchantId,
+        planCode,
+        'coupon',
+        quote.code,
+      );
+    }
+
     const { billing } = await this.plans.createPendingBilling(
       merchantId,
       planCode,
       {
         paymentMethod: provider,
-        notes: `${provider} payment initiated`,
+        amount,
+        couponCode: quote?.code || null,
+        discountAmount: quote?.discountAmount ?? null,
+        originalAmount: quote ? original : null,
+        notes: quote
+          ? `${provider} payment initiated | coupon ${quote.code}`
+          : `${provider} payment initiated`,
       },
     );
 
-    const amount = Number(plan.priceMonthly);
     const init =
       provider === 'bkash'
         ? await this.bkash.createPayment(amount, billing.id)
@@ -64,6 +90,9 @@ export class PaymentsService {
       sessionId: session.id,
       paymentUrl: init.paymentUrl,
       amount,
+      originalAmount: original,
+      discountAmount: quote?.discountAmount || 0,
+      couponCode: quote?.code,
       provider,
       billingId: billing.id,
       message: `${provider} payment page-এ redirect করুন`,

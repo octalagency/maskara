@@ -17,6 +17,7 @@ import { AdminModule } from './admin/admin.module';
 import { ReportsModule } from './reports/reports.module';
 import { ApiKeysModule } from './api-keys/api-keys.module';
 import { PlansModule } from './plans/plans.module';
+import { CouponsModule } from './coupons/coupons.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { CommonServicesModule } from './common/common-services.module';
 import { PaymentsModule } from './payments/payments.module';
@@ -45,6 +46,7 @@ import { HealthController } from './health.controller';
     IntegrationsModule,
     NotificationsModule,
     PlansModule,
+    CouponsModule,
     SubscriptionsModule,
     CommonServicesModule,
     PaymentsModule,

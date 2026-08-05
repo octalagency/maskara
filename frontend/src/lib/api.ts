@@ -512,6 +512,36 @@ class ApiClient {
     });
   }
 
+  getAdminCoupons() {
+    return this.request<AdminCoupon[]>('/admin/coupons');
+  }
+
+  createAdminCoupon(data: {
+    code: string;
+    description?: string;
+    type: 'PERCENT' | 'FIXED' | string;
+    value: number;
+    planCodes?: string[];
+    merchantIds?: string[];
+    maxRedemptions?: number | null;
+    perMerchantLimit?: number;
+    validFrom?: string | null;
+    validUntil?: string | null;
+    isActive?: boolean;
+  }) {
+    return this.request<AdminCoupon>('/admin/coupons', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  updateAdminCoupon(id: string, data: Partial<AdminCoupon>) {
+    return this.request<AdminCoupon>(`/admin/coupons/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
   assignMerchantPlan(merchantId: string, planCode: string, markPaid = true) {
     return this.request(`/admin/merchants/${merchantId}/plan`, {
       method: 'PATCH',
@@ -599,10 +629,14 @@ class ApiClient {
     return this.request<MerchantSubscription>('/subscriptions/me');
   }
 
-  subscribeToPlan(planCode: string, paymentMethod = 'bkash_manual') {
+  subscribeToPlan(
+    planCode: string,
+    paymentMethod = 'bkash_manual',
+    couponCode?: string,
+  ) {
     return this.request<SubscribeResult>('/subscriptions/subscribe', {
       method: 'POST',
-      body: JSON.stringify({ planCode, paymentMethod }),
+      body: JSON.stringify({ planCode, paymentMethod, couponCode }),
     });
   }
 
@@ -612,6 +646,7 @@ class ApiClient {
     senderPhone: string;
     amount: number;
     autoVerify?: boolean;
+    couponCode?: string;
   }) {
     return this.request<SubscribeResult & { status?: string }>(
       '/subscriptions/bkash-manual',
@@ -622,10 +657,17 @@ class ApiClient {
     );
   }
 
-  initiatePayment(planCode: string, provider: 'bkash' | 'nagad') {
+  previewCoupon(planCode: string, couponCode: string) {
+    return this.request<CouponQuote>('/subscriptions/coupon/preview', {
+      method: 'POST',
+      body: JSON.stringify({ planCode, couponCode }),
+    });
+  }
+
+  initiatePayment(planCode: string, provider: 'bkash' | 'nagad', couponCode?: string) {
     return this.request<PaymentInitResult>('/payments/initiate', {
       method: 'POST',
-      body: JSON.stringify({ planCode, provider }),
+      body: JSON.stringify({ planCode, provider, couponCode }),
     });
   }
 
@@ -821,6 +863,35 @@ export interface Plan {
   isActive: boolean;
   isPopular?: boolean;
   sortOrder?: number;
+}
+
+export interface AdminCoupon {
+  id: string;
+  code: string;
+  description?: string | null;
+  type: 'PERCENT' | 'FIXED';
+  value: number | string;
+  planCodes: string[];
+  merchantIds: string[];
+  maxRedemptions?: number | null;
+  perMerchantLimit: number;
+  usedCount: number;
+  validFrom?: string | null;
+  validUntil?: string | null;
+  isActive: boolean;
+  createdAt?: string;
+  _count?: { redemptions: number };
+}
+
+export interface CouponQuote {
+  code: string;
+  type: 'PERCENT' | 'FIXED';
+  value: number;
+  planCode: string;
+  originalAmount: number;
+  discountAmount: number;
+  finalAmount: number;
+  description?: string | null;
 }
 
 export interface BillingRecord {

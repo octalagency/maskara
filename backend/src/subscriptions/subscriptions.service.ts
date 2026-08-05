@@ -6,12 +6,14 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PlansService } from '../plans/plans.service';
+import { CouponsService } from '../coupons/coupons.service';
 
 @Injectable()
 export class SubscriptionsService {
   constructor(
     private prisma: PrismaService,
     private plans: PlansService,
+    private coupons: CouponsService,
   ) {}
 
   async getPublicPlans() {
@@ -194,6 +196,7 @@ export class SubscriptionsService {
     merchantId: string,
     planCode: string,
     paymentMethod = 'bkash_manual',
+    couponCode?: string,
   ) {
     const plan = await this.plans.findByCode(planCode);
     if (!plan || !plan.isActive) {
@@ -229,30 +232,103 @@ export class SubscriptionsService {
       });
     }
 
-    // Paid plans: pending billing only — plan activates after payment confirm
+    const original = Math.round(Number(plan.priceMonthly));
+    const quote = await this.coupons.quote(
+      merchantId,
+      planCode,
+      couponCode,
+      original,
+    );
+    const finalAmount = quote?.finalAmount ?? original;
+
+    // 100% off → activate immediately
+    if (finalAmount <= 0 && quote) {
+      const activated = await this.plans.assignPlanToMerchant(
+        merchantId,
+        planCode,
+        {
+          paymentMethod: 'coupon',
+          markPaid: true,
+          paymentRef: quote.code,
+          adminNote: `Coupon ${quote.code} (100% off)`,
+        },
+      );
+      if (activated.billing) {
+        await this.prisma.billingRecord.update({
+          where: { id: activated.billing.id },
+          data: {
+            amount: 0,
+            couponCode: quote.code,
+            discountAmount: quote.discountAmount,
+            originalAmount: quote.originalAmount,
+          },
+        });
+      }
+      await this.coupons.redeem(
+        merchantId,
+        quote,
+        activated.billing?.id || null,
+      );
+      return {
+        ...activated,
+        coupon: quote,
+        message: `কুপন ${quote.code} প্রয়োগ হয়েছে — প্ল্যান অ্যাক্টিভ`,
+      };
+    }
+
     const payment = await this.getManualPaymentInfo();
     const { billing } = await this.plans.createPendingBilling(
       merchantId,
       planCode,
       {
         paymentMethod,
-        notes: `Merchant requested ${planCode} via ${paymentMethod}`,
+        amount: finalAmount,
+        couponCode: quote?.code || null,
+        discountAmount: quote?.discountAmount ?? null,
+        originalAmount: quote ? original : null,
+        notes: quote
+          ? `Merchant requested ${planCode} via ${paymentMethod} | coupon ${quote.code} (-৳${quote.discountAmount})`
+          : `Merchant requested ${planCode} via ${paymentMethod}`,
       },
     );
 
     return {
       billing,
       plan,
+      coupon: quote || undefined,
       message:
         'bKash-এ Payment করুন, তারপর TrxID / নম্বর / অ্যামাউন্ট সাবমিট করুন। Admin confirm করলে Paid হবে।',
       paymentInstructions: {
         bKash: payment.bKashNumber || undefined,
         nagad: payment.nagadNumber || undefined,
-        amount: Number(plan.priceMonthly),
+        amount: finalAmount,
+        originalAmount: original,
+        discountAmount: quote?.discountAmount || 0,
+        couponCode: quote?.code,
         reference: billing.id,
         instructions: payment.instructions,
       },
     };
+  }
+
+  async previewCoupon(
+    merchantId: string,
+    planCode: string,
+    couponCode: string,
+  ) {
+    const plan = await this.plans.findByCode(planCode);
+    if (!plan || !plan.isActive) {
+      throw new BadRequestException('Invalid plan');
+    }
+    const original = Math.round(Number(plan.priceMonthly));
+    const quote = await this.coupons.quote(
+      merchantId,
+      planCode,
+      couponCode,
+      original,
+    );
+    if (!quote) throw new BadRequestException('Coupon code required');
+    return quote;
   }
 
   /**
@@ -268,6 +344,7 @@ export class SubscriptionsService {
       senderPhone: string;
       amount: number;
       autoVerify?: boolean;
+      couponCode?: string;
     },
   ) {
     const planCode = String(body.planCode || '').trim().toUpperCase();
@@ -287,7 +364,7 @@ export class SubscriptionsService {
     if (senderPhone.length < 10) {
       throw new BadRequestException('Sender phone required (01XXXXXXXXX)');
     }
-    if (!Number.isFinite(amount) || amount <= 0) {
+    if (!Number.isFinite(amount) || amount < 0) {
       throw new BadRequestException('Amount required');
     }
 
@@ -296,11 +373,58 @@ export class SubscriptionsService {
       throw new BadRequestException('Invalid plan');
     }
 
-    const expected = Number(plan.priceMonthly);
+    const original = Math.round(Number(plan.priceMonthly));
+    const quote = await this.coupons.quote(
+      merchantId,
+      planCode,
+      body.couponCode,
+      original,
+    );
+    const expected = quote?.finalAmount ?? original;
     if (Math.abs(amount - expected) > 1) {
       throw new BadRequestException(
-        `Amount must be ৳${expected} for ${planCode} (got ৳${amount})`,
+        quote
+          ? `Amount must be ৳${expected} after coupon ${quote.code} (got ৳${amount})`
+          : `Amount must be ৳${expected} for ${planCode} (got ৳${amount})`,
       );
+    }
+
+    // Free via coupon — no Trx needed path already handled in subscribe;
+    // still allow 0-amount with dummy trx if somehow submitted
+    if (expected <= 0 && quote) {
+      const activated = await this.plans.assignPlanToMerchant(
+        merchantId,
+        planCode,
+        {
+          paymentMethod: 'coupon',
+          markPaid: true,
+          paymentRef: quote.code,
+          adminNote: `Coupon ${quote.code} (100% off)`,
+        },
+      );
+      if (activated.billing) {
+        await this.prisma.billingRecord.update({
+          where: { id: activated.billing.id },
+          data: {
+            amount: 0,
+            couponCode: quote.code,
+            discountAmount: quote.discountAmount,
+            originalAmount: quote.originalAmount,
+          },
+        });
+      }
+      await this.coupons.redeem(
+        merchantId,
+        quote,
+        activated.billing?.id || null,
+      );
+      return {
+        billing: activated.billing,
+        plan,
+        coupon: quote,
+        status: 'PAID' as const,
+        message: `কুপন ${quote.code} — প্ল্যান অ্যাক্টিভ`,
+      };
     }
 
     const dup = await this.prisma.billingRecord.findFirst({
@@ -321,11 +445,16 @@ export class SubscriptionsService {
         paymentMethod: 'bkash_sim',
         paymentRef: trxId,
         amount: expected,
+        couponCode: quote?.code || null,
+        discountAmount: quote?.discountAmount ?? null,
+        originalAmount: quote ? original : null,
         notes: JSON.stringify({
           senderPhone,
           submittedAmount: amount,
           channel: 'bkash_sim',
           autoVerify,
+          couponCode: quote?.code,
+          discountAmount: quote?.discountAmount,
         }),
       },
     );
@@ -335,11 +464,17 @@ export class SubscriptionsService {
       return {
         billing: paid,
         plan,
+        coupon: quote || undefined,
         status: 'PAID' as const,
-        message: 'পেমেন্ট ভেরিফাই হয়েছে — Paid',
+        message: quote
+          ? `কুপন ${quote.code} প্রয়োগ · পেমেন্ট Paid`
+          : 'পেমেন্ট ভেরিফাই হয়েছে — Paid',
         paymentInstructions: {
           bKash: payment.bKashNumber || undefined,
           amount: expected,
+          originalAmount: original,
+          discountAmount: quote?.discountAmount || 0,
+          couponCode: quote?.code,
           reference: billing.id,
           trxId,
           senderPhone,
@@ -350,12 +485,16 @@ export class SubscriptionsService {
     return {
       billing,
       plan,
+      coupon: quote || undefined,
       status: 'PENDING' as const,
       message:
         'পেমেন্ট সাবমিট হয়েছে। Admin confirm করলে Paid হবে।',
       paymentInstructions: {
         bKash: payment.bKashNumber || undefined,
         amount: expected,
+        originalAmount: original,
+        discountAmount: quote?.discountAmount || 0,
+        couponCode: quote?.code,
         reference: billing.id,
         trxId,
         senderPhone,
@@ -430,6 +569,8 @@ export class SubscriptionsService {
         },
       });
     }
+
+    await this.coupons.redeemFromBilling(billingId).catch(() => null);
 
     return this.prisma.billingRecord.findUniqueOrThrow({ where: { id: billingId } });
   }

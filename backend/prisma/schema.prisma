@@ -188,6 +188,7 @@ model Merchant {
   subscriptions Subscription[]
   billingRecords BillingRecord[]
   paymentSessions PaymentSession[]
+  couponRedemptions CouponRedemption[]
 
   @@index([slug])
   @@index([status])
@@ -213,23 +214,73 @@ model Plan {
 }
 
 model BillingRecord {
-  id            String        @id @default(cuid())
-  merchantId    String
-  merchant      Merchant      @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  planCode      String
-  amount        Decimal       @db.Decimal(10, 2)
-  currency      String        @default("BDT")
-  periodStart   DateTime
-  periodEnd     DateTime
-  status        BillingStatus @default(PENDING)
-  paymentMethod String?
-  paymentRef    String?
-  notes         String?
-  createdAt     DateTime      @default(now())
+  id             String        @id @default(cuid())
+  merchantId     String
+  merchant       Merchant      @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  planCode       String
+  amount         Decimal       @db.Decimal(10, 2)
+  currency       String        @default("BDT")
+  periodStart    DateTime
+  periodEnd      DateTime
+  status         BillingStatus @default(PENDING)
+  paymentMethod  String?
+  paymentRef     String?
+  notes          String?
+  couponCode     String?
+  discountAmount Decimal?      @db.Decimal(10, 2)
+  originalAmount Decimal?      @db.Decimal(10, 2)
+  createdAt      DateTime      @default(now())
 
   @@index([merchantId])
   @@index([status])
   @@index([createdAt])
+  @@index([couponCode])
+}
+
+enum CouponType {
+  PERCENT
+  FIXED
+}
+
+model Coupon {
+  id               String     @id @default(cuid())
+  code             String     @unique
+  description      String?
+  type             CouponType
+  value            Decimal    @db.Decimal(10, 2)
+  /// Empty = all paid plans
+  planCodes        String[]   @default([])
+  /// Empty = any merchant; otherwise only listed merchant IDs
+  merchantIds      String[]   @default([])
+  maxRedemptions   Int?
+  perMerchantLimit Int        @default(1)
+  usedCount        Int        @default(0)
+  validFrom        DateTime?
+  validUntil       DateTime?
+  isActive         Boolean    @default(true)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  redemptions      CouponRedemption[]
+
+  @@index([isActive])
+}
+
+model CouponRedemption {
+  id             String   @id @default(cuid())
+  couponId       String
+  coupon         Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  merchantId     String
+  merchant       Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  billingId      String?
+  planCode       String
+  originalAmount Decimal  @db.Decimal(10, 2)
+  discountAmount Decimal  @db.Decimal(10, 2)
+  finalAmount    Decimal  @db.Decimal(10, 2)
+  createdAt      DateTime @default(now())
+
+  @@index([couponId])
+  @@index([merchantId])
+  @@index([billingId])
 }
 
 enum PaymentProvider {
