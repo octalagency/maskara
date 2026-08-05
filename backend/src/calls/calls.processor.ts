@@ -42,8 +42,7 @@ export class CallsProcessor {
         this.logger.log(
           `Yield follow-up to ${burstWaiting} burst job(s) — order ${orderId}`,
         );
-        // Bull: delay this follow-up so burst (20s/2min) jobs run first
-        await job.moveToDelayed(Date.now() + 8_000);
+        // Skip now; follow-up cron re-queues within ~30s
         return;
       }
     }

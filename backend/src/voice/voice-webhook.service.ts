@@ -7,10 +7,11 @@ import { lifetimeLimitOf } from '../common/utils/dial-merchant.util';
 import { SECOND_CALL_DELAY_MS } from '../common/utils/call-schedule.util';
 import { CallsEnqueueService } from '../calls/calls-enqueue.service';
 
-/** ePBX often returns failed within <1s when channels are contended — not a real ring. */
-const TECH_FAIL_MAX_SEC = 3;
-const TECH_FAIL_RETRY_DELAY_MS = 25_000;
-const TECH_FAIL_MAX_PER_ORDER = 6;
+/** ePBX often returns failed within <1s when channels are contended — not a real ring.
+ *  Keep this short so true instant channel fails refund; real rings take longer. */
+const TECH_FAIL_MAX_SEC = 1.5;
+const TECH_FAIL_RETRY_DELAY_MS = 15_000;
+const TECH_FAIL_MAX_PER_ORDER = 8;
 
 @Injectable()
 export class VoiceWebhookService {
@@ -328,10 +329,16 @@ export class VoiceWebhookService {
         ? duration
         : call.startedAt
           ? (Date.now() - call.startedAt.getTime()) / 1000
-          : 0;
+          : (Date.now() - call.createdAt.getTime()) / 1000;
 
+    // Only treat as tech-fail if ePBX never accepted the dial (no providerCallId).
+    // Race: failed webhook can arrive before we write startedAt after ePBX OK —
+    // that must NOT refund attempts or the UI shows 0/20 forever.
     const isTechFail =
-      mapped === 'FAILED' && status === 'failed' && elapsedSec < TECH_FAIL_MAX_SEC;
+      mapped === 'FAILED' &&
+      status === 'failed' &&
+      !call.providerCallId &&
+      elapsedSec < TECH_FAIL_MAX_SEC;
 
     await this.prisma.call.update({
       where: { id: callId },

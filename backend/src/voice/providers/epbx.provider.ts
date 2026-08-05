@@ -476,7 +476,10 @@ export class EpbxProvider implements VoiceProvider {
         if (ok === 'OK') {
           this.logger.log(`[voice] ePBX dial lock acquired callId=${callId}`);
           try {
-            return await fn();
+            const result = await fn();
+            // Brief gap after DB-bound return path; lock still held
+            await new Promise((r) => setTimeout(r, 1500));
+            return result;
           } finally {
             const cur = await redis.get(lockKey);
             if (cur === token) await redis.del(lockKey);
@@ -541,8 +544,8 @@ export class EpbxProvider implements VoiceProvider {
         this.logger.log(
           `[voice] ePBX OK ${path} callId=${callId} portalVoice=${meta.portalVoiceId} maskara=${meta.maskaraVoiceId} redis_cached=${meta.redisCached} → ${dialPhone} providerId=${providerCallId}`,
         );
-        // Hold the dial lock briefly so the previous call can leave the channel
-        await new Promise((r) => setTimeout(r, 2500));
+        // Return immediately so VoiceService can persist providerCallId before
+        // any failed webhook arrives (prevents false epbx_instant_fail refunds).
         return { providerCallId: String(providerCallId), status: 'RINGING' };
       }
 
