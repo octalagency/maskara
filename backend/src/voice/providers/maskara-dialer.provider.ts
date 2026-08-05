@@ -106,7 +106,7 @@ export class MaskaraDialerProvider implements VoiceProvider {
 
     const webhook = this.webhookUrl('/voice/webhook/maskara-dialer/dtmf');
     // FreeSWITCH requires RFC UUID here — Nest call ids (cuid) break SIP.
-    const channelUuid = crypto.randomUUID();
+    const channelUuid = randomUUID();
     // Use ^^| delimiter so URL ":" and hangup-hook spaces cannot break parsing.
     const channelVars = [
       `origination_uuid=${channelUuid}`,
