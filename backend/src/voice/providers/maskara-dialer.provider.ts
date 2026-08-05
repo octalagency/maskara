@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { VoiceSettingsService } from '../voice-settings.service';
 import { GoogleTtsService } from '../google-tts.service';
 import {
@@ -104,8 +105,8 @@ export class MaskaraDialerProvider implements VoiceProvider {
     ]);
 
     const webhook = this.webhookUrl('/voice/webhook/maskara-dialer/dtmf');
-    // Stable channel UUID = Maskara call id (never Job-UUID from bgapi).
-    const channelUuid = params.callId;
+    // FreeSWITCH requires RFC UUID here — Nest call ids (cuid) break SIP.
+    const channelUuid = crypto.randomUUID();
     // Use ^^| delimiter so URL ":" and hangup-hook spaces cannot break parsing.
     const channelVars = [
       `origination_uuid=${channelUuid}`,
