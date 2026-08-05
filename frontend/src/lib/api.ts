@@ -1021,7 +1021,17 @@ export interface MerchantSubscription {
 
 export interface SubscribeResult {
   message: string;
-  paymentInstructions?: { bKash?: string; nagad?: string; amount: number; reference: string };
+  status?: string;
+  paymentInstructions?: {
+    bKash?: string;
+    nagad?: string;
+    amount: number;
+    reference: string;
+    originalAmount?: number;
+    discountAmount?: number;
+    couponCode?: string;
+  };
+  coupon?: CouponQuote;
 }
 
 export interface PaymentInitResult {
