@@ -99,6 +99,7 @@ export class VoiceService {
       await this.prisma.order.update({
         where: { id: orderId },
         data: {
+          status: 'ESCALATED',
           nextCallAt: null,
           metadata: {
             ...(order.metadata &&
