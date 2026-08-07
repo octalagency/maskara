@@ -86,6 +86,7 @@ export class CallsRetryScheduler {
                 { errorMessage: 'epbx_instant_fail' },
                 { errorMessage: 'epbx_pstn_fail' },
                 { errorMessage: 'stale_ringing_timeout' },
+                { errorMessage: 'stale_in_progress_timeout' },
                 { errorMessage: 'dialer_originate_fail' },
                 { errorMessage: 'dialer_sip_fail' },
               ],
@@ -165,7 +166,7 @@ export class CallsRetryScheduler {
 
       const retryable =
         RETRYABLE_CALL_STATUSES.includes(last.status) ||
-        (last.status === 'RINGING' &&
+        (['RINGING', 'IN_PROGRESS'].includes(last.status) &&
           (lastEnded || age >= STALE_RINGING_MS || Boolean(last.errorMessage)));
       if (!retryable) continue;
 
@@ -187,34 +188,61 @@ export class CallsRetryScheduler {
     }
   }
 
-  /** Clear dialer/ePBX RINGING that never got a proper hangup status + refund fake counts. */
+  /**
+   * Clear dialer RINGING / IN_PROGRESS that never got a hangup webhook.
+   * FreeSWITCH fork exhaustion or lost ESL often leaves IN_PROGRESS forever and blocks redials.
+   */
   @Cron(CronExpression.EVERY_MINUTE)
   async finalizeStaleRinging() {
     const cutoff = new Date(Date.now() - STALE_RINGING_MS);
     const stale = await this.prisma.call.findMany({
       where: {
-        status: 'RINGING',
         OR: [
-          { endedAt: null, createdAt: { lt: cutoff } },
-          { endedAt: { not: null } },
-          { errorMessage: 'epbx_instant_fail' },
-          { errorMessage: 'force_clear_for_redial' },
-          { errorMessage: 'snjra_priority_redial' },
+          {
+            status: 'RINGING',
+            OR: [
+              { endedAt: null, createdAt: { lt: cutoff } },
+              { endedAt: { not: null } },
+              { errorMessage: 'epbx_instant_fail' },
+              { errorMessage: 'force_clear_for_redial' },
+              { errorMessage: 'snjra_priority_redial' },
+            ],
+          },
+          {
+            status: 'IN_PROGRESS',
+            endedAt: null,
+            createdAt: { lt: cutoff },
+          },
         ],
       },
-      select: { id: true, orderId: true },
-      take: 200,
+      select: { id: true, orderId: true, status: true },
+      take: 300,
     });
     if (stale.length === 0) return;
 
-    await this.prisma.call.updateMany({
-      where: { id: { in: stale.map((c) => c.id) } },
-      data: {
-        status: 'NO_ANSWER',
-        endedAt: new Date(),
-        errorMessage: 'stale_ringing_timeout',
-      },
-    });
+    const ringingIds = stale.filter((c) => c.status === 'RINGING').map((c) => c.id);
+    const inProgIds = stale.filter((c) => c.status === 'IN_PROGRESS').map((c) => c.id);
+
+    if (ringingIds.length) {
+      await this.prisma.call.updateMany({
+        where: { id: { in: ringingIds } },
+        data: {
+          status: 'NO_ANSWER',
+          endedAt: new Date(),
+          errorMessage: 'stale_ringing_timeout',
+        },
+      });
+    }
+    if (inProgIds.length) {
+      await this.prisma.call.updateMany({
+        where: { id: { in: inProgIds } },
+        data: {
+          status: 'FAILED',
+          endedAt: new Date(),
+          errorMessage: 'stale_in_progress_timeout',
+        },
+      });
+    }
 
     const orderIds = [...new Set(stale.map((c) => c.orderId))];
     for (const orderId of orderIds) {
@@ -229,6 +257,7 @@ export class CallsRetryScheduler {
               { errorMessage: 'epbx_instant_fail' },
               { errorMessage: 'epbx_pstn_fail' },
               { errorMessage: 'stale_ringing_timeout' },
+              { errorMessage: 'stale_in_progress_timeout' },
               { errorMessage: 'dialer_originate_fail' },
               { errorMessage: 'dialer_sip_fail' },
             ],
@@ -244,13 +273,14 @@ export class CallsRetryScheduler {
           data: {
             callAttempts: realN,
             status: order.status === 'CALLING' ? 'PENDING' : order.status,
+            nextCallAt: new Date(),
           },
         });
       }
     }
 
     this.logger.warn(
-      `Marked ${stale.length} stale RINGING call(s) as NO_ANSWER (refunded fake counts)`,
+      `Marked stale calls: ${ringingIds.length} RINGING→NO_ANSWER, ${inProgIds.length} IN_PROGRESS→FAILED`,
     );
   }
 

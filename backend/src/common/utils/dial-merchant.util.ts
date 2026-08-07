@@ -64,6 +64,7 @@ export async function countCallsTodayForOrder(
           { errorMessage: 'epbx_instant_fail' },
           { errorMessage: 'epbx_pstn_fail' },
           { errorMessage: 'stale_ringing_timeout' },
+          { errorMessage: 'stale_in_progress_timeout' },
           { errorMessage: 'dialer_originate_fail' },
           { errorMessage: 'dialer_sip_fail' },
         ],
