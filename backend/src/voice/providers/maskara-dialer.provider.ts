@@ -139,6 +139,10 @@ export class MaskaraDialerProvider implements VoiceProvider {
       `[dialer] ESL originate callId=${params.callId} voice=${voice.voiceId} gateway=${gateway} caller=${callerId} → ${dialPhone}`,
     );
 
+    // ePBX trunk is effectively 1 concurrent call. `api originate` returns on
+    // answer (not hangup), so wait until FreeSWITCH has no live channels.
+    await this.waitForNoChannels(eslHost, eslPort, eslPass, 120_000);
+
     // Synchronous api originate: worker concurrency=1 waits until answer/fail.
     // bgapi returned Job-UUID immediately and stacked SIP legs → ePBX
     // RECOVERY_ON_TIMER_EXPIRE (no customer ring) while UI still counted attempts.
@@ -199,5 +203,35 @@ export class MaskaraDialerProvider implements VoiceProvider {
     if (digits.startsWith('0') && digits.length === 11) return digits;
     if (digits.length === 10) return `0${digits}`;
     return digits;
+  }
+
+  /** Block until FreeSWITCH reports 0 channels (or timeout). */
+  private async waitForNoChannels(
+    host: string,
+    port: number,
+    password: string,
+    timeoutMs: number,
+  ) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      try {
+        const reply = await EslClient.api(
+          host,
+          port,
+          password,
+          'show channels count',
+          5_000,
+        );
+        const n = Number((reply.match(/(\d+)\s+total/i) || [])[1] || 0);
+        if (n === 0) return;
+        this.logger.log(`[dialer] waiting for idle trunk (channels=${n})`);
+      } catch (err) {
+        this.logger.warn(
+          `[dialer] channel poll failed: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+      await new Promise((r) => setTimeout(r, 2_500));
+    }
+    this.logger.warn('[dialer] proceed after channel wait timeout');
   }
 }
