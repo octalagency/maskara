@@ -98,10 +98,14 @@ export class MaskaraDialerProvider implements VoiceProvider {
       speechRate,
       `dial-${params.callId}`,
     );
+    // Stable cache keys — confirm/cancel/invalid are identical across orders for
+    // the same voice/rate. Reuse TTS hosts so FreeSWITCH stops forking wget every call
+    // (PID exhaustion was killing the dialer overnight).
+    const voiceKey = `${voice.voiceId}-r${speechRate}`.replace(/[^a-zA-Z0-9._-]/g, '_');
     const [confirm, cancel, invalid] = await Promise.all([
-      this.synthAndHost(confirmBn, voice.voiceId, speechRate, `ok-${params.callId}`),
-      this.synthAndHost(cancelBn, voice.voiceId, speechRate, `cx-${params.callId}`),
-      this.synthAndHost(invalidBn, voice.voiceId, speechRate, `bad-${params.callId}`),
+      this.synthAndHost(confirmBn, voice.voiceId, speechRate, `ok-${voiceKey}`),
+      this.synthAndHost(cancelBn, voice.voiceId, speechRate, `cx-${voiceKey}`),
+      this.synthAndHost(invalidBn, voice.voiceId, speechRate, `bad-${voiceKey}`),
     ]);
 
     const webhook = this.webhookUrl('/voice/webhook/maskara-dialer/dtmf');

@@ -155,6 +155,13 @@ services:
     pull_policy: never
     container_name: maskara-freeswitch
     restart: unless-stopped
+    # wget-per-call used to exhaust default PID cgroup → container stuck unhealthy overnight
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 65535
+        hard: 65535
+    pids_limit: 8192
     environment:
       SIP_TRUNK_HOST: ${SIP_TRUNK_HOST:-}
       SIP_TRUNK_USER: ${SIP_TRUNK_USER:-}
@@ -178,8 +185,9 @@ services:
       test: ['CMD-SHELL', 'fs_cli -x status >/dev/null 2>&1 || exit 1']
       interval: 30s
       timeout: 10s
-      retries: 5
+      retries: 3
       start_period: 60s
+
 
   nginx:
     image: nginx:alpine

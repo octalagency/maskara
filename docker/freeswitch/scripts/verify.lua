@@ -19,21 +19,40 @@ local function shell_quote(s)
   return "'" .. tostring(s):gsub("'", "'\\''") .. "'"
 end
 
+-- Cache by URL filename (Nest TTS id). Avoids wget fork-storm that exhausts
+-- container PIDs and leaves FreeSWITCH permanently unhealthy overnight.
+local function cache_key(url, name)
+  local id = tostring(url or ""):match("([^/?#]+)$") or name
+  id = id:gsub("[^%w%._%-]", "_")
+  if #id < 4 then id = name .. "-" .. tostring(call_id) end
+  return id
+end
+
 local function download(url, name)
   if not url or url == "" then return nil end
-  local path = audio_dir .. "/" .. call_id .. "-" .. name .. ".mp3"
+  local key = cache_key(url, name)
+  local path = audio_dir .. "/" .. key .. ".mp3"
+  local f = io.open(path, "rb")
+  if f then
+    local size = f:seek("end")
+    f:close()
+    if size and size > 512 then
+      return path
+    end
+  end
   url = url:gsub("[;&|`$\\]", "")
+  -- BusyBox wget; one fork per miss only
   local cmd = string.format(
     "wget -q -O %s %s",
     shell_quote(path),
     shell_quote(url)
   )
   local ok = os.execute(cmd)
-  local f = io.open(path, "rb")
+  f = io.open(path, "rb")
   if f then
     local size = f:seek("end")
     f:close()
-    if size and size > 0 and (ok == true or ok == 0) then
+    if size and size > 512 and (ok == true or ok == 0) then
       return path
     end
   end
@@ -63,7 +82,7 @@ local function notify(digits)
     call_id,
     digits
   )
-  local tmp = audio_dir .. "/" .. call_id .. "-dtmf.json"
+  local tmp = audio_dir .. "/" .. tostring(call_id):gsub("[^%w%-_]", "_") .. "-dtmf.json"
   local f = io.open(tmp, "w")
   if f then
     f:write(payload)
@@ -83,7 +102,6 @@ local function play(path)
 end
 
 -- Single gather loop: do NOT play prompt before playAndGetDigits
--- (extra playback ate DTMF 1/2 so Nest only saw "invalid").
 local digits = session:playAndGetDigits(
   1,              -- min
   1,              -- max
@@ -116,7 +134,6 @@ elseif digits == "2" then
   session:hangup("NORMAL_CLEARING")
   return
 elseif digits == "0" then
-  -- one extra full prompt + gather
   notify("0")
   local again = session:playAndGetDigits(
     1, 1, 2, 12000, "#",

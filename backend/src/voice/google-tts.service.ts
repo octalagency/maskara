@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import Redis from 'ioredis';
 import { VoiceSettingsService } from './voice-settings.service';
 import { S3StorageService } from '../common/services/s3-storage.service';
@@ -260,7 +260,9 @@ export class GoogleTtsService implements OnModuleDestroy {
     ttlMs = REDIS_TTS_TTL_SEC * 1000,
   ): Promise<{ id: string; redisCached: boolean }> {
     this.prune();
-    const id = randomUUID();
+    // Content-addressed id → identical confirm/cancel clips reuse one URL.
+    // FreeSWITCH caches by URL filename; this stops overnight wget PID storms.
+    const id = createHash('sha256').update(buffer).digest('hex').slice(0, 32);
     this.cache.set(id, {
       buf: buffer,
       mime: mimeType,
@@ -270,17 +272,19 @@ export class GoogleTtsService implements OnModuleDestroy {
     let redisCached = false;
     if (this.redis) {
       try {
-        // Pack mime + mp3 so API can restore content-type
-        const packed = Buffer.concat([
-          Buffer.from(`${mimeType}\n`, 'utf8'),
-          buffer,
-        ]);
-        await this.redis.setex(
-          `${REDIS_TTS_PREFIX}${id}`,
-          REDIS_TTS_TTL_SEC,
-          packed,
-        );
-        redisCached = true;
+        const key = `${REDIS_TTS_PREFIX}${id}`;
+        const exists = await this.redis.exists(key);
+        if (exists) {
+          await this.redis.expire(key, REDIS_TTS_TTL_SEC);
+          redisCached = true;
+        } else {
+          const packed = Buffer.concat([
+            Buffer.from(`${mimeType}\n`, 'utf8'),
+            buffer,
+          ]);
+          await this.redis.setex(key, REDIS_TTS_TTL_SEC, packed);
+          redisCached = true;
+        }
       } catch (err) {
         this.logger.error(
           `Failed to store TTS in Redis — ePBX may 404 audio: ${err instanceof Error ? err.message : err}`,
